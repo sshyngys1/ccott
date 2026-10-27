@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+import { consumeCaptureEcho, useCaptureStore } from "../lib/capture/store";
 // Owner: F1. Startup/side-effect hooks of the shell: theme, vibrancy, settings, mode → Rust.
 import { useEffect, useRef } from "react";
 import { durations } from "../design/motion";
@@ -97,9 +99,14 @@ export function useToastSync(): void {
       clearTimeout(timer);
       timer = setTimeout(() => useIslandStore.getState().setToast(null), durations.toastHold * 1000);
     });
+    const offCapture = useCaptureStore.subscribe((s, previous) => {
+      if (s.feedback && s.feedback !== previous.feedback) showToast({ label:s.feedback.message, onClick:s.feedback.onClick, color:s.feedback.color, preview:s.feedback.preview, actionLabel:s.feedback.actionLabel });
+    });
     listen("clipboard://added", (item) => {
-      const preview = item.kind === "image" ? "Изображение" : item.kind === "files" ? "Файлы" : clipboardToastPreview(item.text, item.preview);
-      showToast({ label: "Скопировано", preview });
+      if (consumeCaptureEcho(item)) return;
+      const preview = item.kind === "image" ? t("image") : item.kind === "files" ? t("files") : clipboardToastPreview(item.text, item.preview);
+      const previewKey = item.kind === "image" ? "image" : item.kind === "files" ? "files" : undefined;
+      showToast({ label: t("copied"), preview, previewKey });
     }).then(
       (u) => {
         if (disposed) u();
@@ -121,6 +128,7 @@ export function useToastSync(): void {
       unlistenClipboard();
       unlistenUpdater();
       unsubscribe();
+      offCapture();
       clearTimeout(timer);
     };
   }, []);

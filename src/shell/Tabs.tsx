@@ -1,3 +1,4 @@
+import { t, useT } from "../i18n";
 // Owner: F1. Tab strip of the expanded panel: Designer's .ig-tabbar/.ig-tab/.ig-tab-thumb + WAI-ARIA tabs behaviour.
 import { LayoutGroup, motion } from "motion/react";
 import { useRef, type KeyboardEvent } from "react";
@@ -14,6 +15,7 @@ interface TabsProps {
 }
 
 export function Tabs({ modules, active, onSelect }: TabsProps) {
+  useT();
   const refs = useRef(new Map<ModuleId, HTMLButtonElement>());
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
@@ -32,7 +34,7 @@ export function Tabs({ modules, active, onSelect }: TabsProps) {
 
   return (
     <LayoutGroup id="ig-shell-tabs">
-      <nav className="ig-tabbar" role="tablist" aria-label="Вкладки острова" onKeyDown={onKeyDown}>
+      <nav className="ig-tabbar" role="tablist" aria-label={t("islandTabs")} onKeyDown={onKeyDown}>
         {modules.map((m) => {
           const selected = m.id === active;
           const Icon = m.icon;

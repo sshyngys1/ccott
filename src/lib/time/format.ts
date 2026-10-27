@@ -1,10 +1,9 @@
-// Time formatting helpers (ru). All take `now` so they are deterministic in tests.
+// Locale-aware time helpers. All take `now` so they are deterministic in tests.
+import { t, getLocale } from "../../i18n";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
-
-const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"] as const;
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
@@ -20,30 +19,29 @@ export function calendarDaysAgo(ts: number, now: number): number {
 /** «12 окт» (with the year when it differs from the current one). */
 export function formatShortDate(ts: number, now: number): string {
   const d = new Date(ts);
-  const base = `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
-  return d.getFullYear() === new Date(now).getFullYear() ? base : `${base} ${d.getFullYear()}`;
+  return new Intl.DateTimeFormat(getLocale(), {
+    day: "numeric", month: "short",
+    ...(d.getFullYear() === new Date(now).getFullYear() ? {} : { year: "numeric" as const }),
+  }).formatToParts(d).filter((p) => ["day", "month", "year"].includes(p.type))
+    .map((p) => p.type === "month" ? p.value.replace(/\.$/, "") : p.value).join(" ");
 }
 
 /** «14:32» */
 export function formatClockHM(ts: number): string {
-  const d = new Date(ts);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function daysWord(n: number): string {
-  const m10 = n % 10;
-  return m10 >= 2 && m10 <= 4 && (n < 12 || n > 14) ? "дня" : "дней";
+  return new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ts);
 }
 
 /** «только что / N мин назад / N ч назад / вчера / N дня назад / 12 окт» */
 export function formatRelativeTime(ts: number, now: number): string {
   const diff = now - ts;
-  if (diff < MIN) return "только что"; // also future timestamps (clock skew)
-  if (diff < HOUR) return `${Math.floor(diff / MIN)} мин назад`;
-  if (diff < DAY) return `${Math.floor(diff / HOUR)} ч назад`;
+  const relative = (value: number, unit: Intl.RelativeTimeFormatUnit, style: "short" | "long" = "short") =>
+    new Intl.RelativeTimeFormat(getLocale(), { numeric: "always", style }).format(-value, unit).replace(/\./g, "").replace(/\u00a0/g, " ");
+  if (diff < MIN) return t("justNow"); // also future timestamps (clock skew)
+  if (diff < HOUR) return relative(Math.floor(diff / MIN), "minute");
+  if (diff < DAY) return relative(Math.floor(diff / HOUR), "hour");
   const days = calendarDaysAgo(ts, now);
-  if (days <= 1) return "вчера";
-  if (days < 7) return `${days} ${daysWord(days)} назад`;
+  if (days <= 1) return t("yesterday");
+  if (days < 7) return relative(days, "day", "long");
   return formatShortDate(ts, now);
 }
 
@@ -51,7 +49,7 @@ export function formatRelativeTime(ts: number, now: number): string {
 export function formatNoteStamp(ts: number, now: number): string {
   const days = calendarDaysAgo(ts, now);
   if (days <= 0) return formatClockHM(ts);
-  if (days === 1) return "вчера";
+  if (days === 1) return t("yesterday");
   return formatShortDate(ts, now);
 }
 

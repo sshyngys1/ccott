@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type MouseEvent } from "react";
 import { IconBold, IconChecklist, IconItalic, IconListBullet, IconTrash } from "../../design/icons";
 import { formatClockHM } from "../../lib/time/format";
@@ -23,21 +24,22 @@ import {
 const BTN = "ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm";
 
 function statusOf(hasNote: boolean, isDraft: boolean, save: { state: SaveState; at: number | null }, updatedAt: number | null): { state: string; text: string } {
-  if (!hasNote) return { state: "idle", text: "Нет заметки" };
+  if (!hasNote) return { state: "idle", get text() { return t("noNote"); } };
   switch (save.state) {
     case "saving":
-      return { state: "saving", text: "Сохранение…" };
+      return { state: "saving", get text() { return t("saving"); } };
     case "saved":
-      return { state: "saved", text: `Сохранено · ${formatClockHM(save.at ?? Date.now())}` };
+      return { state: "saved", text: t("saved", { p0: formatClockHM(save.at ?? Date.now()) }) };
     case "error":
-      return { state: "error", text: "Не сохранено" };
+      return { state: "error", get text() { return t("notSaved"); } };
     default:
-      if (isDraft || updatedAt === null) return { state: "idle", text: "Новая заметка" };
-      return { state: "saved", text: `Сохранено · ${formatClockHM(updatedAt)}` };
+      if (isDraft || updatedAt === null) return { state: "idle", get text() { return t("newNote"); } };
+      return { state: "saved", text: t("saved", { p0: formatClockHM(updatedAt) }) };
   }
 }
 
 export function NoteEditor() {
+  useT();
   const selected = useNotesStore((s) => s.selected);
   const save = useNotesStore((s) => s.save);
   const updatedAt = useNotesStore((s) => (typeof s.selected === "number" ? (s.notes.find((n) => n.id === s.selected)?.updatedAt ?? null) : null));
@@ -126,19 +128,19 @@ export function NoteEditor() {
 
   return (
     <div className="ig-field nt-editor">
-      <div className="ig-field-bar ig-field-bar--header" role="toolbar" aria-label="Форматирование">
+      <div className="ig-field-bar ig-field-bar--header" role="toolbar" aria-label={t("formatting")}>
         {/* mousedown is cancelled so the editor keeps its selection while a button is pressed. */}
-        <button type="button" className={BTN} aria-label="Жирный (Ctrl+B)" title="Жирный (Ctrl+B)" aria-pressed={formats.bold} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(() => toggleBold())}>
+        <button type="button" className={BTN} aria-label={t("boldCtrlB")} title={t("boldCtrlB")} aria-pressed={formats.bold} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(() => toggleBold())}>
           <IconBold size={16} />
         </button>
-        <button type="button" className={BTN} aria-label="Курсив (Ctrl+I)" title="Курсив (Ctrl+I)" aria-pressed={formats.italic} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(() => toggleItalic())}>
+        <button type="button" className={BTN} aria-label={t("italicCtrlI")} title={t("italicCtrlI")} aria-pressed={formats.italic} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(() => toggleItalic())}>
           <IconItalic size={16} />
         </button>
         <span className="ig-field-bar__sep" aria-hidden="true" />
-        <button type="button" className={BTN} aria-label="Список" title="Список" aria-pressed={formats.list} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(toggleList)}>
+        <button type="button" className={BTN} aria-label={t("bulletedList")} title={t("bulletedList")} aria-pressed={formats.list} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(toggleList)}>
           <IconListBullet size={16} />
         </button>
-        <button type="button" className={BTN} aria-label="Чек-лист" title="Чек-лист" aria-pressed={formats.checklist} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(toggleChecklist)}>
+        <button type="button" className={BTN} aria-label={t("checklist")} title={t("checklist")} aria-pressed={formats.checklist} disabled={!hasNote} onMouseDown={(e) => e.preventDefault()} onClick={run(toggleChecklist)}>
           <IconChecklist size={16} />
         </button>
         <span className="ig-field-bar__spacer" />
@@ -149,8 +151,8 @@ export function NoteEditor() {
           type="button"
           className={`${BTN} ig-glass-control--danger nt-delete`}
           data-armed={del.armed ? true : undefined}
-          aria-label={del.armed ? "Подтвердить удаление заметки" : "Удалить заметку"}
-          title={del.armed ? "Нажмите ещё раз, чтобы удалить" : "Удалить заметку"}
+          aria-label={del.armed ? t("confirmNoteDeletion") : t("deleteNote")}
+          title={del.armed ? t("clickAgainToDelete") : t("deleteNote")}
           disabled={!hasNote}
           onMouseDown={(e) => e.preventDefault()}
           onClick={onDelete}
@@ -163,10 +165,10 @@ export function NoteEditor() {
         className="ig-editor"
         contentEditable={hasNote}
         suppressContentEditableWarning
-        data-placeholder={hasNote ? "Начните писать…" : "Создайте заметку слева"}
+        data-placeholder={hasNote ? t("startWriting") : t("createANoteOnTheLeft")}
         role="textbox"
         aria-multiline="true"
-        aria-label="Текст заметки"
+        aria-label={t("noteText")}
         spellCheck
         onInput={onInput}
         onMouseDown={onMouseDown}

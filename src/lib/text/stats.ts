@@ -1,4 +1,4 @@
-import { plural } from "./plural";
+import { countText } from "../../i18n";
 
 export interface TextStats {
   /** Visible characters (grapheme clusters: an emoji with modifiers counts as one). */
@@ -32,5 +32,5 @@ export function textStats(text: string): TextStats {
 
 /** «75 символов · 11 слов · 2 строки» */
 export function formatStats({ chars, words, lines }: TextStats): string {
-  return `${chars} ${plural(chars, ["символ", "символа", "символов"])} · ${words} ${plural(words, ["слово", "слова", "слов"])} · ${lines} ${plural(lines, ["строка", "строки", "строк"])}`;
+  return [countText(chars, "chars"), countText(words, "words"), countText(lines, "lines")].join(" · ");
 }

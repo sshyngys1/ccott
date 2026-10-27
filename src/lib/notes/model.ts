@@ -1,7 +1,11 @@
+import { t } from "../../i18n";
+import { ru } from "../../i18n/ru";
 // Pure helpers for the notes tab: titles, folders, filtering.
 import type { Note } from "../../shared/types";
 
-export const DEFAULT_FOLDER = "Заметка";
+// Stable persisted folder identity. Translate its UI label, never the data in existing notes.
+export const DEFAULT_FOLDER = ru.note;
+export const folderDisplayName = (name: string): string => name === DEFAULT_FOLDER ? t("note") : name;
 /** The «Все» chip is not a real folder. */
 export const ALL_FOLDERS = null;
 export type FolderFilter = string | null;
@@ -76,5 +80,5 @@ export function findFolder(names: readonly string[], name: string): string | und
 
 /** Label for the title of a list row. */
 export function noteListTitle(n: { title: string }): string {
-  return n.title.trim() || "Без названия";
+  return n.title.trim() || t("untitled");
 }

@@ -1,9 +1,11 @@
+import { t, useT } from "../../i18n";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type WheelEvent } from "react";
 import { IconPlus } from "../../design/icons";
-import { folderList } from "../../lib/notes/model";
+import { folderList, folderDisplayName } from "../../lib/notes/model";
 import { useNotesStore } from "../../lib/notes/store";
 
 export function FolderChips() {
+  useT();
   const notes = useNotesStore((s) => s.notes);
   const extra = useNotesStore((s) => s.extraFolders);
   const folder = useNotesStore((s) => s.folder);
@@ -14,7 +16,7 @@ export function FolderChips() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const folders = useMemo(() => folderList(notes, extra), [notes, extra]);
-  const tabs = [{ name: null, label: "Все", count: notes.length }, ...folders.map((f) => ({ ...f, label: f.name }))];
+  const tabs = [{ name: null, label: t("all"), count: notes.length }, ...folders.map((f) => ({ ...f, label: folderDisplayName(f.name) }))];
   const selected = Math.max(0, tabs.findIndex((tab) => tab.name === folder));
   const onTabKey = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next = index;
@@ -46,7 +48,7 @@ export function FolderChips() {
 
   return (
     <div className="nt-folders" onWheel={onWheel}>
-      <div className="nt-folder-tabs" role="tablist" aria-label="Папки">
+      <div className="nt-folder-tabs" role="tablist" aria-label={t("folders")}>
       {tabs.map((tab, index) => (
         <button key={tab.name ?? "all"} ref={(el) => { tabRefs.current[index] = el; }} type="button" className="ig-chip" role="tab" data-island-keyboard="true" aria-selected={folder === tab.name} tabIndex={index === selected ? 0 : -1} onClick={() => selectFolder(tab.name)} onKeyDown={(e) => onTabKey(e, index)}>
           {tab.label}
@@ -60,8 +62,8 @@ export function FolderChips() {
           className="ig-glass-input nt-folder-input"
           value={draft}
           maxLength={24}
-          placeholder="Название папки"
-          aria-label="Название новой папки"
+          placeholder={t("folderName")}
+          aria-label={t("newFolderName")}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => finish(true)}
           onKeyDown={(e) => {
@@ -77,7 +79,7 @@ export function FolderChips() {
           }}
         />
       ) : (
-        <button type="button" className="ig-chip ig-chip--add" aria-label="Новая папка" title="Новая папка" onClick={() => setAdding(true)}>
+        <button type="button" className="ig-chip ig-chip--add" aria-label={t("newFolder")} title={t("newFolder")} onClick={() => setAdding(true)}>
           <IconPlus size={14} />
         </button>
       )}

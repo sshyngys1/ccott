@@ -8,7 +8,6 @@ import { resetMediaStore, useMediaStore } from "../../lib/media/store";
 import { onShellRequest, type ShellRequest } from "../../shared/shellBus";
 import type { AudioDevice } from "../../shared/types";
 import home from "./index";
-import { HomeTab as RawHomeTab, SHOW_UPCOMING_TOOLS } from "./HomeTab";
 import { MediaPill } from "./MediaPill";
 
 const HomeTab = home.Tab;
@@ -226,27 +225,16 @@ describe("Home tab: volume", () => {
   });
 });
 
-describe("Home tab: placeholders", () => {
-  it("hides upcoming tool tiles and dock by default in v0.1", async () => {
-    expect(SHOW_UPCOMING_TOOLS).toBe(false);
+describe("Home tab: available tools", () => {
+  it("shows five implemented tools and the dock while keeping unavailable tools hidden", async () => {
     await mountHome();
-    expect(screen.queryByRole("region", { name: "Быстрые инструменты" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Док" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /QR-код/ })).toBeNull();
+    expect(screen.getByRole("region", { name: "Быстрые инструменты" })).toBeInTheDocument();
+    expect(document.querySelectorAll('.hm-tools button')).toHaveLength(5);
+    expect(screen.getByRole("region", { name: "Док" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "QR-код" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Пипетка" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Команда" })).toBeNull();
     expect(screen.queryByText("Перетащите сюда приложение или папку")).toBeNull();
-    expect(screen.getByRole("region", { name: "Мини-плеер" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Громкость" })).toBeInTheDocument();
-  });
-
-  it("tool tiles and dock remain available behind showUpcomingTools and say «Скоро»", async () => {
-    render(<RawHomeTab showUpcomingTools />);
-    await screen.findByText("Полночный маршрут");
-    const tile = screen.getByRole("button", { name: /QR-код/ });
-    expect(tile).toHaveAttribute("title", "Скоро");
-    expect(tile).toHaveAttribute("aria-disabled", "true");
-    expect(document.querySelectorAll('.hm-tools [aria-disabled="true"], .hm-dock-app[aria-disabled="true"]')).toHaveLength(14);
-    expect(() => fireEvent.click(tile)).not.toThrow();
-    expect(screen.getByText("Перетащите сюда приложение или папку")).toBeInTheDocument();
   });
 });
 

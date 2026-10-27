@@ -33,9 +33,9 @@ use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWi
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_FOREGROUND, GWL_STYLE,
     GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowLongPtrW, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, KillTimer, MSG, OBJID_WINDOW, PM_NOREMOVE, PeekMessageW,
-    PostThreadMessageW, SetTimer, TranslateMessage, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-    WM_QUIT, WM_TIMER, WS_CAPTION, WS_MAXIMIZE,
+    GetWindowThreadProcessId, IsIconic, IsZoomed, KillTimer, MSG, OBJID_WINDOW, PM_NOREMOVE,
+    PeekMessageW, PostThreadMessageW, SetTimer, TranslateMessage, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WM_QUIT, WM_TIMER, WS_CAPTION, WS_MAXIMIZE,
 };
 use windows::core::PWSTR;
 
@@ -47,8 +47,13 @@ use super::types::FullscreenApp;
 pub type Rect = (i32, i32, i32, i32);
 
 pub const SEEN_FILE_NAME: &str = "fullscreen_seen.json";
+pub const MAXIMIZED_SEEN_FILE_NAME: &str = "maximized_seen.json";
 pub const MAX_RECENT_APPS: usize = 20;
 pub const SUMMONED_EVENT: &str = "island://summoned";
+/// Invisible DWM frame allowance at the top edge of a maximized / top-snapped window.
+pub const TOP_EDGE_BORDER_ALLOWANCE_PX: i32 = 12;
+/// Tolerance below `work_top` for top-edge alignment.
+pub const TOP_EDGE_TOLERANCE_PX: i32 = 2;
 
 /// Safety-net re-check period.
 const TIMER_MS: u32 = 750;
@@ -150,6 +155,84 @@ pub fn should_hide_with_policy(
 #[cfg(test)]
 pub fn should_hide(enabled: bool, foreground: Option<&Candidate>, monitor: Rect) -> bool {
     should_hide_with_policy(enabled, false, &[], foreground, monitor)
+}
+
+/// Whether `rect` belongs to `monitor` (its center falls inside `monitor`).
+pub fn is_on_monitor(rect: Rect, monitor: Rect) -> bool {
+    if monitor.2 <= monitor.0 || monitor.3 <= monitor.1 || rect.2 <= rect.0 || rect.3 <= rect.1 {
+        return false;
+    }
+    let cx = i64::from(rect.0) + (i64::from(rect.2) - i64::from(rect.0)) / 2;
+    let cy = i64::from(rect.1) + (i64::from(rect.3) - i64::from(rect.1)) / 2;
+    cx >= i64::from(monitor.0)
+        && cx < i64::from(monitor.2)
+        && cy >= i64::from(monitor.1)
+        && cy < i64::from(monitor.3)
+}
+
+/// True when `c` is a visible, non-fullscreen application window on `monitor` that is either
+/// maximized (`IsZoomed` / `WS_MAXIMIZE`) or has its top edge aligned with `work_top` of the
+/// island's monitor.
+pub fn is_maximized_or_top_edge(c: &Candidate, monitor: Rect, work_top: i32) -> bool {
+    if c.shell
+        || c.own
+        || !c.visible
+        || c.minimized
+        || c.cloaked
+        || !is_on_monitor(c.rect, monitor)
+        || is_fullscreen(c, monitor)
+    {
+        return false;
+    }
+    let top_aligned = c.rect.1 >= work_top - TOP_EDGE_BORDER_ALLOWANCE_PX
+        && c.rect.1 <= work_top + TOP_EDGE_TOLERANCE_PX;
+    c.maximized || top_aligned
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HideReason {
+    Visible,
+    Fullscreen,
+    AutoHide,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HidePolicy<'a> {
+    pub hide_in_fullscreen: bool,
+    pub fullscreen_allowlist: &'a [String],
+    pub auto_hide_apps: &'a [String],
+    pub summoned: bool,
+    pub dwell_revealed: bool,
+    pub monitor: Rect,
+    pub work_top: i32,
+}
+
+/// Unified visibility decision for fullscreen (§8) and auto-hide over selected apps (§14).
+/// Fullscreen mode (§8) is evaluated first and takes priority over auto-hide.
+pub fn decide_visibility(policy: &HidePolicy<'_>, foreground: Option<&Candidate>) -> HideReason {
+    let Some(c) = foreground else {
+        return HideReason::Visible;
+    };
+    if is_fullscreen(c, policy.monitor) {
+        if should_hide_with_policy(
+            policy.hide_in_fullscreen,
+            policy.summoned,
+            policy.fullscreen_allowlist,
+            Some(c),
+            policy.monitor,
+        ) {
+            return HideReason::Fullscreen;
+        }
+        return HideReason::Visible;
+    }
+    if !policy.summoned
+        && !policy.dwell_revealed
+        && is_maximized_or_top_edge(c, policy.monitor, policy.work_top)
+        && is_allowlisted(&c.exe, policy.auto_hide_apps)
+    {
+        return HideReason::AutoHide;
+    }
+    HideReason::Visible
 }
 
 // ───────────────────────────── Seen fullscreen apps (pure + persistence) ─────────────────────────────
@@ -276,6 +359,16 @@ pub fn init_seen_store(state: &IslandState, path: PathBuf) {
     store.path = Some(path);
 }
 
+pub fn init_maximized_seen_store(state: &IslandState, path: PathBuf) {
+    let apps = load_seen(&path);
+    let mut store = state
+        .maximized_seen
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    store.apps = apps;
+    store.path = Some(path);
+}
+
 pub fn recent_apps(state: &IslandState) -> Vec<FullscreenApp> {
     state
         .fullscreen_seen
@@ -285,12 +378,18 @@ pub fn recent_apps(state: &IslandState) -> Vec<FullscreenApp> {
         .clone()
 }
 
-fn note_seen(state: &IslandState, exe: &str, title: &str, now_ms: i64) {
+pub fn recent_maximized_apps(state: &IslandState) -> Vec<FullscreenApp> {
+    state
+        .maximized_seen
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .apps
+        .clone()
+}
+
+fn note_seen_in(store_mutex: &std::sync::Mutex<SeenStore>, exe: &str, title: &str, now_ms: i64) {
     let snapshot_to_save = {
-        let mut store = state
-            .fullscreen_seen
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut store = store_mutex.lock().unwrap_or_else(|e| e.into_inner());
         let head_changed = record_seen_app(&mut store.apps, exe, title, now_ms);
         let due_by_time = store
             .last_saved_ms
@@ -392,7 +491,13 @@ fn is_cloaked(hwnd: HWND) -> bool {
 fn candidate_of(hwnd: HWND) -> Option<Candidate> {
     let rect = native::window_rect(hwnd)?;
     // SAFETY: plain queries on a window handle; stale handles just give zeros.
-    let (style, minimized) = unsafe { (GetWindowLongPtrW(hwnd, GWL_STYLE) as u32, IsIconic(hwnd)) };
+    let (style, minimized, zoomed) = unsafe {
+        (
+            GetWindowLongPtrW(hwnd, GWL_STYLE) as u32,
+            IsIconic(hwnd),
+            IsZoomed(hwnd),
+        )
+    };
     Some(Candidate {
         rect,
         shell: is_shell_class(&class_name(hwnd)),
@@ -401,13 +506,13 @@ fn candidate_of(hwnd: HWND) -> Option<Candidate> {
         minimized: minimized.as_bool(),
         cloaked: is_cloaked(hwnd),
         has_caption: style & WS_CAPTION.0 == WS_CAPTION.0,
-        maximized: style & WS_MAXIMIZE.0 != 0,
+        maximized: zoomed.as_bool() || (style & WS_MAXIMIZE.0 != 0),
         exe: exe_name(hwnd),
     })
 }
 
-/// Full rectangle of the monitor the island window is on.
-fn island_monitor_rect(island: HWND) -> Option<Rect> {
+/// Full rectangle and work-area top of the monitor the island window is on.
+fn island_monitor_rects(island: HWND) -> Option<(Rect, i32)> {
     let mut info = MONITORINFO {
         cbSize: std::mem::size_of::<MONITORINFO>() as u32,
         ..Default::default()
@@ -421,7 +526,8 @@ fn island_monitor_rect(island: HWND) -> Option<Rect> {
             .then_some(())?;
     }
     let r = info.rcMonitor;
-    Some((r.left, r.top, r.right, r.bottom))
+    let work_top = info.rcWork.top.max(r.top);
+    Some(((r.left, r.top, r.right, r.bottom), work_top))
 }
 
 // ───────────────────────────── Hiding / showing / summoning ─────────────────────────────
@@ -434,11 +540,18 @@ fn set_hidden(app: &AppHandle, hide: bool) {
     let Some(window) = app.get_webview_window("island") else {
         return;
     };
-    log::debug!("fullscreen app on the island's monitor: hide={hide}");
+    log::debug!("fullscreen/autohide on the island's monitor: hide={hide}");
     // Keep show and topmost restoration ordered on the window's owning thread. `show` alone
     // need not reapply the native z-order when the framework's alwaysOnTop flag is unchanged.
     let w = window.clone();
     let result = window.run_on_main_thread(move || {
+        if !hide
+            && w.state::<IslandState>()
+                .capture_active
+                .load(Ordering::Acquire)
+        {
+            return;
+        }
         let result = if hide {
             w.hide().map_err(|e| e.to_string())
         } else {
@@ -465,12 +578,24 @@ fn set_hidden(app: &AppHandle, hide: bool) {
     }
 }
 
-/// Shows the island over fullscreen apps (without stealing focus), reasserts `HWND_TOPMOST` and
-/// emits `island://summoned`.
+/// Shows the island over fullscreen / auto-hidden apps (without stealing focus), reasserts
+/// `HWND_TOPMOST` and emits `island://summoned`. While opened via summon and unfocused, registers
+/// temporary global `Escape`.
 pub fn summon(app: &AppHandle) {
     let state = app.state::<IslandState>();
-    state.summoned.store(true, Ordering::Release);
-    state.fullscreen_hidden.store(false, Ordering::Release);
+    if state.capture_active.load(Ordering::Acquire) {
+        return;
+    }
+    let already_expanded =
+        *state.mode.read().unwrap_or_else(|e| e.into_inner()) == super::types::IslandMode::Expanded;
+    if already_expanded {
+        state.summoned.store(false, Ordering::Release);
+        crate::hotkeys::on_collapsed(app);
+    } else {
+        state.summoned.store(true, Ordering::Release);
+        state.fullscreen_hidden.store(false, Ordering::Release);
+        crate::hotkeys::on_summoned(app);
+    }
     if let Some(t) = state
         .hover_thread
         .lock()
@@ -485,13 +610,15 @@ pub fn summon(app: &AppHandle) {
     let w = window.clone();
     let app_clone = app.clone();
     let result = window.run_on_main_thread(move || {
-        let res = w
-            .show()
-            .map_err(|e| e.to_string())
-            .and_then(|()| super::styles::hwnd_of(&w))
-            .and_then(super::styles::ensure_topmost);
-        if let Err(e) = res {
-            log::warn!("summon show/topmost failed: {e}");
+        if !already_expanded {
+            let res = w
+                .show()
+                .map_err(|e| e.to_string())
+                .and_then(|()| super::styles::hwnd_of(&w))
+                .and_then(super::styles::ensure_topmost);
+            if let Err(e) = res {
+                log::warn!("summon show/topmost failed: {e}");
+            }
         }
         let _ = app_clone.emit(SUMMONED_EVENT, ());
     });
@@ -500,9 +627,23 @@ pub fn summon(app: &AppHandle) {
     }
 }
 
+/// Called when temporary global `Escape` is pressed while the island is summoned and unfocused.
+pub fn collapse_summoned(app: &AppHandle) {
+    let state = app.state::<IslandState>();
+    state.summoned.store(false, Ordering::Release);
+    state.dwell_revealed.store(false, Ordering::Release);
+    super::hover::on_collapsed(&state);
+    crate::hotkeys::on_collapsed(app);
+    let _ = app.emit(SUMMONED_EVENT, ());
+    recheck(app);
+}
+
 /// One check of the foreground window.
 fn evaluate(app: &AppHandle) {
     let state = app.state::<IslandState>();
+    if state.capture_active.load(Ordering::Acquire) {
+        return;
+    }
     let island = HWND(state.hwnd.load(Ordering::Relaxed) as *mut core::ffi::c_void);
     // SAFETY: plain query.
     let fg = unsafe { GetForegroundWindow() };
@@ -519,22 +660,68 @@ fn evaluate(app: &AppHandle) {
         .as_ref()
         .map(|s| s.fullscreen_allowlist.as_slice())
         .unwrap_or(&[]);
+    let default_auto_hide: Vec<String>;
+    let auto_hide_apps: &[String] = match settings.as_ref() {
+        Some(s) => s.auto_hide_apps.as_slice(),
+        None => {
+            default_auto_hide = crate::settings::model::default_auto_hide_apps();
+            default_auto_hide.as_slice()
+        }
+    };
     let summoned = state.summoned.load(Ordering::Acquire);
+    let monitor_and_work = island_monitor_rects(island);
 
-    let monitor = island_monitor_rect(island);
-    if let (Some(c), Some(mon)) = (candidate.as_ref(), monitor)
-        && is_fullscreen(c, mon)
+    if let (Some(c), Some((mon, work_top))) = (candidate.as_ref(), monitor_and_work)
         && !c.exe.is_empty()
     {
-        let title = window_title(fg);
-        note_seen(&state, &c.exe, &title, now_epoch_ms());
+        if is_fullscreen(c, mon) {
+            let title = window_title(fg);
+            note_seen_in(&state.fullscreen_seen, &c.exe, &title, now_epoch_ms());
+        } else if is_maximized_or_top_edge(c, mon, work_top) {
+            let title = window_title(fg);
+            note_seen_in(&state.maximized_seen, &c.exe, &title, now_epoch_ms());
+        }
     }
 
-    let hide = match monitor {
-        Some(mon) => should_hide_with_policy(enabled, summoned, allowlist, candidate.as_ref(), mon),
-        None => false,
+    let fg_autohide = match (candidate.as_ref(), monitor_and_work) {
+        (Some(c), Some((mon, work_top))) => {
+            !is_fullscreen(c, mon)
+                && is_maximized_or_top_edge(c, mon, work_top)
+                && is_allowlisted(&c.exe, auto_hide_apps)
+        }
+        _ => false,
     };
-    set_hidden(app, hide);
+    let prev_autohide = state.autohide_active.swap(fg_autohide, Ordering::AcqRel);
+    if !fg_autohide {
+        state.dwell_revealed.store(false, Ordering::Release);
+        super::hover::on_collapsed(&state);
+    } else if !prev_autohide
+        && let Some(t) = state
+            .hover_thread
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+    {
+        t.unpark();
+    }
+
+    let dwell_revealed = state.dwell_revealed.load(Ordering::Acquire);
+    let reason = match monitor_and_work {
+        Some((mon, work_top)) => decide_visibility(
+            &HidePolicy {
+                hide_in_fullscreen: enabled,
+                fullscreen_allowlist: allowlist,
+                auto_hide_apps,
+                summoned,
+                dwell_revealed,
+                monitor: mon,
+                work_top,
+            },
+            candidate.as_ref(),
+        ),
+        None => HideReason::Visible,
+    };
+    set_hidden(app, reason != HideReason::Visible);
 }
 
 /// Re-check right now if the watcher is running (display configuration / allowlist / mode changed).
@@ -664,34 +851,43 @@ fn watcher(app: &AppHandle, ready: &mpsc::Sender<u32>) {
     log::debug!("fullscreen watcher stopped");
 }
 
-/// Starts or stops the watcher (idempotent). Called from `window::setup` and `settings_set`.
-pub fn set_enabled(app: &AppHandle, enabled: bool) {
+/// Starts the foreground watcher if not running yet, or re-evaluates immediately (the watcher
+/// tracks both fullscreen apps and `autoHideApps`).
+pub fn set_enabled(app: &AppHandle, _enabled: bool) {
     let state = app.state::<IslandState>();
     let mut slot = state
         .fullscreen_thread
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    match (enabled, *slot) {
-        (true, None) => {
-            let (tx, rx) = mpsc::channel();
-            let app = app.clone();
-            let spawned = std::thread::Builder::new()
-                .name("island-fullscreen".into())
-                .spawn(move || watcher(&app, &tx));
-            match spawned {
-                Ok(_) => *slot = rx.recv_timeout(Duration::from_secs(2)).ok(),
-                Err(e) => log::error!("cannot start the fullscreen watcher: {e}"),
-            }
+    if slot.is_none() {
+        let (tx, rx) = mpsc::channel();
+        let app = app.clone();
+        let spawned = std::thread::Builder::new()
+            .name("island-fullscreen".into())
+            .spawn(move || watcher(&app, &tx));
+        match spawned {
+            Ok(_) => *slot = rx.recv_timeout(Duration::from_secs(2)).ok(),
+            Err(e) => log::error!("cannot start the fullscreen watcher: {e}"),
         }
-        (false, Some(thread_id)) => {
-            *slot = None;
-            state.summoned.store(false, Ordering::Release);
-            // SAFETY: posts WM_QUIT to a thread of this process; failure only means it is gone.
-            unsafe {
-                let _ = PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
-            }
+    } else {
+        drop(slot);
+        evaluate(app);
+    }
+}
+
+/// Stops the watcher thread on application shutdown.
+pub fn stop(app: &AppHandle) {
+    let state = app.state::<IslandState>();
+    let mut slot = state
+        .fullscreen_thread
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(thread_id) = slot.take() {
+        state.summoned.store(false, Ordering::Release);
+        // SAFETY: posts WM_QUIT to a thread of this process; failure only means it is gone.
+        unsafe {
+            let _ = PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
         }
-        _ => {}
     }
 }
 
@@ -943,5 +1139,165 @@ mod tests {
         for c in ["Notepad", "Chrome_WidgetWin_1", "", "UnrealWindow"] {
             assert!(!is_shell_class(c), "{c}");
         }
+    }
+
+    #[test]
+    fn autohide_hides_over_maximized_or_top_edge_app_in_list() {
+        let auto_hide = vec!["chrome.exe".to_string(), "msedge.exe".to_string()];
+        let base_policy = HidePolicy {
+            hide_in_fullscreen: true,
+            fullscreen_allowlist: &[],
+            auto_hide_apps: &auto_hide,
+            summoned: false,
+            dwell_revealed: false,
+            monitor: MON,
+            work_top: 0,
+        };
+
+        // Maximized browser on the island's monitor (with -8px invisible DWM border): hides.
+        let max_chrome = Candidate {
+            rect: (-8, -8, 1928, 1048),
+            has_caption: true,
+            maximized: true,
+            exe: "Chrome.exe".to_string(),
+            ..app_window((-8, -8, 1928, 1048))
+        };
+        assert!(is_maximized_or_top_edge(&max_chrome, MON, 0));
+        assert_eq!(
+            decide_visibility(&base_policy, Some(&max_chrome)),
+            HideReason::AutoHide
+        );
+
+        // Non-maximized browser whose top edge coincides with work_top (e.g. snapped to top/half): hides.
+        let top_edge_edge = Candidate {
+            rect: (0, 0, 960, 1040),
+            has_caption: true,
+            maximized: false,
+            exe: "msedge.exe".to_string(),
+            ..app_window((0, 0, 960, 1040))
+        };
+        assert!(is_maximized_or_top_edge(&top_edge_edge, MON, 0));
+        assert_eq!(
+            decide_visibility(&base_policy, Some(&top_edge_edge)),
+            HideReason::AutoHide
+        );
+
+        // Browser window below the top edge and not maximized: stays visible.
+        let floating_chrome = Candidate {
+            rect: (100, 80, 1400, 900),
+            has_caption: true,
+            maximized: false,
+            exe: "chrome.exe".to_string(),
+            ..app_window((100, 80, 1400, 900))
+        };
+        assert!(!is_maximized_or_top_edge(&floating_chrome, MON, 0));
+        assert_eq!(
+            decide_visibility(&base_policy, Some(&floating_chrome)),
+            HideReason::Visible
+        );
+
+        // Maximized app NOT in autoHideApps: stays visible.
+        let max_notepad = Candidate {
+            exe: "notepad.exe".to_string(),
+            ..max_chrome.clone()
+        };
+        assert_eq!(
+            decide_visibility(&base_policy, Some(&max_notepad)),
+            HideReason::Visible
+        );
+
+        // Maximized browser on another monitor: stays visible.
+        let second_mon_chrome = Candidate {
+            rect: (1920, 0, 3840, 1040),
+            ..max_chrome.clone()
+        };
+        assert_eq!(
+            decide_visibility(&base_policy, Some(&second_mon_chrome)),
+            HideReason::Visible
+        );
+
+        // Summon or top-edge dwell reveals the island while auto-hide condition holds.
+        let summoned_policy = HidePolicy {
+            summoned: true,
+            ..base_policy
+        };
+        assert_eq!(
+            decide_visibility(&summoned_policy, Some(&max_chrome)),
+            HideReason::Visible
+        );
+
+        let dwell_policy = HidePolicy {
+            dwell_revealed: true,
+            ..base_policy
+        };
+        assert_eq!(
+            decide_visibility(&dwell_policy, Some(&max_chrome)),
+            HideReason::Visible
+        );
+    }
+
+    #[test]
+    fn fullscreen_mode_has_priority_over_autohide() {
+        let auto_hide = vec!["chrome.exe".to_string()];
+        let fs_allow = vec!["chrome.exe".to_string()];
+
+        // F11 fullscreen browser (covers monitor, not captioned+maximized).
+        let fs_chrome = Candidate {
+            rect: MON,
+            has_caption: false,
+            maximized: false,
+            exe: "chrome.exe".to_string(),
+            ..app_window(MON)
+        };
+        assert!(is_fullscreen(&fs_chrome, MON));
+        assert!(!is_maximized_or_top_edge(&fs_chrome, MON, 0));
+
+        // 1. Fullscreen with hideInFullscreen=true, not in fullscreenAllowlist: Fullscreen wins,
+        //    and dwell_revealed does NOT override fullscreen hiding.
+        let policy_fs_hide = HidePolicy {
+            hide_in_fullscreen: true,
+            fullscreen_allowlist: &[],
+            auto_hide_apps: &auto_hide,
+            summoned: false,
+            dwell_revealed: true,
+            monitor: MON,
+            work_top: 0,
+        };
+        assert_eq!(
+            decide_visibility(&policy_fs_hide, Some(&fs_chrome)),
+            HideReason::Fullscreen
+        );
+
+        // 2. Fullscreen with chrome.exe in fullscreenAllowlist (§8): stays visible even though
+        //    chrome.exe is in autoHideApps.
+        let policy_fs_allowed = HidePolicy {
+            hide_in_fullscreen: true,
+            fullscreen_allowlist: &fs_allow,
+            auto_hide_apps: &auto_hide,
+            summoned: false,
+            dwell_revealed: false,
+            monitor: MON,
+            work_top: 0,
+        };
+        assert_eq!(
+            decide_visibility(&policy_fs_allowed, Some(&fs_chrome)),
+            HideReason::Visible
+        );
+
+        // 3. Fullscreen with hideInFullscreen=false (§8): stays visible even though chrome.exe
+        //    is in autoHideApps.
+        let policy_fs_disabled = HidePolicy {
+            hide_in_fullscreen: false,
+            fullscreen_allowlist: &[],
+            auto_hide_apps: &auto_hide,
+            summoned: false,
+            dwell_revealed: false,
+            monitor: MON,
+            work_top: 0,
+        };
+        assert_eq!(
+            decide_visibility(&policy_fs_disabled, Some(&fs_chrome)),
+            HideReason::Visible
+        );
     }
 }

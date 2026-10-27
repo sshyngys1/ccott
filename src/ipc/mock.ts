@@ -4,6 +4,7 @@ import type {
   AudioDevice,
   AudioState,
   ClipItem,
+  DockItem,
   CommandArgs,
   CommandName,
   CommandResult,
@@ -17,7 +18,13 @@ import type {
   Settings,
   UpdateInfo,
 } from "../shared/types";
-import { normalizeAccelerator, normalizeFullscreenAllowlist } from "../shell/settings/hotkey";
+import {
+  DEFAULT_AUTO_HIDE_APPS,
+  normalizeAccelerator,
+  normalizeAutoHideApps,
+  normalizeFullscreenAllowlist,
+} from "../shell/settings/hotkey";
+import { t } from "../i18n";
 
 // ───────────────────────────── helpers ─────────────────────────────
 
@@ -113,7 +120,7 @@ export const mockStats: MockStats = {
 };
 
 /** Knobs for the keyboard-focus and hotkey mocks: R1 takes ~5–150 ms to hand the window the foreground, and may refuse. */
-export const mockConfig = { keyboardFocusDelayMs: 30, failKeyboardFocus: false, failHotkeyRegistration: false };
+export const mockConfig = { keyboardFocusDelayMs: 30, failKeyboardFocus: false, failHotkeyRegistration: false, captureOutcome:"success" as "success" | "cancel" | "error" | "empty", qrText:"https://example.com/ccott", dockOpenError:false };
 
 /** Helpers for poking the app from the browser console / devtools: `__ISLAND_MOCK__.openSettings()`, … */
 export interface MockHelpers {
@@ -136,6 +143,11 @@ export interface MockHelpers {
 
 // ───────────────────────────── mutable state ─────────────────────────────
 
+/** Sample data language: Russian in tests and in a Russian browser, English otherwise —
+ *  so the browser mode and README screenshots read naturally in either language. */
+const SAMPLE_RU = import.meta.env.MODE === "test" || typeof navigator === "undefined" || /^ru/i.test(navigator.language);
+const sample = (ru: string, en: string): string => (SAMPLE_RU ? ru : en);
+
 interface Track {
   title: string;
   artist: string;
@@ -146,35 +158,38 @@ interface Track {
 
 const TRACKS: Track[] = [
   {
-    title: "Полночный маршрут",
-    artist: "Северные огни",
-    album: "Ночная смена",
+    title: sample("Полночный маршрут", "Midnight Route"),
+    artist: sample("Северные огни", "Northern Lights"),
+    album: sample("Ночная смена", "Night Shift"),
     durationMs: 214_000,
     artwork: makeCover("#5b3df5", "#e94cc0"),
   },
   {
-    title: "Стекло и дождь",
-    artist: "Лунный прибой",
-    album: "Прозрачность",
+    title: sample("Стекло и дождь", "Glass and Rain"),
+    artist: sample("Лунный прибой", "Lunar Surf"),
+    album: sample("Прозрачность", "Transparency"),
     durationMs: 187_000,
     artwork: makeCover("#0ea5a4", "#1d4ed8", "rgba(255,255,255,0.28)"),
   },
   {
-    title: "Тихий порт",
-    artist: "Северные огни",
-    album: "Ночная смена",
+    title: sample("Тихий порт", "Quiet Harbor"),
+    artist: sample("Северные огни", "Northern Lights"),
+    album: sample("Ночная смена", "Night Shift"),
     durationMs: 242_000,
     artwork: makeCover("#f59e0b", "#dc2626", "rgba(255,255,255,0.3)"),
   },
 ];
 
 interface MockState {
+  dock: DockItem[];
+  nextDockId:number;
   trackIndex: number;
   media: MediaState;
   audio: AudioState;
   devices: AudioDevice[];
   settings: Settings;
   fullscreenApps: FullscreenApp[];
+  maximizedApps: FullscreenApp[];
   update: UpdateInfo | null;
   clips: ClipItem[];
   notes: Note[];
@@ -218,25 +233,25 @@ function createState(): MockState {
   const now = Date.now();
   const min = 60_000;
   const devices: AudioDevice[] = [
-    { id: "dev-speakers", name: "Динамики", isDefault: true },
-    { id: "dev-headphones", name: "Наушники (Bluetooth)", isDefault: false },
-    { id: "dev-monitor", name: "Монитор (HDMI)", isDefault: false },
+    { id: "dev-speakers", name: sample("Динамики", "Speakers"), isDefault: true },
+    { id: "dev-headphones", name: sample("Наушники (Bluetooth)", "Headphones (Bluetooth)"), isDefault: false },
+    { id: "dev-monitor", name: sample("Монитор (HDMI)", "Monitor (HDMI)"), isDefault: false },
   ];
   const clips: ClipItem[] = [
     clip(1, "link", "https://github.com/tauri-apps/tauri", "chrome.exe", now - 95 * min, true),
-    clip(2, "text", "Созвон с командой в 15:30, ссылка в календаре", "Telegram.exe", now - 2 * min),
+    clip(2, "text", sample("Созвон с командой в 15:30, ссылка в календаре", "Team call at 3:30 PM, link in the calendar"), "Telegram.exe", now - 2 * min),
     clip(3, "text", "npm run tauri dev", "WindowsTerminal.exe", now - 7 * min),
     clip(4, "link", "https://developer.mozilla.org/ru/docs/Web/CSS/backdrop-filter", "chrome.exe", now - 18 * min),
-    clip(5, "text", "ул. Абая, 150, офис 12", "Telegram.exe", now - 41 * min),
+    clip(5, "text", sample("ул. Абая, 150, офис 12", "221B Baker Street, London"), "Telegram.exe", now - 41 * min),
     clip(6, "image", "", "SnippingTool.exe", now - 63 * min, false, makeCover("#0f172a", "#38bdf8")),
     clip(
       7,
       "files",
-      "C:\\Users\\user\\Documents\\Отчёт.pdf\nC:\\Users\\user\\Documents\\Смета.xlsx",
+      sample("C:\\Users\\user\\Documents\\Отчёт.pdf\nC:\\Users\\user\\Documents\\Смета.xlsx", "C:\\Users\\user\\Documents\\Report.pdf\nC:\\Users\\user\\Documents\\Budget.xlsx"),
       "explorer.exe",
       now - 120 * min,
       false,
-      "Отчёт.pdf, Смета.xlsx",
+      sample("Отчёт.pdf, Смета.xlsx", "Report.pdf, Budget.xlsx"),
     ),
     clip(8, "text", "hello@example.com", "Notepad.exe", now - 300 * min, true),
     clip(9, "text", 'const [mode, setMode] = useState<IslandMode>("collapsed");', "Code.exe", now - 26 * 60 * min),
@@ -246,25 +261,28 @@ function createState(): MockState {
     {
       id: 1,
       folder: "Заметка",
-      title: "Идеи для острова",
-      body: "<p>Блик за курсором, <b>живые активности</b> в пилюле, перетаскивание файлов на полку.</p>",
+      title: sample("Идеи для острова", "Island ideas"),
+      body: sample("<p>Блик за курсором, <b>живые активности</b> в пилюле, перетаскивание файлов на полку.</p>", "<p>Cursor highlight, <b>live activities</b> in the pill, drag files onto a shelf.</p>"),
       updatedAt: now - 15 * min,
     },
     {
       id: 2,
-      folder: "Работа",
-      title: "План на неделю",
-      body: "<ul><li>Собрать каркас оболочки</li><li>Проверить acrylic на Windows 10</li><li>Написать тесты</li></ul>",
+      folder: sample("Работа", "Work"),
+      title: sample("План на неделю", "Plan for the week"),
+      body: sample("<ul><li>Собрать каркас оболочки</li><li>Проверить acrylic на Windows 10</li><li>Написать тесты</li></ul>", "<ul><li>Build the shell</li><li>Check acrylic on Windows 10</li><li>Write tests</li></ul>"),
       updatedAt: now - 3 * 60 * min,
     },
-    { id: 3, folder: "Заметка", title: "Список покупок", body: "<p>Молоко, кофе, USB-C кабель.</p>", updatedAt: now - 30 * 60 * min },
+    { id: 3, folder: "Заметка", title: sample("Список покупок", "Shopping list"), body: sample("<p>Молоко, кофе, USB-C кабель.</p>", "<p>Milk, coffee, USB-C cable.</p>"), updatedAt: now - 30 * 60 * min },
   ];
   return {
     trackIndex: 0,
+    dock:["Terminal", "Documents", "Projects", "Sketches", "Notes"].map((name,index)=>({id:`dock-${index+1}`,name,path:`C:\\CCOTT\\${name}${index===0?".lnk":""}`,kind:index===0?"app" as const:"folder" as const,icon:makeCover(["#315a76","#706244","#42685c","#695584","#80575f"][index],"#272a32")})),
+    nextDockId:6,
     media: mediaFor(0, now, "playing", 73_000),
     audio: { volume: 64, muted: false, device: devices[0] },
     devices,
     settings: {
+      language: "auto",
       theme: "auto",
       vibrancy: "none",
       monitor: "primary",
@@ -275,10 +293,14 @@ function createState(): MockState {
       hideInFullscreen: true,
       summonHotkey: "Ctrl+Alt+I",
       fullscreenAllowlist: [],
+      autoHideApps: [...DEFAULT_AUTO_HIDE_APPS],
     },
     fullscreenApps: [
       { exe: "chrome.exe", title: "YouTube — Google Chrome", lastSeen: now - 60_000 },
       { exe: "cs2.exe", title: "Counter-Strike 2", lastSeen: now - 3_600_000 },
+    ],
+    maximizedApps: [
+      { exe: "code.exe", title: "Visual Studio Code", lastSeen: now - 120_000 },
     ],
     update: null,
     clips,
@@ -306,6 +328,9 @@ export function resetMock(): void {
   mockConfig.keyboardFocusDelayMs = 30;
   mockConfig.failKeyboardFocus = false;
   mockConfig.failHotkeyRegistration = false;
+  mockConfig.captureOutcome = "success";
+  mockConfig.qrText = "https://example.com/ccott";
+  mockConfig.dockOpenError=false;
   clearTimeout(artworkTimer);
   artworkTimer = undefined;
   scheduleTrackEnd();
@@ -368,6 +393,21 @@ type Handlers = {
 };
 
 const handlers: Handlers = {
+  dock_list:()=>{mockEmit("dock://changed",state.dock);return state.dock;},
+  dock_add:({paths})=>{
+    const key=(p:string)=>p.replace(/\//g,"\\").replace(/\\+$/,"").toLowerCase();
+    const keys=new Set(state.dock.map(i=>key(i.path)));
+    const fresh=paths.filter(p=>{const k=key(p);if(keys.has(k))return false;keys.add(k);return true;});
+    if(state.dock.length+fresh.length>12)throw new Error(t("dock.limit"));
+    state.dock=[...state.dock,...fresh.map(path=>({id:`dock-${state.nextDockId++}`,path,name:path.split(/[\\/]/).filter(Boolean).slice(-1)[0]?.replace(/\.(exe|lnk|url)$/i,"")??path,kind:/\.(exe|lnk|url)$/i.test(path)?"app" as const:"folder" as const,icon:makeCover("#42685c","#272a32")}))];
+    mockEmit("dock://changed",state.dock);return state.dock;
+  },
+  dock_remove:({id})=>{state.dock=state.dock.filter(i=>i.id!==id);mockEmit("dock://changed",state.dock);return state.dock;},
+  dock_reorder:({ids})=>{if(ids.length!==state.dock.length||new Set(ids).size!==ids.length||ids.some(id=>!state.dock.some(i=>i.id===id)))throw new Error(t("dock.order"));state.dock=ids.map(id=>state.dock.find(i=>i.id===id)!);mockEmit("dock://changed",state.dock);return state.dock;},
+  dock_open:({id})=>{if(mockConfig.dockOpenError||!state.dock.some(i=>i.id===id))throw new Error(t("dock.notFound"));},
+  dock_start_drag: ({ id }) => {
+    if (!state.dock.some((i) => i.id === id)) throw new Error(t("dock.notFound"));
+  },
   island_set_shape: ({ shape }) => {
     mockStats.shapeCalls += 1;
     mockStats.lastShape = shape;
@@ -381,11 +421,11 @@ const handlers: Handlers = {
   window_set_vibrancy: ({ mode }) => ({
     requested: mode,
     applied: "none",
-    error: "Нативный blur недоступен в браузере (мок)",
+    error: "Native blur is unavailable in the browser mock",
   }),
   window_list_monitors: () => [
-    { id: "mon-1", name: "Основной монитор", width: 2560, height: 1440, scaleFactor: 1.25, isPrimary: true },
-    { id: "mon-2", name: "Второй монитор", width: 1920, height: 1080, scaleFactor: 1, isPrimary: false },
+    { id: "mon-1", name: sample("Основной монитор", "Main display"), width: 2560, height: 1440, scaleFactor: 1.25, isPrimary: true },
+    { id: "mon-2", name: sample("Второй монитор", "Second display"), width: 1920, height: 1080, scaleFactor: 1, isPrimary: false },
   ],
   // Like R1: the call returns once the window is (de)activated (takes a few ms), a refusal rejects.
   // Unlike the earlier stub it does NOT echo `island://focus-changed` — Rust only emits that when focus is lost by itself
@@ -393,25 +433,27 @@ const handlers: Handlers = {
   island_set_keyboard_focus: async ({ active }) => {
     mockStats.keyboardFocusCalls.push(active);
     if (mockConfig.keyboardFocusDelayMs > 0) await new Promise((r) => setTimeout(r, mockConfig.keyboardFocusDelayMs));
-    if (active && mockConfig.failKeyboardFocus) throw new Error("Не удалось получить клавиатурный фокус (мок)");
+    if (active && mockConfig.failKeyboardFocus) throw new Error("Cannot acquire keyboard focus (mock)");
     mockStats.keyboardFocus = active;
   },
 
   window_recent_fullscreen_apps: () => state.fullscreenApps,
+  window_recent_maximized_apps: () => mockRecentMaximizedApps(),
   settings_get: () => state.settings,
   settings_set: ({ patch }) => {
     const next: Settings = { ...state.settings, ...patch };
     if (patch.summonHotkey !== undefined) {
       const normalized = normalizeAccelerator(patch.summonHotkey);
       if (normalized && mockConfig.failHotkeyRegistration) {
-        throw new Error(
-          `Не удалось зарегистрировать сочетание клавиш «${normalized}»: возможно, оно уже занято другим приложением`,
-        );
+        throw new Error(t("hotkey.registration", { shortcut: normalized }));
       }
       next.summonHotkey = normalized;
     }
     if (patch.fullscreenAllowlist !== undefined) {
       next.fullscreenAllowlist = normalizeFullscreenAllowlist(patch.fullscreenAllowlist);
+    }
+    if (patch.autoHideApps !== undefined) {
+      next.autoHideApps = normalizeAutoHideApps(patch.autoHideApps);
     }
     next.hoverExpandDelayMs = Math.max(0, Math.min(1000, Math.round(next.hoverExpandDelayMs)));
     next.hoverCollapseDelayMs = Math.max(0, Math.min(2000, Math.round(next.hoverCollapseDelayMs)));
@@ -465,7 +507,7 @@ const handlers: Handlers = {
   audio_list_devices: () => state.devices.map((d) => ({ ...d, isDefault: d.id === state.audio.device?.id })),
   audio_set_device: ({ id }) => {
     const device = state.devices.find((d) => d.id === id);
-    if (!device) throw new Error(`Неизвестное устройство: ${id}`);
+    if (!device) throw new Error(`Unknown device: ${id}`);
     state.audio = { ...state.audio, device: { ...device, isDefault: true } };
     mockEmit("audio://changed", state.audio);
   },
@@ -479,7 +521,7 @@ const handlers: Handlers = {
   },
   clipboard_paste: ({ id, mode }) => {
     const item = state.clips.find((c) => c.id === id);
-    if (!item) throw new Error(`Нет записи буфера: ${id}`);
+    if (!item) throw new Error(`Clipboard entry not found: ${id}`);
     mockStats.lastPaste = { id, mode };
     // The clipboard monitor sees the entry being written back and moves it to the top of the history.
     item.createdAt = Date.now();
@@ -487,7 +529,7 @@ const handlers: Handlers = {
   },
   clipboard_pin: ({ id, pinned }) => {
     const item = state.clips.find((c) => c.id === id);
-    if (!item) throw new Error(`Нет записи буфера: ${id}`);
+    if (!item) throw new Error(`Clipboard entry not found: ${id}`);
     item.pinned = pinned;
     mockEmit("clipboard://changed", null);
   },
@@ -501,6 +543,23 @@ const handlers: Handlers = {
   },
 
   notes_list: () => [...state.notes].sort((a, b) => b.updatedAt - a.updatedAt),
+  capture_start: ({ mode, action }) => {
+    if (mockConfig.captureOutcome === "cancel") return null;
+    if (mockConfig.captureOutcome === "error") throw new Error(t("capture.error"));
+    const width = mode === "region" ? 640 : 2560;
+    const height = mode === "region" ? 360 : 1440;
+    const textAction = action === "ocr" || action === "qr";
+    const text = textAction ? mockConfig.captureOutcome === "empty" ? "" : action === "qr" ? mockConfig.qrText : "CCOTT OCR sample" : null;
+    if (!textAction || text) mockCopy({ kind:textAction ? "text" : "image", text:text ?? "", preview:textAction ? text ?? "" : makeCover("#202020", "#444444"), sourceApp:"island-win.exe" });
+    return { action, width, height, path:action === "save" ? "C:\\Users\\user\\Pictures\\Screenshots\\CCOTT\\CCOTT 2026-10-27 12-00-00.png" : null, text };
+  },
+  capture_open_folder: () => {},
+  capture_pick_color: () => {
+    if (mockConfig.captureOutcome === "cancel") return null;
+    if (mockConfig.captureOutcome === "error") throw new Error(t("color.error"));
+    mockCopy({kind:"text", text:"#336699", sourceApp:"island-win.exe"});
+    return {hex:"#336699",r:51,g:102,b:153};
+  },
   notes_save: ({ note }) => {
     const now = Date.now();
     if (note.id === null) {
@@ -515,7 +574,7 @@ const handlers: Handlers = {
       return created;
     }
     const existing = state.notes.find((n) => n.id === note.id);
-    if (!existing) throw new Error(`Нет заметки: ${note.id}`);
+    if (!existing) throw new Error(`Note not found: ${note.id}`);
     Object.assign(existing, { folder: note.folder, title: note.title, body: note.body, updatedAt: now });
     return existing;
   },
@@ -562,6 +621,16 @@ export function mockSetFullscreenApps(apps: FullscreenApp[]): void {
   state.fullscreenApps = clone(apps);
 }
 
+/** Returns the list of recently seen maximized apps (`window_recent_maximized_apps`). */
+export function mockRecentMaximizedApps(): FullscreenApp[] {
+  return clone(state.maximizedApps);
+}
+
+/** Test/dev helper: replaces the list returned by `window_recent_maximized_apps`. */
+export function mockSetMaximizedApps(apps: FullscreenApp[]): void {
+  state.maximizedApps = clone(apps);
+}
+
 /** Test/dev helper: replaces fields of the media state (e.g. `{ hasSession: false, status: "stopped" }`). */
 export function mockSetMedia(patch: Partial<MediaState>): void {
   setMedia({ ...state.media, positionSampledAt: Date.now(), ...patch });
@@ -592,7 +661,7 @@ scheduleTrackEnd();
 
 export async function mockInvoke<C extends CommandName>(cmd: C, args?: CommandArgs<C>): Promise<CommandResult<C>> {
   const handler = handlers[cmd] as ((a: CommandArgs<C>) => CommandResult<C> | Promise<CommandResult<C>>) | undefined;
-  if (!handler) throw new Error(`mock: неизвестная команда ${String(cmd)}`);
+  if (!handler) throw new Error(`mock: unknown command ${String(cmd)}`);
   const result = await handler(clone((args ?? {}) as CommandArgs<C>));
   return clone(result);
 }

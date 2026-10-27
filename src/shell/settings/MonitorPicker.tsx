@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 // Owner: F1. The monitor picker stays inside the island; native select popups cannot hold its focus.
 import { useRef, useState, type KeyboardEvent } from "react";
 import { IconCheck } from "../../design/icons";
@@ -11,6 +12,7 @@ interface MonitorPickerProps {
 
 /** Manual-selection listbox: arrows move focus, Enter/Space commit, one Tab stop. */
 export function MonitorPicker({ value, options, onChange }: MonitorPickerProps) {
+  useT();
   const refs = useRef<(HTMLLIElement | null)[]>([]);
   const [focused, setFocused] = useState<string | null>(null);
   const active = options.some((o) => o.value === focused) ? focused : value;
@@ -33,7 +35,7 @@ export function MonitorPicker({ value, options, onChange }: MonitorPickerProps) 
   };
 
   return (
-    <ul className="ig-list ig-scroll ig-monitor-picker" role="listbox" aria-label="Монитор">
+    <ul className="ig-list ig-scroll ig-monitor-picker" role="listbox" aria-label={t("monitor")}>
       {options.map((option, index) => (
         <li
           key={option.value}

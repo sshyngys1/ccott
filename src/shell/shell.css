@@ -133,6 +133,17 @@
   margin: 0;
   font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font-display);
 }
+.ig-pill-feedback { height: 100%; }
+.ig-pill-color { flex: none; width: var(--ig-space-4); height: var(--ig-space-4); border-radius: var(--ig-radius-pill); box-shadow: inset 0 0 0 1px var(--ig-stroke-strong); }
+.ig-pill-action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ig-pill-action:focus-visible { outline: var(--ig-space-0-5) solid var(--ig-accent); outline-offset: calc(-1 * var(--ig-space-0-5)); }
 .ig-settings {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -172,6 +183,17 @@
 .ig-fullscreen-empty {
   margin: 0;
   padding: var(--ig-space-2) var(--ig-space-3);
+}
+.ig-autohide-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ig-font-mono, var(--ig-font));
+}
+.ig-autohide-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  flex: none;
 }
 .ig-setting-row:has(.ig-monitor-picker) {
   flex-direction: column;

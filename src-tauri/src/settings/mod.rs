@@ -133,8 +133,14 @@ pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Settings, String> {
     if new.fullscreen_allowlist != old.fullscreen_allowlist {
         crate::window::set_fullscreen_allowlist(app);
     }
+    if new.auto_hide_apps != old.auto_hide_apps {
+        crate::window::set_auto_hide_apps(app);
+    }
     if new.autostart != old.autostart {
         crate::tray::sync_autostart(app, new.autostart);
+    }
+    if new.language != old.language {
+        crate::tray::sync_language(app);
     }
 
     if new != old {

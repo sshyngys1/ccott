@@ -4,6 +4,8 @@
   "description": "Capability for the island window",
   "windows": ["island"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "dialog:allow-open",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "http://*" }, { "url": "https://*" }] }
   ]
 }

@@ -1,12 +1,14 @@
+import { t, useT } from "../../i18n";
 import { useMemo, useRef, type KeyboardEvent } from "react";
 import { IconNote, IconPlus } from "../../design/icons";
 import { useScrollFade } from "../../design/useScrollFade";
-import { filterNotes, noteListTitle, sortNotes } from "../../lib/notes/model";
+import { filterNotes, folderDisplayName, noteListTitle, sortNotes } from "../../lib/notes/model";
 import { useNotesStore } from "../../lib/notes/store";
 import { formatNoteStamp } from "../../lib/time/format";
 import { useNow } from "../../lib/useNow";
 
 export function NoteList() {
+  useT();
   const notes = useNotesStore((s) => s.notes);
   const folder = useNotesStore((s) => s.folder);
   const selected = useNotesStore((s) => s.selected);
@@ -33,10 +35,10 @@ export function NoteList() {
   };
 
   return (
-    <section className="ig-glass-card nt-list" aria-label="Заметки">
+    <section className="ig-glass-card nt-list" aria-label={t("notes")}>
       <div className="nt-list-head">
-        <span className="ig-section-label mod-label-flush">{folder ?? "Все заметки"}</span>
-        <button type="button" className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm" aria-label="Новая заметка" title="Новая заметка (Ctrl+N)" onClick={newNote}>
+        <span className="ig-section-label mod-label-flush">{folder === null ? t("allNotes") : folderDisplayName(folder)}</span>
+        <button type="button" className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm" aria-label={t("newNote")} title={t("newNoteCtrlN")} onClick={newNote}>
           <IconPlus size={16} />
         </button>
       </div>
@@ -45,17 +47,17 @@ export function NoteList() {
           <span className="ig-empty__icon">
             <IconNote size={20} />
           </span>
-          <span className="ig-empty__title">Пока пусто</span>
-          <span className="ig-empty__text">Нажмите «+», чтобы создать заметку</span>
+          <span className="ig-empty__title">{t("nothingHereYet")}</span>
+          <span className="ig-empty__text">{t("clickToCreateANote")}</span>
         </div>
       ) : (
         <div ref={scrollRef} className="ig-scroll ig-scroll-fade mod-fill">
-          <ul className="ig-list" role="listbox" aria-label="Список заметок">
+          <ul className="ig-list" role="listbox" aria-label={t("noteList")}>
             {draft && (
               <li className="ig-list-row ig-list-row--compact" role="option" aria-selected={false} aria-current="true">
                 <span className="ig-list-row__body">
-                  <span className="ig-list-row__title nt-list-title">Новая заметка</span>
-                  <span className="ig-list-row__meta">{folder ?? "Заметка"}</span>
+                  <span className="ig-list-row__title nt-list-title">{t("newNote")}</span>
+                  <span className="ig-list-row__meta">{folder === null ? t("note") : folderDisplayName(folder)}</span>
                 </span>
               </li>
             )}
@@ -73,7 +75,7 @@ export function NoteList() {
                 <span className="ig-list-row__body">
                   <span className="ig-list-row__title nt-list-title">{noteListTitle(n)}</span>
                   <span className="ig-list-row__meta">
-                    {formatNoteStamp(n.updatedAt, now)} · {n.folder}
+                    {formatNoteStamp(n.updatedAt, now)} · {folderDisplayName(n.folder)}
                   </span>
                 </span>
               </li>

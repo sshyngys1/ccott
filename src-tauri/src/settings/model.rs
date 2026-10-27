@@ -12,6 +12,24 @@ use crate::window::VibrancyMode;
 pub const MAX_DELAY_MS: u32 = 2000;
 /// `Settings::monitor` value meaning "the primary monitor".
 pub const MONITOR_PRIMARY: &str = "primary";
+/// Default list of applications (`Settings::auto_hide_apps`) over which the pill auto-hides
+/// when maximized or touching the top of the monitor work area.
+pub const DEFAULT_AUTO_HIDE_APPS: &[&str] = &[
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+    "browser.exe",
+    "opera.exe",
+    "brave.exe",
+    "vivaldi.exe",
+];
+
+pub fn default_auto_hide_apps() -> Vec<String> {
+    DEFAULT_AUTO_HIDE_APPS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,9 +40,20 @@ pub enum ThemeMode {
     Dark,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LanguageMode {
+    #[default]
+    Auto,
+    Ru,
+    En,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default)]
+    pub language: LanguageMode,
     pub theme: ThemeMode,
     pub vibrancy: VibrancyMode,
     /// `MonitorInfo.id` or `"primary"`.
@@ -36,11 +65,14 @@ pub struct Settings {
     pub hide_in_fullscreen: bool,
     pub summon_hotkey: String,
     pub fullscreen_allowlist: Vec<String>,
+    #[serde(default = "default_auto_hide_apps")]
+    pub auto_hide_apps: Vec<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            language: LanguageMode::Auto,
             theme: ThemeMode::Auto,
             vibrancy: VibrancyMode::None,
             monitor: MONITOR_PRIMARY.to_string(),
@@ -51,6 +83,7 @@ impl Default for Settings {
             hide_in_fullscreen: true,
             summon_hotkey: DEFAULT_SUMMON_HOTKEY.to_string(),
             fullscreen_allowlist: Vec::new(),
+            auto_hide_apps: default_auto_hide_apps(),
         }
     }
 }
@@ -124,6 +157,8 @@ impl Settings {
         };
         let allowlist = std::mem::take(&mut self.fullscreen_allowlist);
         self.fullscreen_allowlist = normalize_allowlist(allowlist);
+        let auto_hide = std::mem::take(&mut self.auto_hide_apps);
+        self.auto_hide_apps = normalize_allowlist(auto_hide);
     }
 
     /// Merges the known fields of the JSON object `value` into `self` (unknown fields are
@@ -134,6 +169,7 @@ impl Settings {
             return vec!["<root>".to_string()];
         };
         let mut rejected = Vec::new();
+        take(map, "language", &mut self.language, &mut rejected);
         take(map, "theme", &mut self.theme, &mut rejected);
         take(map, "vibrancy", &mut self.vibrancy, &mut rejected);
         take(map, "monitor", &mut self.monitor, &mut rejected);
@@ -164,6 +200,7 @@ impl Settings {
             &mut self.fullscreen_allowlist,
             &mut rejected,
         );
+        take(map, "autoHideApps", &mut self.auto_hide_apps, &mut rejected);
         self.clamp();
         rejected
     }
@@ -198,6 +235,7 @@ mod tests {
         assert!(d.hide_in_fullscreen);
         assert_eq!(d.summon_hotkey, "Ctrl+Alt+I");
         assert!(d.fullscreen_allowlist.is_empty());
+        assert_eq!(d.auto_hide_apps, default_auto_hide_apps());
     }
 
     #[test]
@@ -206,12 +244,22 @@ mod tests {
         assert_eq!(
             v,
             json!({
+                "language": "auto",
                 "theme": "auto", "vibrancy": "none", "monitor": "primary",
                 "autostart": false, "doNotDisturb": false,
                 "hoverExpandDelayMs": 120, "hoverCollapseDelayMs": 350,
                 "hideInFullscreen": true,
                 "summonHotkey": "Ctrl+Alt+I",
-                "fullscreenAllowlist": []
+                "fullscreenAllowlist": [],
+                "autoHideApps": [
+                    "chrome.exe",
+                    "msedge.exe",
+                    "firefox.exe",
+                    "browser.exe",
+                    "opera.exe",
+                    "brave.exe",
+                    "vivaldi.exe"
+                ]
             })
         );
     }
@@ -247,6 +295,61 @@ mod tests {
         assert!(s.autostart);
         assert_eq!(s.summon_hotkey, "Ctrl+Alt+I");
         assert!(s.fullscreen_allowlist.is_empty());
+        assert_eq!(s.auto_hide_apps, default_auto_hide_apps());
+        assert_eq!(s.language, LanguageMode::Auto);
+    }
+
+    #[test]
+    fn auto_hide_apps_defaults_in_serde_normalizes_and_merges() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("autoHideApps");
+        assert_eq!(
+            serde_json::from_value::<Settings>(value)
+                .unwrap()
+                .auto_hide_apps,
+            default_auto_hide_apps()
+        );
+
+        let mut settings = Settings::default();
+        assert!(
+            settings
+                .merge_json(&json!({
+                    "autoHideApps": [" Chrome.EXE ", "Obsidian.exe", "chrome.exe", ""]
+                }))
+                .is_empty()
+        );
+        assert_eq!(settings.auto_hide_apps, vec!["chrome.exe", "obsidian.exe"]);
+
+        assert_eq!(
+            settings.merge_json(&json!({ "autoHideApps": "not-an-array" })),
+            vec!["autoHideApps"]
+        );
+        assert_eq!(settings.auto_hide_apps, vec!["chrome.exe", "obsidian.exe"]);
+
+        assert!(
+            settings
+                .merge_json(&json!({ "autoHideApps": [] }))
+                .is_empty()
+        );
+        assert!(settings.auto_hide_apps.is_empty());
+    }
+
+    #[test]
+    fn language_defaults_in_serde_and_merges_without_losing_old_settings() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("language");
+        assert_eq!(
+            serde_json::from_value::<Settings>(value).unwrap().language,
+            LanguageMode::Auto
+        );
+        let mut settings = Settings::default();
+        assert!(settings.merge_json(&json!({"language":"en"})).is_empty());
+        assert_eq!(settings.language, LanguageMode::En);
+        assert_eq!(
+            settings.merge_json(&json!({"language":"de"})),
+            vec!["language"]
+        );
+        assert_eq!(settings.language, LanguageMode::En);
     }
 
     #[test]

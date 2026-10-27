@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 // Owner: F1. Small controls of the settings view: segmented control and a slider row that commits on release.
 import { LayoutGroup, motion } from "motion/react";
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
@@ -13,6 +14,7 @@ interface SegmentedProps<T extends string> {
 
 /** `.ig-segmented` radiogroup with the sliding thumb (the same recipe as the tab bar). */
 export function Segmented<T extends string>({ label, value, options, onChange }: SegmentedProps<T>) {
+  useT();
   const group = useId();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const selected = Math.max(0, options.findIndex((o) => o.value === value));
@@ -63,6 +65,7 @@ interface SliderRowProps {
 
 /** `.ig-setting-row--stacked`: title + live value «150 мс», range below. Follows the finger, commits once on `change`. */
 export function SliderRow({ title, value, min, max, step, onCommit }: SliderRowProps) {
+  useT();
   const [draft, setDraft] = useState<number | null>(null);
   const ref = useRef<HTMLInputElement>(null);
   const commitRef = useRef(onCommit);
@@ -83,7 +86,7 @@ export function SliderRow({ title, value, min, max, step, onCommit }: SliderRowP
     <div className="ig-setting-row ig-setting-row--stacked">
       <span className="ig-setting-row__label">
         <span className="ig-setting-row__title">{title}</span>
-        <span className="ig-setting-row__value">{shown} мс</span>
+        <span className="ig-setting-row__value">{shown} {" "}{t("ms")}</span>
       </span>
       <input
         ref={ref}
@@ -95,7 +98,7 @@ export function SliderRow({ title, value, min, max, step, onCommit }: SliderRowP
         value={shown}
         onChange={(e) => setDraft(Number(e.target.value))}
         style={{ "--ig-value": sliderPercent(shown, min, max) } as CSSProperties}
-        aria-label={`${title}, мс`}
+        aria-label={t("msAlt", { p0: title })}
       />
     </div>
   );

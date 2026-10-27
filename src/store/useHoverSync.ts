@@ -3,19 +3,17 @@ import { useEffect, useMemo, useRef } from "react";
 import { listen } from "../ipc";
 import { HoverMachine } from "./hover";
 import { useIslandStore } from "./index";
-
-const noop = () => {};
-
+import { useDockStore } from "../lib/dock/store";
+const noop = () => {
+};
 export interface HoverControls {
   expandNow: () => void;
   collapseNow: () => void;
   /** Global hotkey: expand and stay open although the cursor is elsewhere (see `HoverMachine.summon`). */
   summon: () => void;
 }
-
 export function useHoverSync(): HoverControls {
   const machineRef = useRef<HoverMachine | null>(null);
-
   useEffect(() => {
     const initial = useIslandStore.getState();
     const machine = new HoverMachine({
@@ -24,45 +22,44 @@ export function useHoverSync(): HoverControls {
       initialMode: initial.mode,
       onChange: (mode) => useIslandStore.getState().setMode(mode),
     });
-    machine.setHold(initial.keyboardFocus);
+    const syncHold = () => {
+      const dock = useDockStore.getState();
+      machine.setHold(useIslandStore.getState().keyboardFocus || dock.dragging || dock.interacting);
+    };
+    syncHold();
     machineRef.current = machine;
-
     const unsubscribeStore = useIslandStore.subscribe((s, prev) => {
       if (s.hoverExpandDelayMs !== prev.hoverExpandDelayMs || s.hoverCollapseDelayMs !== prev.hoverCollapseDelayMs) {
         machine.setDelays(s.hoverExpandDelayMs, s.hoverCollapseDelayMs);
       }
       // Typing in a field (keyboard focus) keeps the island open even when the cursor leaves.
-      if (s.keyboardFocus !== prev.keyboardFocus) machine.setHold(s.keyboardFocus);
+      if (s.keyboardFocus !== prev.keyboardFocus)
+        syncHold();
     });
-
+    const offDock = useDockStore.subscribe(syncHold);
     let disposed = false;
     let unlisten: (() => void) | null = null;
     listen("island://hover", ({ inside }) => {
       useIslandStore.getState().setHoverInside(inside);
       machine.setInside(inside);
-    }).then(
-      (u) => {
-        if (disposed) u();
-        else unlisten = u;
-      },
-      noop,
-    );
-
+    }).then((u) => {
+      if (disposed)
+        u();
+      else
+        unlisten = u;
+    }, noop);
     return () => {
       disposed = true;
       unlisten?.();
       unsubscribeStore();
+      offDock();
       machine.dispose();
       machineRef.current = null;
     };
   }, []);
-
-  return useMemo(
-    () => ({
-      expandNow: () => machineRef.current?.expandNow(),
-      collapseNow: () => machineRef.current?.collapseNow(),
-      summon: () => machineRef.current?.summon(),
-    }),
-    [],
-  );
+  return useMemo(() => ({
+    expandNow: () => machineRef.current?.expandNow(),
+    collapseNow: () => machineRef.current?.collapseNow(),
+    summon: () => machineRef.current?.summon(),
+  }), []);
 }

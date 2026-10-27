@@ -20,7 +20,7 @@ use super::IslandState;
 use super::native;
 use super::shape::{hover_inside, screen_to_window_css};
 use super::styles::hwnd_of;
-use super::types::{HoverPayload, IslandMode};
+use super::types::{HoverPayload, IslandMode, IslandShape};
 
 /// Cursor is close to the window (within `NEAR_MARGIN_PX` physical px): poll at ~60 Hz.
 const FAST_INTERVAL: Duration = Duration::from_millis(16);
@@ -31,6 +31,18 @@ const SLOW_INTERVAL: Duration = Duration::from_millis(66);
 /// Window hidden: just wait.
 const HIDDEN_INTERVAL: Duration = Duration::from_millis(250);
 const NEAR_MARGIN_PX: i32 = 120;
+
+/// Duration the cursor must stay at the top edge in the pill's horizontal zone to reveal an
+/// auto-hidden pill (contract §14).
+pub const TOP_EDGE_DWELL: Duration = Duration::from_millis(400);
+/// Entry band at the very top edge of the monitor (window CSS px).
+pub const TOP_EDGE_ENTRY_MAX_Y: f64 = 6.0;
+/// Hysteresis vertical band while accumulating dwell so minor vertical jitter does not reset it.
+pub const TOP_EDGE_STAY_MAX_Y: f64 = 14.0;
+/// Hysteresis horizontal margin around the pill while dwelling or keeping the revealed pill shown.
+pub const TOP_EDGE_HYSTERESIS_X: f64 = 12.0;
+/// Vertical hysteresis margin below the pill once revealed by top-edge dwell.
+pub const REVEALED_KEEP_MARGIN_Y: f64 = 12.0;
 
 /// `island_set_shape` re-emits the hover state at most this often (the UI calls it every frame
 /// while animating; the re-emit only guards against a lost event).
@@ -168,6 +180,100 @@ pub fn is_near(cursor: (i32, i32), rect: (i32, i32, i32, i32), margin: i32) -> b
         && cursor.1 <= rect.3 + margin
 }
 
+/// Whether `(px, py)` (in window CSS px) is inside the top-edge strip over the pill's horizontal
+/// span. Uses a wider hysteresis band when `already_dwelling` is true to prevent bounce/flicker.
+pub fn in_top_edge_pill_zone(px: f64, py: f64, already_dwelling: bool) -> bool {
+    let pill = IslandShape::DEFAULT_PILL;
+    if already_dwelling {
+        px >= pill.x - TOP_EDGE_HYSTERESIS_X
+            && px <= pill.x + pill.width + TOP_EDGE_HYSTERESIS_X
+            && (-4.0..=TOP_EDGE_STAY_MAX_Y).contains(&py)
+    } else {
+        px >= pill.x && px <= pill.x + pill.width && (-2.0..=TOP_EDGE_ENTRY_MAX_Y).contains(&py)
+    }
+}
+
+/// Hysteresis keep-alive zone covering both the top-edge strip and the pill (`DEFAULT_PILL`) so
+/// the revealed pill stays visible while the cursor moves from `y = 0` into the pill at `y = 8..44`.
+pub fn in_revealed_keep_zone(px: f64, py: f64) -> bool {
+    let pill = IslandShape::DEFAULT_PILL;
+    px >= pill.x - TOP_EDGE_HYSTERESIS_X
+        && px <= pill.x + pill.width + TOP_EDGE_HYSTERESIS_X
+        && py >= -4.0
+        && py <= pill.y + pill.height + REVEALED_KEEP_MARGIN_Y
+}
+
+/// Pure state machine for revealing an auto-hidden pill by holding the cursor at the top edge for
+/// [`TOP_EDGE_DWELL`] (~400 ms) with hysteresis against cursor jitter.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TopEdgeDwell {
+    entered_at: Option<Instant>,
+    revealed: bool,
+}
+
+impl TopEdgeDwell {
+    pub const fn new() -> Self {
+        Self {
+            entered_at: None,
+            revealed: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn is_revealed(&self) -> bool {
+        self.revealed
+    }
+
+    pub fn is_dwelling(&self) -> bool {
+        self.entered_at.is_some()
+    }
+
+    pub fn reset(&mut self) {
+        self.entered_at = None;
+        self.revealed = false;
+    }
+
+    /// Advances the dwell state for cursor `(px, py)` (window CSS px) at `now`.
+    /// Returns whether the pill should be revealed right now.
+    pub fn update(
+        &mut self,
+        px: f64,
+        py: f64,
+        now: Instant,
+        mode: IslandMode,
+        inside: bool,
+    ) -> bool {
+        if self.revealed {
+            if mode == IslandMode::Expanded || inside || in_revealed_keep_zone(px, py) {
+                return true;
+            }
+            self.reset();
+            return false;
+        }
+        let already_dwelling = self.entered_at.is_some();
+        if in_top_edge_pill_zone(px, py, already_dwelling) {
+            let start = *self.entered_at.get_or_insert(now);
+            if now.saturating_duration_since(start) >= TOP_EDGE_DWELL {
+                self.revealed = true;
+                self.entered_at = None;
+            }
+        } else {
+            self.entered_at = None;
+        }
+        self.revealed
+    }
+}
+
+/// Resets top-edge dwell when the island collapses or when auto-hide condition ends.
+pub fn on_collapsed(state: &IslandState) {
+    state.dwell_revealed.store(false, Ordering::Release);
+    state
+        .dwell
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .reset();
+}
+
 pub fn spawn(app: &AppHandle, window: &WebviewWindow) {
     let app = app.clone();
     let window = window.clone();
@@ -201,7 +307,9 @@ fn run(app: &AppHandle, window: &WebviewWindow, hwnd_raw: isize) {
     while !state.stop.load(Ordering::Acquire) {
         let mode = *state.mode.read().unwrap_or_else(|e| e.into_inner());
         let visible = native::is_visible(hwnd);
+        let autohide_active = state.autohide_active.load(Ordering::Acquire);
         let mut near = false;
+        let mut dwelling = false;
 
         if !visible {
             // A hidden window gets no clicks and the cursor position means nothing: drop the
@@ -212,6 +320,23 @@ fn run(app: &AppHandle, window: &WebviewWindow, hwnd_raw: isize) {
                 publish(app, &state, false);
                 if let Err(e) = window.set_ignore_cursor_events(true) {
                     log::warn!("set_ignore_cursor_events failed: {e}");
+                }
+            }
+            if autohide_active
+                && let (Some(cursor), Some(rect)) =
+                    (native::cursor_pos(), native::window_rect(hwnd))
+            {
+                near = is_near(cursor, rect, NEAR_MARGIN_PX);
+                let scale = native::window_scale(hwnd);
+                let (px, py) = screen_to_window_css(cursor, (rect.0, rect.1), scale);
+                let (revealed, is_dwelling) = {
+                    let mut dwell = state.dwell.lock().unwrap_or_else(|e| e.into_inner());
+                    let r = dwell.update(px, py, Instant::now(), mode, false);
+                    (r, dwell.is_dwelling())
+                };
+                dwelling = is_dwelling;
+                if state.dwell_revealed.swap(revealed, Ordering::AcqRel) != revealed {
+                    super::fullscreen::recheck(app);
                 }
             }
         } else if let (Some(cursor), Some(rect)) = (native::cursor_pos(), native::window_rect(hwnd))
@@ -230,10 +355,30 @@ fn run(app: &AppHandle, window: &WebviewWindow, hwnd_raw: isize) {
                 log::debug!("hover inside={inside} css=({px:.1},{py:.1})");
                 publish(app, &state, inside);
             }
+            if autohide_active || state.dwell_revealed.load(Ordering::Acquire) {
+                let (revealed, is_dwelling) = {
+                    let mut dwell = state.dwell.lock().unwrap_or_else(|e| e.into_inner());
+                    let r = dwell.update(px, py, Instant::now(), mode, inside);
+                    (r, dwell.is_dwelling())
+                };
+                dwelling = is_dwelling;
+                if state.dwell_revealed.swap(revealed, Ordering::AcqRel) != revealed {
+                    super::fullscreen::recheck(app);
+                }
+            }
         }
 
         // `stop()` unparks the thread, so shutdown does not wait for the sleep to run out.
-        std::thread::park_timeout(poll_interval(visible, near, mode));
+        let sleep_dur = if !visible && autohide_active {
+            if near || dwelling {
+                FAST_INTERVAL
+            } else {
+                SLOW_INTERVAL
+            }
+        } else {
+            poll_interval(visible, near, mode)
+        };
+        std::thread::park_timeout(sleep_dur);
     }
     log::debug!("hover thread stopped");
 }
@@ -331,5 +476,94 @@ mod tests {
         assert!(s.on_set_mode(t0)); // clears the fresh-page flag
         s.note_emit(t0 + Duration::from_secs(10));
         assert!(!s.on_set_shape(t0));
+    }
+
+    #[test]
+    fn top_edge_dwell_requires_400ms_in_pill_horizontal_zone_and_uses_hysteresis() {
+        let t0 = Instant::now();
+        let mut dwell = TopEdgeDwell::new();
+
+        // Outside the horizontal pill zone (288..=512): never starts dwelling.
+        assert!(!dwell.update(100.0, 0.0, t0, IslandMode::Collapsed, false));
+        assert!(!dwell.is_dwelling());
+        assert!(!dwell.update(600.0, 0.0, t0, IslandMode::Collapsed, false));
+        assert!(!dwell.is_dwelling());
+
+        // Below the top-edge entry strip (y > 6): does not start dwelling.
+        assert!(!dwell.update(400.0, 12.0, t0, IslandMode::Collapsed, false));
+        assert!(!dwell.is_dwelling());
+
+        // Enter top edge in the pill horizontal zone: starts dwelling, not revealed before 400 ms.
+        assert!(!dwell.update(400.0, 1.0, t0, IslandMode::Collapsed, false));
+        assert!(dwell.is_dwelling());
+        assert!(!dwell.is_revealed());
+
+        // Slight jitter within hysteresis band (e.g. y = 11.0, x = 280.0) does NOT reset the timer.
+        assert!(!dwell.update(
+            280.0,
+            11.0,
+            t0 + Duration::from_millis(200),
+            IslandMode::Collapsed,
+            false
+        ));
+        assert!(dwell.is_dwelling());
+        assert!(!dwell.is_revealed());
+
+        // Still under 400 ms at 399 ms.
+        assert!(!dwell.update(
+            400.0,
+            1.0,
+            t0 + Duration::from_millis(399),
+            IslandMode::Collapsed,
+            false
+        ));
+        assert!(!dwell.is_revealed());
+
+        // At 400 ms: pill is revealed!
+        assert!(dwell.update(
+            400.0,
+            1.0,
+            t0 + Duration::from_millis(400),
+            IslandMode::Collapsed,
+            false
+        ));
+        assert!(dwell.is_revealed());
+        assert!(!dwell.is_dwelling());
+
+        // Moving from the top edge (y=1) down into the pill (y=26) or slightly below (y=50) keeps
+        // it revealed without any bounce/flicker.
+        assert!(dwell.update(
+            400.0,
+            26.0,
+            t0 + Duration::from_millis(450),
+            IslandMode::Collapsed,
+            true
+        ));
+        assert!(dwell.update(
+            400.0,
+            50.0,
+            t0 + Duration::from_millis(500),
+            IslandMode::Collapsed,
+            false
+        ));
+
+        // While the island is Expanded, moving the cursor far away keeps it revealed until collapse.
+        assert!(dwell.update(
+            100.0,
+            300.0,
+            t0 + Duration::from_millis(600),
+            IslandMode::Expanded,
+            false
+        ));
+
+        // Once collapsed and cursor is outside the keep-alive zone, it hides again.
+        assert!(!dwell.update(
+            100.0,
+            300.0,
+            t0 + Duration::from_millis(700),
+            IslandMode::Collapsed,
+            false
+        ));
+        assert!(!dwell.is_revealed());
     }
 }

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 // Owner: F1. Pure helpers of the settings view.
 import type { MonitorInfo } from "../../shared/types";
 
@@ -12,7 +13,7 @@ const size = (m: MonitorInfo) => `${m.width}×${m.height}`;
 export function monitorOptions(monitors: readonly MonitorInfo[]): MonitorOption[] {
   const primary = monitors.find((m) => m.isPrimary) ?? monitors[0];
   return [
-    { value: "primary", label: primary ? `Основной · ${size(primary)}` : "Основной" },
+    { value: "primary", label: primary ? t("primary", { p0: size(primary) }) : t("primaryAlt") },
     ...monitors.map((m) => ({ value: m.id, label: `${m.name} · ${size(m)}` })),
   ];
 }

@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 import { useEffect, type KeyboardEvent } from "react";
 import { useNotesStore } from "../../lib/notes/store";
 import "../../lib/ui.css";
@@ -8,6 +9,7 @@ import { TimerCard } from "./TimerCard";
 import "./notes.css";
 
 export function NotesTab() {
+  useT();
   useEffect(() => {
     void useNotesStore.getState().load();
     // Unsaved typing must not be lost when the panel collapses or another tab opens.
@@ -25,7 +27,7 @@ export function NotesTab() {
 
   return (
     <div className="nt-root" onKeyDown={onKeyDown}>
-      <h2 className="mod-sr-only">Заметки</h2>
+      <h2 className="mod-sr-only">{t("notes")}</h2>
       <FolderChips />
       <NoteList />
       <NoteEditor />

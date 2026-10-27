@@ -540,6 +540,12 @@ unsafe fn set_format(fmt: u32, bytes: &[u8]) -> Result<(), String> {
 /// Replaces the clipboard content with `content` and remembers the resulting sequence number so the
 /// listener ignores this write.
 pub fn set_clipboard(content: &Content) -> Result<(), String> {
+    write_clipboard(content, true)
+}
+pub(super) fn write_capture(content: &Content) -> Result<(), String> {
+    write_clipboard(content, false)
+}
+fn write_clipboard(content: &Content, ignore_echo: bool) -> Result<(), String> {
     // Prepare everything (decoding can be slow) before touching the clipboard.
     let prepared: Vec<(u32, Vec<u8>)> = match content {
         Content::Text(t) => vec![(CF_UNICODETEXT.0 as u32, text_payload(t))],
@@ -550,6 +556,10 @@ pub fn set_clipboard(content: &Content) -> Result<(), String> {
                 (
                     CF_DIBV5.0 as u32,
                     image::rgba_to_dibv5(img.width, img.height, &img.pixels),
+                ),
+                (
+                    CF_DIB.0 as u32,
+                    image::rgba_to_dib(img.width, img.height, &img.pixels),
                 ),
                 (format_id(w!("PNG")), png.clone()),
             ]
@@ -568,7 +578,9 @@ pub fn set_clipboard(content: &Content) -> Result<(), String> {
                 .try_for_each(|(fmt, bytes)| set_format(*fmt, bytes))
         });
         // Taken while we still own the clipboard, so nobody can slip in between.
-        SELF_SEQ.store(GetClipboardSequenceNumber(), Ordering::SeqCst);
+        if ignore_echo {
+            SELF_SEQ.store(GetClipboardSequenceNumber(), Ordering::SeqCst);
+        }
         let _ = CloseClipboard();
         r
     }

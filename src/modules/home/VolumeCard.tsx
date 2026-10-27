@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { IconCheck, IconChevronDown, IconSpeaker, IconVolume, IconVolumeMute } from "../../design/icons";
@@ -7,6 +8,7 @@ import { VOLUME_WHEEL_STEP, WheelDeltaAccumulator, useAudio } from "../../lib/au
 const tap = { whileTap: { scale: pressScale }, transition: springs.press } as const;
 
 export function VolumeCard() {
+  useT();
   const { audio, ready, devices, setVolume, stepVolume, toggleMute, loadDevices, setDevice } = useAudio();
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
@@ -80,13 +82,13 @@ export function VolumeCard() {
   };
 
   return (
-    <section ref={rootRef} className="ig-glass-card hm-volume" aria-label="Громкость">
+    <section ref={rootRef} className="ig-glass-card hm-volume" aria-label={t("volume")}>
       <motion.button
         type="button"
         className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm"
         {...tap}
         aria-pressed={muted}
-        aria-label={muted ? "Включить звук" : "Выключить звук"}
+        aria-label={muted ? t("unmute") : t("mute")}
         disabled={!ready}
         onClick={() => void toggleMute()}
       >
@@ -103,11 +105,11 @@ export function VolumeCard() {
         disabled={!ready}
         onChange={(e) => setVolume(Number(e.target.value))}
         style={{ "--ig-value": `${volume}%` } as CSSProperties}
-        aria-label="Громкость"
-        aria-valuetext={muted ? "Без звука" : `${volume}%`}
+        aria-label={t("volume")}
+        aria-valuetext={muted ? t("muted") : `${volume}%`}
       />
       <span className="hm-vol-value ig-num" data-muted={muted}>
-        {muted ? "Без звука" : `${volume}%`}
+        {muted ? t("muted") : `${volume}%`}
       </span>
       <button
         ref={triggerRef}
@@ -116,16 +118,16 @@ export function VolumeCard() {
         aria-haspopup="listbox"
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? "hm-output-devices" : undefined}
-        title={device?.name ?? "Устройство вывода"}
+        title={device?.name ?? t("outputDevice")}
         onClick={toggleMenu}
       >
         <IconSpeaker size={16} />
-        <span>{device?.name ?? "Устройство"}</span>
+        <span>{device?.name ?? t("device")}</span>
         <IconChevronDown size={14} />
       </button>
       {menuOpen && (
-        <ul id="hm-output-devices" className="ig-glass hm-menu" role="listbox" aria-label="Устройство вывода">
-          {devices.length === 0 && <li className="mod-caption" style={{ padding: "var(--ig-space-2)" }}>Устройства не найдены</li>}
+        <ul id="hm-output-devices" className="ig-glass hm-menu" role="listbox" aria-label={t("outputDevice")}>
+          {devices.length === 0 && <li className="mod-caption" style={{ padding: "var(--ig-space-2)" }}>{t("noDevicesFound")}</li>}
           {devices.map((d, index) => {
             const current = d.id === device?.id;
             return (

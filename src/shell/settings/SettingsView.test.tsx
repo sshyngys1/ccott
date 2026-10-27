@@ -1,9 +1,19 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke, listen } from "../../ipc";
-import { mockConfig, mockEmit, mockListenerCount, mockSetFullscreenApps, mockSetUpdate, mockStats, resetMock } from "../../ipc/mock";
+import {
+  mockConfig,
+  mockEmit,
+  mockListenerCount,
+  mockSetFullscreenApps,
+  mockSetMaximizedApps,
+  mockSetUpdate,
+  mockStats,
+  resetMock,
+} from "../../ipc/mock";
 import { resetIslandStore, useIslandStore } from "../../store";
 import { useSettingsSync } from "../useShellSync";
+import { DEFAULT_AUTO_HIDE_APPS } from "./hotkey";
 import { SettingsView } from "./SettingsView";
 import { MonitorPicker } from "./MonitorPicker";
 
@@ -156,7 +166,7 @@ describe("SettingsView", () => {
 
   it("shows the current version and checks for updates manually when no release is available", async () => {
     render(<SettingsView />);
-    expect(screen.getByText("Версия 0.1.0")).toBeInTheDocument();
+    expect(screen.getByText("Версия 0.2.0")).toBeInTheDocument();
     const checkBtn = screen.getByRole("button", { name: "Проверить обновления" });
     fireEvent.click(checkBtn);
     await waitFor(() => expect(mockStats.updaterChecks).toBe(1));
@@ -254,5 +264,62 @@ describe("SettingsView", () => {
     mockSetFullscreenApps([]);
     render(<SettingsView />);
     expect(await screen.findByText("Пока не было полноэкранных приложений")).toBeInTheDocument();
+  });
+
+  it("manages autoHideApps (toggle, add exe, delete, reset to browsers) in RU and EN", async () => {
+    mockSetMaximizedApps([{ exe: "code.exe", title: "Visual Studio Code", lastSeen: 1000 }]);
+    render(<SettingsView />);
+
+    const section = screen.getByRole("region", { name: "Прятать остров над приложениями" });
+    expect(section).toBeInTheDocument();
+
+    // Default browsers are checked; recent maximized app (code.exe) is listed unchecked.
+    const chromeSwitch = await within(section).findByRole("switch", { name: /chrome\.exe/i });
+    const codeSwitch = await within(section).findByRole("switch", { name: /Visual Studio Code/i });
+    expect(chromeSwitch).toBeChecked();
+    expect(codeSwitch).not.toBeChecked();
+
+    // Toggle chrome.exe off, then back on.
+    fireEvent.click(chromeSwitch);
+    await waitFor(async () => expect((await backend()).autoHideApps).not.toContain("chrome.exe"));
+    expect(chromeSwitch).not.toBeChecked();
+
+    fireEvent.click(chromeSwitch);
+    await waitFor(async () => expect((await backend()).autoHideApps).toContain("chrome.exe"));
+    expect(chromeSwitch).toBeChecked();
+
+    // Toggle recent maximized app (code.exe) on.
+    fireEvent.click(codeSwitch);
+    await waitFor(async () => expect((await backend()).autoHideApps).toContain("code.exe"));
+    expect(codeSwitch).toBeChecked();
+
+    // Add a custom exe ("obsidian") via input + button.
+    const addInput = within(section).getByLabelText("Добавить exe (например, code.exe)");
+    fireEvent.change(addInput, { target: { value: "  Obsidian " } });
+    fireEvent.click(within(section).getByRole("button", { name: "Добавить" }));
+    await waitFor(async () => expect((await backend()).autoHideApps).toContain("obsidian.exe"));
+    expect(within(section).getByRole("switch", { name: /obsidian\.exe/i })).toBeChecked();
+
+    // Remove obsidian.exe and chrome.exe via delete buttons.
+    fireEvent.click(within(section).getByRole("button", { name: "Удалить obsidian.exe из списка" }));
+    await waitFor(async () => expect((await backend()).autoHideApps).not.toContain("obsidian.exe"));
+    expect(within(section).queryByRole("switch", { name: /obsidian\.exe/i })).toBeNull();
+
+    fireEvent.click(within(section).getByRole("button", { name: "Удалить chrome.exe из списка" }));
+    await waitFor(async () => expect((await backend()).autoHideApps).not.toContain("chrome.exe"));
+
+    // Reset to browsers restores the default browser list.
+    fireEvent.click(within(section).getByRole("button", { name: "Сбросить к браузерам" }));
+    await waitFor(async () => expect((await backend()).autoHideApps).toEqual([...DEFAULT_AUTO_HIDE_APPS]));
+    expect(within(section).getByRole("switch", { name: /chrome\.exe/i })).toBeChecked();
+
+    // Switch language to English and verify English labels.
+    fireEvent.click(screen.getByRole("radio", { name: "English" }));
+    await waitFor(async () => expect((await backend()).language).toBe("en"));
+    const enSection = screen.getByRole("region", { name: "Hide the island over apps" });
+    expect(within(enSection).getByLabelText("Add exe (e.g. code.exe)")).toBeInTheDocument();
+    expect(within(enSection).getByRole("button", { name: "Add" })).toBeInTheDocument();
+    expect(within(enSection).getByRole("button", { name: "Reset to browsers" })).toBeInTheDocument();
+    expect(within(enSection).getByRole("button", { name: "Remove chrome.exe from list" })).toBeInTheDocument();
   });
 });

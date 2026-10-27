@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { IconClipboard, IconPin, IconSearch, IconTrash } from "../../design/icons";
@@ -20,6 +21,7 @@ const LIST_LIMIT = 100;
 const tap = { whileTap: { scale: pressScale }, transition: springs.press } as const;
 
 export function ClipboardTab() {
+  useT();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [items, setItems] = useState<ClipItem[] | null>(null);
@@ -74,10 +76,10 @@ export function ClipboardTab() {
     try {
       if (mode === "paste") await requestShell({ type: "collapse" });
       await invoke("clipboard_paste", { id: item.id, mode });
-      if (mode === "copy") await requestShell({ type: "toast", text: "Скопировано" });
+      if (mode === "copy") await requestShell({ type: "toast", get text() { return t("copied"); } });
     } catch (err) {
       console.warn("[island] clipboard_paste failed", err);
-      await requestShell({ type: "toast", text: mode === "paste" ? pasteErrorText(err) : "Не удалось скопировать" });
+      await requestShell({ type: "toast", text: mode === "paste" ? pasteErrorText(err) : t("couldnTCopy") });
     }
   }, []);
 
@@ -98,7 +100,7 @@ export function ClipboardTab() {
     (item: ClipItem) => {
       setCursorId((cur) => (cur === null || cur === item.id ? cursorAfterRemoval(ordered, item.id) : cur));
       setItems((prev) => prev && prev.filter((c) => c.id !== item.id));
-      invoke("clipboard_delete", { id: item.id }).then(() => requestShell({ type: "toast", text: "Запись удалена" })).catch((err: unknown) => {
+      invoke("clipboard_delete", { id: item.id }).then(() => requestShell({ type: "toast", get text() { return t("entryDeleted"); } })).catch((err: unknown) => {
         console.warn("[island] clipboard_delete failed", err);
         reload();
       });
@@ -201,15 +203,15 @@ export function ClipboardTab() {
 
   return (
     <div className="cb-root" onKeyDown={onKeyDown}>
-      <h2 className="mod-sr-only">Буфер обмена</h2>
+      <h2 className="mod-sr-only">{t("clipboard")}</h2>
       <div className="cb-head">
         <label className="ig-search mod-grow">
           <IconSearch size={16} />
           <input
             ref={searchRef}
             className="ig-glass-input"
-            placeholder="Поиск в истории буфера"
-            aria-label="Поиск в истории буфера"
+            placeholder={t("searchClipboardHistory")}
+            aria-label={t("searchClipboardHistory")}
             value={query}
             spellCheck={false}
             autoComplete="off"
@@ -223,12 +225,12 @@ export function ClipboardTab() {
           {...tap}
           data-selected={clear.armed ? true : undefined}
           disabled={loading || (items?.length ?? 0) === 0}
-          title="Закреплённые записи останутся"
+          title={t("pinnedEntriesWillBeKept")}
           aria-live="polite"
           onClick={clearAll}
         >
           <IconTrash size={16} />
-          {clear.armed ? "Подтвердить" : "Очистить"}
+          {clear.armed ? t("confirm") : t("clear")}
         </motion.button>
       </div>
 
@@ -238,8 +240,8 @@ export function ClipboardTab() {
             <span className="ig-empty__icon">
               <IconClipboard size={22} />
             </span>
-            <span className="ig-empty__title">История буфера пуста</span>
-            <span className="ig-empty__text">Скопируйте текст, ссылку, картинку или файлы — запись появится здесь. Закреплённые записи не удаляются при очистке.</span>
+            <span className="ig-empty__title">{t("yourClipboardHistoryIsEmpty")}</span>
+            <span className="ig-empty__text">{t("copyTextALinkAnImageOrFilesToSeeThemHereClearingHistoryKeepsPinne")}</span>
           </div>
         )}
         {noResults && (
@@ -247,8 +249,8 @@ export function ClipboardTab() {
             <span className="ig-empty__icon">
               <IconSearch size={22} />
             </span>
-            <span className="ig-empty__title">Ничего не найдено</span>
-            <span className="ig-empty__text">По запросу «{debounced}» записей нет. Поиск идёт по тексту, ссылкам и именам файлов.</span>
+            <span className="ig-empty__title">{t("noResults")}</span>
+            <span className="ig-empty__text">{t("clipboard.noResults", { query: debounced })}</span>
             <button
               type="button"
               className="ig-glass-control ig-glass-control--sm cb-empty-action"
@@ -258,8 +260,7 @@ export function ClipboardTab() {
                 searchRef.current?.focus();
               }}
             >
-              Сбросить поиск
-            </button>
+              {t("clearSearch")}</button>
           </div>
         )}
         {ordered.length > 0 && (
@@ -270,17 +271,16 @@ export function ClipboardTab() {
                   <>
                     <h4 className="ig-section-label cb-label-first">
                       <IconPin size={12} />
-                      Закреплённые
-                    </h4>
-                    <ul className="ig-list" role="listbox" aria-label="Закреплённые" aria-activedescendant={cursorItem?.pinned ? `cb-row-${cursorItem.id}` : undefined}>
+                      {t("pinned")}</h4>
+                    <ul className="ig-list" role="listbox" aria-label={t("pinned")} aria-activedescendant={cursorItem?.pinned ? `cb-row-${cursorItem.id}` : undefined}>
                       <AnimatePresence initial={false}>{pinned.map(renderRow)}</AnimatePresence>
                     </ul>
                   </>
                 )}
                 {recent.length > 0 && (
                   <>
-                    <h4 className={pinned.length > 0 ? "ig-section-label" : "ig-section-label cb-label-first"}>Недавние</h4>
-                    <ul className="ig-list" role="listbox" aria-label="Недавние" aria-activedescendant={cursorItem && !cursorItem.pinned ? `cb-row-${cursorItem.id}` : undefined}>
+                    <h4 className={pinned.length > 0 ? "ig-section-label" : "ig-section-label cb-label-first"}>{t("recent")}</h4>
+                    <ul className="ig-list" role="listbox" aria-label={t("recent")} aria-activedescendant={cursorItem && !cursorItem.pinned ? `cb-row-${cursorItem.id}` : undefined}>
                       <AnimatePresence initial={false}>{recent.map(renderRow)}</AnimatePresence>
                     </ul>
                   </>
@@ -291,20 +291,16 @@ export function ClipboardTab() {
         )}
       </div>
 
-        <footer className="cb-hints" aria-label="Подсказки">
+        <footer className="cb-hints" aria-label={t("keyboardShortcuts")}>
           <span>
             <kbd className="ig-kbd">↑</kbd>
-            <kbd className="ig-kbd">↓</kbd> выбрать
-          </span>
+            <kbd className="ig-kbd">↓</kbd> {" "}{t("select")}</span>
           <span>
-            <kbd className="ig-kbd">Enter</kbd> вставить
-          </span>
+            <kbd className="ig-kbd">Enter</kbd> {" "}{t("paste")}</span>
           <span>
-            <kbd className="ig-kbd">Shift</kbd>+клик — только скопировать
-          </span>
+            <kbd className="ig-kbd">Shift</kbd>{t("clickToCopyOnly")}</span>
           <span>
-            <kbd className="ig-kbd">Del</kbd> удалить
-          </span>
+            <kbd className="ig-kbd">Del</kbd> {" "}{t("delete")}</span>
         </footer>
     </div>
   );

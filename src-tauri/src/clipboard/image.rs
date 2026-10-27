@@ -14,6 +14,16 @@ pub const THUMB_MAX: u32 = 200;
 /// Images with more pixels than this are ignored (guards memory).
 pub const MAX_PIXELS: u64 = 64 * 1024 * 1024;
 
+/// Classic CF_DIB: BITMAPINFOHEADER + bottom-up BGRA, compatible with older paste consumers.
+pub fn rgba_to_dib(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    let v5 = rgba_to_dibv5(width, height, rgba);
+    let mut out = v5[..40].to_vec();
+    out[..4].copy_from_slice(&40u32.to_le_bytes());
+    out[16..20].copy_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&v5[124..]);
+    out
+}
+
 const BI_RGB: u32 = 0;
 const BI_BITFIELDS: u32 = 3;
 
@@ -229,6 +239,17 @@ pub fn fit(w: u32, h: u32, max: u32) -> (u32, u32) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn classic_dib_for_capture_roundtrips_pixels_and_dimensions() {
+        let pixels = [
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ];
+        let dib = super::rgba_to_dib(2, 2, &pixels);
+        assert_eq!(&dib[..4], &40u32.to_le_bytes());
+        let decoded = super::dib_to_rgba(&dib).unwrap();
+        assert_eq!((decoded.width, decoded.height), (2, 2));
+        assert_eq!(decoded.pixels, pixels);
+    }
     use super::*;
 
     fn sample() -> Vec<u8> {

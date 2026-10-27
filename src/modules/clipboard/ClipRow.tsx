@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 import { motion } from "motion/react";
 import type { MouseEvent } from "react";
 import { IconFile, IconLink, IconPin, IconText, IconTrash } from "../../design/icons";
@@ -18,6 +19,7 @@ export interface ClipRowProps {
 }
 
 export function ClipRow({ item, now, cursor, onCursor, onActivate, onPin, onDelete }: ClipRowProps) {
+  useT();
   const media = item.kind === "image";
   const Lead = item.kind === "image" ? null : LEAD[item.kind];
   const stop = (e: MouseEvent) => e.stopPropagation();
@@ -39,10 +41,10 @@ export function ClipRow({ item, now, cursor, onCursor, onActivate, onPin, onDele
         data-island-keyboard="true"
         onFocus={onCursor}
         onClick={(e) => onActivate(e.shiftKey ? "copy" : "paste")}
-        title="Клик — вставить · Shift+клик — только скопировать"
+        title={t("clickToPasteShiftClickToCopyOnly")}
       >
       {media ? (
-        <img className="ig-thumb" src={item.preview} alt="Изображение из буфера" draggable={false} />
+        <img className="ig-thumb" src={item.preview} alt={t("imageFromClipboard")} draggable={false} />
       ) : (
         <span className="ig-list-row__lead" data-kind={item.kind} aria-hidden="true">
           {Lead && <Lead size={16} />}
@@ -61,8 +63,8 @@ export function ClipRow({ item, now, cursor, onCursor, onActivate, onPin, onDele
           type="button"
           className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm"
           aria-pressed={item.pinned}
-          aria-label={item.pinned ? "Открепить" : "Закрепить"}
-          title={item.pinned ? "Открепить (Ctrl+P)" : "Закрепить (Ctrl+P)"}
+          aria-label={item.pinned ? t("unpin") : t("pin")}
+          title={item.pinned ? t("unpinCtrlP") : t("pinCtrlP")}
           onClick={(e) => {
             stop(e);
             onPin();
@@ -73,8 +75,8 @@ export function ClipRow({ item, now, cursor, onCursor, onActivate, onPin, onDele
         <button
           type="button"
           className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm ig-glass-control--danger"
-          aria-label="Удалить"
-          title="Удалить (Del)"
+          aria-label={t("deleteAlt")}
+          title={t("deleteDel")}
           onClick={(e) => {
             stop(e);
             onDelete();

@@ -11,7 +11,8 @@
 
 <p align="center">
   <b>A Dynamic Island–style control center that lives at the top of your Windows desktop.</b><br/>
-  Media, volume, clipboard history, text tools, notes and a focus timer — one hover away.
+  Media, volume, clipboard history, screenshots and OCR, a color picker, QR codes, an app dock, text tools, notes and a<br/>
+  focus timer — one hover away. In English and Russian.
 </p>
 
 <p align="center">
@@ -35,10 +36,13 @@ or press a hotkey.
 | 🔊 **Volume & output** | System volume and mute, scroll the mouse wheel over the volume card, switch the output device. |
 | 📋 **Clipboard history** | Text, links, images and files with search and pinning. Click an entry to paste it into the app you were using; Shift+click only copies. Content from password managers is never recorded. |
 | ✍️ **Text tools** | Fix text typed in the wrong keyboard layout (RU ⇄ EN), transliteration, letter case, whitespace cleanup, JSON pretty/minify, Base64, live character/word/line counts. |
+| 📸 **Screenshots & OCR** | Capture a region or the whole screen to the clipboard (Shift+click saves a PNG to `Pictures\Screenshots\CCOTT`). Copy text from anywhere on screen with offline Windows OCR. |
+| 🎯 **Color picker & QR** | Pick any pixel with a magnifier and copy its HEX. Scan a QR code on screen (links get an Open button) or turn text into a QR image. |
+| 🗂️ **Dock** | Drop apps, folders and files onto the island to pin them, open them with a click, drag them out to copy them anywhere. |
 | 🗒️ **Notes & timer** | Rich-text notes in folders with autosave, plus a focus timer with presets that keeps counting in the pill while the island is collapsed. |
 | ⌨️ **Summon hotkey** | `Ctrl+Alt+I` (configurable) shows the island anywhere — even over a fullscreen app or game in borderless mode. |
-| 🖥️ **Fullscreen aware** | Hides itself in fullscreen apps by default; choose the apps where it should stay visible. |
-| ⚙️ **Settings** | Light/dark/auto theme, monitor selection, start with Windows, Do Not Disturb, hover delays. |
+| 🖥️ **Stays out of the way** | Hides in fullscreen apps and over maximized browsers, so your tabs stay clickable; choose the apps yourself. Hold the cursor at the top edge or press the hotkey to bring it back. |
+| ⚙️ **Settings** | English or Russian (follows Windows by default), light/dark/auto theme, monitor selection, start with Windows, Do Not Disturb, hover delays. |
 | 🔄 **Auto-update** | Signed updates from GitHub Releases, checked in the background or on demand. |
 
 ## Screenshots
@@ -49,7 +53,7 @@ or press a hotkey.
     <td><img src="docs/screenshots/clipboard.jpg" alt="Clipboard history" /></td>
   </tr>
   <tr>
-    <td align="center"><sub>Home — player, volume, output device</sub></td>
+    <td align="center"><sub>Home — player, volume, quick tools, dock</sub></td>
     <td align="center"><sub>Clipboard history with pinned items</sub></td>
   </tr>
   <tr>
@@ -70,7 +74,7 @@ or press a hotkey.
   </tr>
 </table>
 
-<sub>Screenshots use sample data. The interface is currently in Russian.</sub>
+<sub>Screenshots use sample data.</sub>
 
 ## Download
 
@@ -91,7 +95,10 @@ ships with Windows 11.
 | Action | How |
 | --- | --- |
 | Open the panel | Hover the pill at the top of the screen |
-| Summon / hide anywhere | `Ctrl+Alt+I` (change it in Settings) |
+| Summon / hide anywhere | `Ctrl+Alt+I` (change it in Settings); `Esc` closes it again |
+| Show the hidden pill over a browser | Hold the cursor at the top edge of the screen for a moment |
+| Pin an app, folder or file | Drag it onto the island, or press `+` in the dock |
+| Screenshot / text from screen | Click a tile on Home and drag a region; `Esc` or right click cancels |
 | Paste from history | Click an entry, or select it with `↑` `↓` and press `Enter` |
 | Copy without pasting | `Shift`+click or `Shift`+`Enter` |
 | Change volume | Scroll over the volume card |
@@ -145,8 +152,8 @@ Built with [Tauri 2](https://tauri.app), Rust, React 19, TypeScript, Vite, Motio
 
 | Version | Planned |
 | --- | --- |
-| **0.1.x** | Bug fixes from Issues, a faster first expand after a long idle period |
-| **0.2** — Quick tools | English interface (RU/EN switch), area or full-screen screenshots, text from screen (offline OCR), color picker, QR codes (create and scan), app and folder dock with drag & drop, automated builds with GitHub Actions |
+| ✅ **0.2** — Quick tools | English interface, screenshots, offline OCR, color picker, QR codes, app and folder dock, auto-hide over browsers, automated release builds |
+| **0.2.x** | Bug fixes from Issues, a faster first expand after a long idle period |
 | **0.3** — Command bar & files | Command bar on a hotkey (apps, files, calculator, unit and currency converter, quick timers), file shelf (drop files on the pill and drag them out), download monitor, winget package |
 | **0.4** — Info & controls | Weather with hourly and 7-day forecasts and rain alerts, quick controls (Wi-Fi, Bluetooth, dark mode, power mode, Bluetooth headset battery), natural-language reminders, AI coding agent status (e.g. Claude Code is waiting or done) |
 | **0.5** — Media & polish | Synced song lyrics, audio visualizer, screen recording to MP4, native Mica/Acrylic backdrop |

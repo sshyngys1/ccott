@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 /** SMTC source ids may be executables, packaged AUMIDs or browser PWA profiles. */
 export function sourceDisplayName(source: string): string {
   const value = source.trim();
@@ -6,7 +7,7 @@ export function sourceDisplayName(source: string): string {
     [/^(?:msedge|microsoft\.(?:msedge|microsoftedge)|microsoftedge)(?:[._!\s]|$)/i, "Edge"],
     [/^(?:firefox|mozilla\.firefox)(?:[._!\s]|$)/i, "Firefox"],
     [/^(?:spotify|spotifyab\.spotifymusic)(?:[._!\s]|$)/i, "Spotify"],
-    [/^(?:yandexmusic|yandex[. -]music|яндекс[. -]музыка)(?:[._!\s]|$)/i, "Яндекс Музыка"],
+    [/^(?:yandexmusic|yandex[. -]music|яндекс[. -]музыка)(?:[._!\s]|$)/i, t("yandexMusic")],
     [/^(?:telegram|(?:telegramdesktop|telegrammessengerllp)\.telegramdesktop)(?:[._!\s]|$)/i, "Telegram"],
     [/^(?:vlc|videolan\.vlc)(?:[._!\s]|$)/i, "VLC"],
     [/^(?:microsoft\.zunemusic|microsoft\.mediaplayer|wmplayer)(?:[._!\s]|$)/i, "Media Player"],

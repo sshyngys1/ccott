@@ -72,3 +72,21 @@ The script reads the NSIS `.sig` and writes `src-tauri/target/release/bundle/lat
 2. Attach `CCOTT_X.Y.Z_x64-setup.exe`, `CCOTT_X.Y.Z_x64-setup.exe.sig`, `latest.json`, and optionally the MSI files.
 3. Publish. `https://github.com/sshyngys1/ccott/releases/latest/download/latest.json` now serves the new manifest;
    installed copies find the update ~30 s after start, every 6 hours, or via «Проверить обновления» in Settings.
+
+## Automated release (GitHub Actions)
+
+`.github/workflows/release.yml` builds the same signed installers on GitHub:
+
+1. One time: add the repository secret **`TAURI_SIGNING_PRIVATE_KEY`** (Settings → Secrets and variables → Actions)
+   with the contents of the private updater key. The key has no password.
+2. Bump the version (section 2), commit, then push a tag that matches it:
+   ```powershell
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+3. The workflow runs the tests, builds the NSIS and MSI installers with their `.sig` files and creates a **draft**
+   release with `latest.json` (pointing at the NSIS installer).
+4. Open the draft on GitHub, write the release notes and publish it. Installed copies pick it up through the updater.
+
+`.github/workflows/ci.yml` runs type checks, tests, the web build, `cargo fmt`, `clippy` and `cargo test` on every push
+to `main` and on pull requests.

@@ -1,6 +1,18 @@
+import { t } from "../../i18n";
+import type { FullscreenApp } from "../../shared/types";
 // Owner: F1. Pure helpers for the summon-hotkey recorder and the fullscreen allowlist in Settings.
 
 export const DEFAULT_SUMMON_HOTKEY = "Ctrl+Alt+I";
+
+export const DEFAULT_AUTO_HIDE_APPS: readonly string[] = [
+  "chrome.exe",
+  "msedge.exe",
+  "firefox.exe",
+  "browser.exe",
+  "opera.exe",
+  "brave.exe",
+  "vivaldi.exe",
+];
 
 const MODIFIER_KEYS = new Set([
   "Control",
@@ -147,7 +159,7 @@ export function formatAcceleratorFromKeyEvent(event: KeyComboEvent): string | nu
 
 /**
  * Validates and normalizes an accelerator string (matching Rust `hotkeys::parse_hotkey`).
- * Empty string `""` is valid (hotkey disabled). Throws an Error with a Russian message if invalid.
+ * Empty string `""` is valid (hotkey disabled). Throws a localized error if invalid.
  */
 export function normalizeAccelerator(raw: string): string {
   const trimmed = raw.trim();
@@ -177,21 +189,21 @@ export function normalizeAccelerator(raw: string): string {
       superKey = true;
     } else {
       if (mainKey !== null) {
-        throw new Error(`Некорректное сочетание клавиш «${trimmed}»: указано несколько основных клавиш`);
+        throw new Error(t("invalidShortcutUseOnlyOneMainKey", { p0: trimmed }));
       }
       const token = keyTokenFromCode(part) ?? keyTokenFromKey(part);
       if (!token) {
-        throw new Error(`Неподдерживаемая клавиша «${part}» в сочетании «${trimmed}»`);
+        throw new Error(t("unsupportedKeyInShortcut", { p0: part, p1: trimmed }));
       }
       mainKey = token;
     }
   }
 
   if (!ctrl && !alt && !shift && !superKey) {
-    throw new Error(`Сочетание «${trimmed}» должно содержать модификатор (Ctrl, Alt, Shift или Win)`);
+    throw new Error(t("shortcutNeedsAModifierCtrlAltShiftOrWin", { p0: trimmed }));
   }
   if (!mainKey) {
-    throw new Error(`В сочетании «${trimmed}» не указана основная клавиша`);
+    throw new Error(t("shortcutHasNoMainKey", { p0: trimmed }));
   }
 
   const out: string[] = [];
@@ -221,4 +233,67 @@ export function toggleFullscreenAllowlist(allowlist: readonly string[], exe: str
   if (!target) return normalizeFullscreenAllowlist(allowlist);
   const filtered = normalizeFullscreenAllowlist(allowlist).filter((item) => item !== target);
   return allow ? [...filtered, target] : filtered;
+}
+
+/** Normalizes a user-entered executable name (trims path, lower-cases, ensures `.exe` suffix). */
+export function normalizeAutoHideExe(raw: string): string {
+  const trimmed = raw.trim().replace(/^["']+|["']+$/g, "").trim();
+  const base = (trimmed.split(/[\\/]/).pop() ?? "").trim().toLowerCase();
+  if (!base || base === ".exe") return "";
+  return base.endsWith(".exe") ? base : `${base}.exe`;
+}
+
+/** Normalizes an array of auto-hide exe names (trimmed, lower-case, deduplicated). */
+export function normalizeAutoHideApps(list: readonly string[]): string[] {
+  return normalizeFullscreenAllowlist(list);
+}
+
+/** Adds or removes `exe` (case-insensitively) from `autoHideApps`, returning a normalized lower-case list. */
+export function toggleAutoHideApp(autoHideApps: readonly string[], exe: string, hide: boolean): string[] {
+  return toggleFullscreenAllowlist(autoHideApps, exe, hide);
+}
+
+export interface AutoHideAppRow {
+  exe: string;
+  title: string;
+  enabled: boolean;
+}
+
+/**
+ * Builds the merged list of rows for the "Hide the island over apps" section from
+ * `settings.autoHideApps`, session-remembered exes, and recently seen maximized apps.
+ */
+export function buildAutoHideAppRows(
+  autoHideApps: readonly string[],
+  recentApps: readonly FullscreenApp[],
+  sessionExes: readonly string[] = [],
+  dismissedExes: readonly string[] = [],
+): AutoHideAppRow[] {
+  const activeSet = new Set(normalizeAutoHideApps(autoHideApps));
+  const dismissedSet = new Set(normalizeAutoHideApps(dismissedExes));
+  const titleByExe = new Map<string, string>();
+  for (const app of recentApps) {
+    const exe = app.exe.trim().toLowerCase();
+    if (exe && !titleByExe.has(exe) && app.title.trim()) {
+      titleByExe.set(exe, app.title.trim());
+    }
+  }
+
+  const orderedExes: string[] = [];
+  const pushExe = (raw: string, allowDismissed: boolean) => {
+    const exe = raw.trim().toLowerCase();
+    if (!exe || orderedExes.includes(exe)) return;
+    if (!allowDismissed && dismissedSet.has(exe) && !activeSet.has(exe)) return;
+    orderedExes.push(exe);
+  };
+
+  for (const exe of sessionExes) pushExe(exe, false);
+  for (const exe of autoHideApps) pushExe(exe, true);
+  for (const app of recentApps) pushExe(app.exe, false);
+
+  return orderedExes.map((exe) => ({
+    exe,
+    title: titleByExe.get(exe) || exe,
+    enabled: activeSet.has(exe),
+  }));
 }

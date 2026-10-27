@@ -1,8 +1,11 @@
+import { t, useT, localizeMessage } from "../../i18n";
 import { motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { IconBraces, IconCheck, IconCleanText, IconCopy, IconSwap, IconUndo, IconWarning, type IconProps } from "../../design/icons";
+import { IconBraces, IconCheck, IconCleanText, IconCopy, IconQr, IconSwap, IconUndo, IconWarning, type IconProps } from "../../design/icons";
 import { pressScale, springs } from "../../design/motion";
 import { copyText } from "../../lib/copy";
+import { generateQr, type GeneratedQr } from "../../lib/qr/generate";
+import { QrPanel } from "./QrPanel";
 import { pickPrefill } from "../../lib/text/prefill";
 import { formatStats, textStats } from "../../lib/text/stats";
 import { useTextStore } from "../../lib/text/store";
@@ -21,40 +24,41 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
-    label: "Раскладка",
+    get label() { return t("keyboardLayout"); },
     items: [
-      { id: "layout", label: "RU ⇄ EN", title: "Исправить текст, набранный в не той раскладке", Icon: IconSwap },
-      { id: "translit", label: "Транслит", title: "Кириллица → латиница" },
+      { id: "layout", label: "RU ⇄ EN", get title() { return t("fixTextTypedWithTheWrongKeyboardLayout"); }, Icon: IconSwap },
+      { id: "translit", get label() { return t("transliterate"); }, get title() { return t("cyrillicLatin"); } },
     ],
   },
   {
-    label: "Регистр",
+    get label() { return t("case"); },
     items: [
-      { id: "upper", label: "ВЕРХНИЙ" },
-      { id: "lower", label: "нижний" },
-      { id: "title", label: "Каждое Слово" },
-      { id: "sentence", label: "Как в предложении" },
+      { id: "upper", get label() { return t("uppercase"); } },
+      { id: "lower", get label() { return t("lowercase"); } },
+      { id: "title", get label() { return t("titleCase"); } },
+      { id: "sentence", get label() { return t("sentenceCase"); } },
     ],
   },
   {
-    label: "Пробелы",
+    get label() { return t("whitespace"); },
     items: [
-      { id: "trim", label: "Обрезать края", title: "Убрать пробелы в начале и конце строк" },
-      { id: "collapse", label: "Сжать пробелы", title: "Повторяющиеся пробелы и пустые строки → по одному", Icon: IconCleanText },
+      { id: "trim", get label() { return t("trimEdges"); }, get title() { return t("trimWhitespaceAtTheStartAndEndOfLines"); } },
+      { id: "collapse", get label() { return t("collapseWhitespace"); }, get title() { return t("reduceRepeatedSpacesAndBlankLinesToOne"); }, Icon: IconCleanText },
     ],
   },
   {
-    label: "Формат",
+    get label() { return t("format"); },
     items: [
-      { id: "jsonPretty", label: "JSON красиво", Icon: IconBraces },
-      { id: "jsonMin", label: "JSON в строку" },
-      { id: "b64enc", label: "В Base64" },
-      { id: "b64dec", label: "Из Base64" },
+      { id: "jsonPretty", get label() { return t("formatJson"); }, Icon: IconBraces },
+      { id: "jsonMin", get label() { return t("minifyJson"); } },
+      { id: "b64enc", get label() { return t("encodeBase64"); } },
+      { id: "b64dec", get label() { return t("decodeBase64"); } },
     ],
   },
 ];
 
 export function TextTab() {
+  useT();
   const text = useTextStore((s) => s.text);
   const error = useTextStore((s) => s.error);
   const last = useTextStore((s) => s.last);
@@ -64,6 +68,8 @@ export function TextTab() {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [qr,setQr] = useState<GeneratedQr | null>(null);
+  const [qrError,setQrError] = useState<string | null>(null);
 
   // Offer the fresh clipboard text once per session when the field is empty.
   useEffect(() => {
@@ -110,55 +116,60 @@ export function TextTab() {
     if (!text) return;
     const ok = await copyText(text);
     if (!ok) {
-      await requestShell({ type: "toast", text: "Не удалось скопировать" });
+      await requestShell({ type: "toast", get text() { return t("couldnTCopy"); } });
       return;
     }
-    await requestShell({ type: "toast", text: "Скопировано" });
+    await requestShell({ type: "toast", get text() { return t("copied"); } });
     setCopied(true);
     if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => setCopied(false), 1600);
   };
+  const onQr = () => {
+    const el = areaRef.current;
+    const start = el?.selectionStart ?? 0, end = el?.selectionEnd ?? 0;
+    try { setQr(generateQr(start !== end ? text.slice(start,end) : text)); setQrError(null); }
+    catch (error) { setQrError(error instanceof Error ? error.message : t("qr.tooLong",{limit:1800})); }
+  };
 
   return (
     <div className="tx-root">
-      <h2 className="mod-sr-only">Текст</h2>
+      <h2 className="mod-sr-only">{t("text")}</h2>
       <div className="ig-field mod-fill" data-invalid={error ? true : undefined}>
-        <textarea
+        {qr ? <QrPanel qr={qr} onClose={() => {setQr(null); requestAnimationFrame(() => areaRef.current?.focus());}} /> : <textarea
           ref={areaRef}
           className="ig-textarea ig-textarea--mono"
           value={text}
           spellCheck={false}
-          placeholder="Вставьте или наберите текст — затем выберите преобразование справа"
-          aria-label="Текст для преобразования"
+          placeholder={t("pasteOrTypeTextThenChooseAToolOnTheRight")}
+          aria-label={t("textToTransform")}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "tx-error" : undefined}
-          onChange={(e) => edit(e.target.value)}
-        />
-        {error && (
+          onChange={(e) => {edit(e.target.value);setQrError(null);}}
+        />}
+        {(error || qrError) && !qr && (
           <div className="tx-banner-wrap">
             <div id="tx-error" className="ig-banner ig-banner--danger" role="alert">
               <IconWarning size={16} />
-              <span>{error}</span>
+              <span>{localizeMessage(qrError ?? error ?? "")}</span>
             </div>
           </div>
         )}
-        <div className="ig-field-bar ig-field-bar--footer">
+        {!qr && <div className="ig-field-bar ig-field-bar--footer">
           <span className="ig-num mod-caption tx-stats" aria-live="off">
             {formatStats(stats)}
           </span>
           <span className="ig-field-bar__spacer" />
           <motion.button type="button" className="ig-glass-control ig-glass-control--sm ig-glass-control--ghost" {...tap} disabled={!canUndo} onClick={undo}>
             <IconUndo size={16} />
-            Отменить
-          </motion.button>
+            {t("undo")}</motion.button>
           <motion.button type="button" className="ig-glass-control ig-glass-control--sm ig-glass-control--accent" {...tap} disabled={empty} onClick={() => void onCopy()}>
             {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-            {copied ? "Скопировано" : "Копировать"}
+            {copied ? t("copied") : t("copy")}
           </motion.button>
-        </div>
+        </div>}
       </div>
 
-      <section className="tx-transforms" aria-label="Преобразования">
+      <section className="tx-transforms" aria-label={t("textTools")}>
         {GROUPS.map((g) => (
           <div key={g.label} className="tx-group">
             <h4 className="ig-section-label mod-label-flush">{g.label}</h4>
@@ -181,6 +192,7 @@ export function TextTab() {
             </div>
           </div>
         ))}
+        <button type="button" className="ig-glass-control ig-glass-control--sm tx-transform" disabled={empty} onClick={onQr}><IconQr size={16} />{t("qrCode")}</button>
       </section>
     </div>
   );

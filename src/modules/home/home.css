@@ -8,13 +8,13 @@
   height: 100%;
 }
 .hm-home:has(.hm-tools) {
-  grid-template-columns: 328px 1fr;
-  grid-template-rows: 1fr var(--ig-dock-height);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--ig-dock-height);
 }
 @supports not selector(:has(*)) {
   .hm-home.hm-home--with-tools {
-    grid-template-columns: 328px 1fr;
-    grid-template-rows: 1fr var(--ig-dock-height);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--ig-dock-height);
   }
 }
 .hm-left {
@@ -213,22 +213,25 @@
 /* Tools + dock (placeholders) */
 .hm-tools {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(3, 1fr);
   gap: var(--ig-space-2);
   min-height: 0;
 }
+.hm-tools > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .hm-tools .ig-glass-control--tile {
   min-height: 0;
   height: 100%;
   border-radius: var(--ig-radius-lg);
 }
 .hm-dock {
+  position: relative;
+  min-width: 0;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: var(--ig-space-2);
-  padding: 0 10px;
+  padding: 0 var(--ig-space-2-5);
 }
 .hm-dock-app {
   border-radius: var(--ig-radius-md);
@@ -244,8 +247,20 @@
   outline-offset: -1.5px;
 }
 .hm-dock-hint {
-  margin-left: auto;
-  padding-right: 6px;
+  flex: 1;
+  padding-right: var(--ig-space-1-5);
   font-size: var(--ig-text-xs);
   color: var(--ig-text-tertiary);
 }
+.hm-dock-entry { position:relative; flex:none; touch-action:none; }
+.hm-dock-app { touch-action:none; }
+.hm-dock-entry[data-reordering="true"] > .hm-dock-app { opacity:0.5; }
+.hm-dock-entry[data-drop-target="true"] > .hm-dock-app { outline:var(--ig-space-0-5) solid var(--ig-accent); }
+.hm-dock-app img { width:var(--ig-space-6); height:var(--ig-space-6); object-fit:contain; pointer-events:none; }
+.hm-dock-entry > .hm-dock-remove { position:absolute; right:0; top:0; width:var(--ig-space-4); height:var(--ig-space-4); min-width:0; min-height:0; border-radius:var(--ig-radius-pill); opacity:0; padding:0; background:var(--ig-surface); }
+.hm-dock-entry:hover .hm-dock-remove,.hm-dock-entry:focus-within .hm-dock-remove {opacity:1;}
+.ig-glass-card.hm-dock-menu { position:absolute; z-index:4; display:flex; flex-direction:column; gap:var(--ig-space-1); padding:var(--ig-space-1); width:max-content; max-width:100%; border-radius:var(--ig-radius-md); }
+.hm-dock-menu-item { justify-content:flex-start; gap:var(--ig-space-2); }
+.hm-dock-menu-item span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hm-dock[data-dragging="true"] { outline:var(--ig-space-0-5) solid var(--ig-accent); background:var(--ig-accent-soft); }
+.hm-dock-drop-label { position:absolute; inset:0; display:grid; place-items:center; background:var(--ig-surface); border-radius:inherit; color:var(--ig-accent-text); pointer-events:none; }

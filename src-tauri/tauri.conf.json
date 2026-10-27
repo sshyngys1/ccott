@@ -17,6 +17,7 @@
         "width": 800,
         "height": 520,
         "resizable": false,
+        "dragDropEnabled": true,
         "maximizable": false,
         "minimizable": false,
         "decorations": false,
@@ -26,7 +27,7 @@
         "skipTaskbar": true,
         "focus": false,
         "focusable": false,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {

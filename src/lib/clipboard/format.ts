@@ -1,18 +1,18 @@
+import { t, countText } from "../../i18n";
 // Presentation helpers for clipboard rows (spec §6.4). Pure.
 import type { ClipItem } from "../../shared/types";
 import { formatRelativeTime } from "../time/format";
-import { plural } from "../text/plural";
 
 const APP_NAMES: Record<string, string> = {
-  explorer: "Проводник",
+  get explorer() { return t("fileExplorer"); },
   chrome: "Chrome",
   msedge: "Edge",
   firefox: "Firefox",
-  windowsterminal: "Терминал",
+  get windowsterminal() { return t("terminal"); },
   code: "VS Code",
-  notepad: "Блокнот",
-  snippingtool: "Ножницы",
-  screenclippinghost: "Ножницы",
+  get notepad() { return t("notepad"); },
+  get snippingtool() { return t("snippingTool"); },
+  get screenclippinghost() { return t("snippingTool"); },
   winword: "Word",
   excel: "Excel",
   powerpnt: "PowerPoint",
@@ -31,10 +31,10 @@ const SCREENSHOT_APPS = new Set(["snippingtool", "screenclippinghost", "sharex",
 /** Row title: the preview collapsed to a single line; images get a generic caption. */
 export function clipTitle(item: ClipItem): string {
   if (item.kind === "image") {
-    return SCREENSHOT_APPS.has(item.sourceApp.replace(/\.exe$/i, "").toLowerCase()) ? "Снимок экрана" : "Изображение";
+    return SCREENSHOT_APPS.has(item.sourceApp.replace(/\.exe$/i, "").toLowerCase()) ? t("screenshot") : t("image");
   }
   const line = item.preview.replace(/\s+/g, " ").trim();
-  return line || (item.kind === "files" ? "Файлы" : "Пустая запись");
+  return line || (item.kind === "files" ? t("files") : t("emptyEntry"));
 }
 
 /** Number of files in a `files` item (`text` is newline-joined paths). */
@@ -47,7 +47,7 @@ export function clipMeta(item: ClipItem, now: number): string {
   const parts: string[] = [];
   if (item.kind === "files") {
     const n = fileCount(item);
-    if (n > 0) parts.push(`${n} ${plural(n, ["файл", "файла", "файлов"])}`);
+    if (n > 0) parts.push(countText(n, "files"));
   }
   const app = appLabel(item.sourceApp);
   if (app) parts.push(app);

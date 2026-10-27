@@ -1,3 +1,6 @@
+import { t, useT, localizeMessage } from "../i18n";
+import { useDockStore } from "../lib/dock/store";
+import { useDockDrop } from "./useDockDrop";
 // Owner: F1 (Frontend-Shell). One element morphs between the resting pill and the expanded panel (spec §15).
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, type FocusEvent, type KeyboardEvent } from "react";
@@ -8,7 +11,7 @@ import { usePointerLight } from "../design/usePointerLight";
 import { registerHoverTarget } from "../ipc";
 import { modules as registry } from "../modules/registry";
 import type { IslandModule } from "../shared/types";
-import { useIslandStore } from "../store";
+import { useIslandStore, type PillToast as PillToastState } from "../store";
 import { useHoverSync } from "../store/useHoverSync";
 import { formatDate, useClock } from "./clock";
 import { useActiveCompact } from "./compact";
@@ -31,29 +34,37 @@ const pillLayer = {
 };
 
 function PillIdle() {
+  useT();
   const time = useClock();
   return (
     <div className="ig-pill-row ig-pill-row--idle">
-      <time className="ig-pill-time ig-num" aria-label="Текущее время">
+      <time className="ig-pill-time ig-num" aria-label={t("currentTime")}>
         {time}
       </time>
     </div>
   );
 }
 
-function PillToast({ label, preview }: { label: string; preview: string }) {
+export function PillToast({ label, preview, previewKey, onClick, actionLabel, color }: Pick<PillToastState, "label" | "preview" | "previewKey" | "onClick" | "actionLabel" | "color">) {
+  useT();
+  const wholeAction = onClick && !actionLabel;
+  const Tag = wholeAction ? "button" : "div";
   return (
-    <div className="ig-pill-row" role="status">
-      <span className="ig-pill-badge" aria-hidden="true">
+    <div className="ig-pill-feedback" role="status">
+    <Tag className={wholeAction ? "ig-pill-row ig-pill-action" : "ig-pill-row"} onClick={wholeAction ? onClick : undefined} title={wholeAction ? t("capture.openFolder") : undefined}>
+      {color && /^#[\da-f]{6}$/i.test(color) ? <span className="ig-pill-color" style={{backgroundColor:color}} aria-hidden="true" /> : <span className="ig-pill-badge" aria-hidden="true">
         <IconCheck size={14} />
-      </span>
-      <span className={preview ? "ig-pill-label" : "ig-pill-label ig-pill-label--solo ig-truncate"}>{label}</span>
-      {preview && <span className="ig-pill-preview ig-truncate">{preview}</span>}
+      </span>}
+      <span className={preview ? "ig-pill-label" : "ig-pill-label ig-pill-label--solo ig-truncate"}>{localizeMessage(label)}</span>
+      {preview && <span className="ig-pill-preview ig-truncate">{previewKey ? t(previewKey) : preview}</span>}
+      {onClick && actionLabel && <button type="button" className="ig-glass-control ig-glass-control--sm" onClick={onClick}>{localizeMessage(actionLabel)}</button>}
+    </Tag>
     </div>
   );
 }
 
 function HeadClock() {
+  useT();
   const time = useClock();
   return (
     <span className="ig-head-clock">
@@ -78,6 +89,7 @@ interface IslandProps {
 }
 
 export function Island({ modules = registry }: IslandProps) {
+  useT();
   const ref = useRef<HTMLDivElement>(null);
   const mode = useIslandStore((s) => s.mode);
   const hoverInside = useIslandStore((s) => s.hoverInside);
@@ -100,6 +112,7 @@ export function Island({ modules = registry }: IslandProps) {
   const controls = useHoverSync();
   const keyboard = useKeyboardFocus(ref);
   useShellBus(controls, keyboard.release, modules);
+  useDockDrop(controls);
 
   // Hover source: Tauri → Rust cursor poller (no-op here); browser → mock pointerenter/pointerleave on this element.
   useEffect(() => registerHoverTarget(ref.current), []);
@@ -153,6 +166,8 @@ export function Island({ modules = registry }: IslandProps) {
   // Focus leaving it for the outside collapses it again — unless the cursor is
   // still over the island (then the hover machine owns the collapse, so the two never fight).
   const onBlur = (e: FocusEvent<HTMLDivElement>) => {
+    const dock=useDockStore.getState();
+    if(dock.dragging||dock.interacting)return;
     const next = e.relatedTarget;
     if (next instanceof Node && e.currentTarget.contains(next)) return;
     if (useIslandStore.getState().hoverInside) return;
@@ -207,15 +222,15 @@ export function Island({ modules = registry }: IslandProps) {
                         <motion.button
                           type="button"
                           className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost"
-                          aria-label="Назад"
-                          title="Назад (Esc)"
+                          aria-label={t("back")}
+                          title={t("backEsc")}
                           whileTap={{ scale: pressScale }}
                           transition={springs.press}
                           onClick={() => setView("tabs")}
                         >
                           <IconBack />
                         </motion.button>
-                        <h2 className="ig-view-title">Настройки</h2>
+                        <h2 className="ig-view-title">{t("settings")}</h2>
                       </motion.div>
                     ) : (
                       <motion.div
@@ -234,8 +249,8 @@ export function Island({ modules = registry }: IslandProps) {
                     <motion.button
                       type="button"
                       className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost"
-                      aria-label="Настройки"
-                      title="Настройки"
+                      aria-label={t("settings")}
+                      title={t("settings")}
                       aria-pressed={settingsOpen}
                       whileTap={{ scale: pressScale }}
                       transition={springs.press}
@@ -246,8 +261,8 @@ export function Island({ modules = registry }: IslandProps) {
                     <motion.button
                       type="button"
                       className="ig-glass-control ig-glass-control--icon"
-                      aria-label="Свернуть"
-                      title="Свернуть (Esc)"
+                      aria-label={t("collapse")}
+                      title={t("collapseEsc")}
                       whileTap={{ scale: pressScale }}
                       transition={springs.press}
                       onClick={controls.collapseNow}
@@ -259,7 +274,7 @@ export function Island({ modules = registry }: IslandProps) {
                 <div
                   className="ig-panel-body"
                   role={settingsOpen ? "region" : "tabpanel"}
-                  aria-label={settingsOpen ? "Настройки" : undefined}
+                  aria-label={settingsOpen ? t("settings") : undefined}
                   id={!settingsOpen && activeModule ? tabPanelId(activeModule.id) : undefined}
                   aria-labelledby={!settingsOpen && activeModule ? tabId(activeModule.id) : undefined}
                   tabIndex={settingsOpen ? undefined : 0}
@@ -305,7 +320,7 @@ export function Island({ modules = registry }: IslandProps) {
               exit="exit"
             >
               {pillState === "toast" && toast ? (
-                <PillToast label={toast.label} preview={toast.preview} />
+                <PillToast {...toast} />
               ) : CompactView ? (
                 <CompactView />
               ) : (

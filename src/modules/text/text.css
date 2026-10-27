@@ -34,3 +34,6 @@
   justify-content: flex-start;
   min-width: 0;
 }
+.tx-qr { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--ig-space-3); padding:var(--ig-space-3); }
+.tx-qr-image { min-height:0; max-width:100%; max-height:calc(var(--ig-control-height) * 6); aspect-ratio:1; object-fit:contain; image-rendering:pixelated; }
+.tx-qr-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:var(--ig-space-2); }

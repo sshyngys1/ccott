@@ -160,6 +160,20 @@ fn reposition_inner(window: &WebviewWindow, state: &IslandState) -> Result<bool,
         &geometry_of(&monitor),
         (ISLAND_WINDOW_WIDTH, ISLAND_WINDOW_HEIGHT),
     );
+    // Debug-only separation from an installed CCOTT during native drag/drop tests.
+    // Repositioning keeps using the same origin, so hover and WebView coordinates stay aligned.
+    #[cfg(debug_assertions)]
+    let want = {
+        let mut want = want;
+        if let Ok(origin) = std::env::var("ISLAND_TEST_ORIGIN")
+            && let Some((x, y)) = origin.split_once(',')
+            && let (Ok(x), Ok(y)) = (x.parse::<i32>(), y.parse::<i32>())
+        {
+            want.x = x;
+            want.y = y;
+        }
+        want
+    };
 
     let pos = window.outer_position().map_err(|e| e.to_string())?;
     let size = window.outer_size().map_err(|e| e.to_string())?;

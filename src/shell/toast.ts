@@ -1,6 +1,7 @@
+import { t } from "../i18n";
 // Owner: F1. Pill toasts: the one place that applies «Не беспокоить» and hands the store a fresh toast.
 import type { UpdateInfo } from "../shared/types";
-import { useIslandStore } from "../store";
+import { useIslandStore, type PillToast } from "../store";
 
 let seq = 0;
 
@@ -15,10 +16,10 @@ export function clipboardToastPreview(text: string, preview: string = text): str
 }
 
 /** Shows a toast in the pill (the hold timer lives in `useToastSync`). Suppressed by doNotDisturb. */
-export function showToast(toast: { label: string; preview?: string }): void {
+export function showToast(toast: { label: string; preview?: string; previewKey?: PillToast["previewKey"]; onClick?: () => void; actionLabel?: string; color?: string }): void {
   const store = useIslandStore.getState();
   if (store.doNotDisturb) return;
-  store.setToast({ id: ++seq, label: toast.label, preview: toast.preview ?? "" });
+  store.setToast({ id: ++seq, label: toast.label, preview: toast.preview ?? "", ...(toast.previewKey ? { previewKey: toast.previewKey } : {}), ...(toast.onClick ? { onClick:toast.onClick } : {}), ...(toast.actionLabel ? {actionLabel:toast.actionLabel} : {}), ...(toast.color ? {color:toast.color} : {}) });
 }
 
 /** Records an available update in the store and shows a one-time «Доступно обновление» toast per version. */
@@ -28,5 +29,5 @@ export function announceUpdate(info: UpdateInfo | null): void {
   if (!info) return;
   if (store.updateToastShownFor === info.version) return;
   store.markUpdateToastShown(info.version);
-  showToast({ label: "Доступно обновление", preview: info.version });
+  showToast({ get label() { return t("updateAvailable"); }, preview: info.version });
 }

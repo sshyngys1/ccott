@@ -64,6 +64,9 @@ export interface MonitorInfo {
 
 export type ThemeMode = "auto" | "light" | "dark";
 
+/** UI language (v0.2). "auto" = Windows display language: Russian → "ru", anything else → "en". */
+export type LanguageMode = "auto" | "ru" | "en";
+
 export interface Settings {
   theme: ThemeMode;
   vibrancy: VibrancyMode;
@@ -82,6 +85,11 @@ export interface Settings {
   summonHotkey: string;
   /** Lower-case exe names (e.g. "chrome.exe") where the island stays visible over fullscreen. Default []. */
   fullscreenAllowlist: string[];
+  /** v0.2: lower-case exe names; while such an app is the maximized foreground window, the pill hides itself
+   *  (shown again by the summon hotkey or a ~400 ms cursor dwell at the top edge). Default: common browsers. */
+  autoHideApps: string[];
+  /** UI and tray language. Default "auto". */
+  language: LanguageMode;
 }
 
 /** A fullscreen app R1 has seen recently (for the allowlist UI). */
@@ -175,6 +183,49 @@ export interface Note {
   updatedAt: number;
 }
 
+// ───────────────────────────── Capture (v0.2, R2 + R1) ─────────────────────────────
+
+/** "region" = user drags a rectangle on a frozen screen overlay; "screen" = the whole monitor under the cursor. */
+export type CaptureMode = "region" | "screen";
+/** "copy" = PNG to the clipboard; "save" = PNG file in the screenshots folder (and to the clipboard); "ocr" = recognized text to the clipboard. */
+export type CaptureAction = "copy" | "save" | "ocr" | "qr";
+
+export interface CaptureResult {
+  action: CaptureAction;
+  /** Captured size in physical pixels. */
+  width: number;
+  height: number;
+  /** Saved file path for "save", else null. */
+  path: string | null;
+  /** Recognized text for "ocr" / decoded QR payload for "qr" ("" if nothing was found), else null. */
+  text: string | null;
+}
+
+/** A color picked from the screen (v0.2). */
+export interface PickedColor {
+  /** "#RRGGBB", upper-case. */
+  hex: string;
+  r: number;
+  g: number;
+  b: number;
+}
+
+// ───────────────────────────── Dock (v0.2, R2) ─────────────────────────────
+
+export type DockKind = "app" | "folder" | "file";
+
+export interface DockItem {
+  /** Stable id (R2-generated). */
+  id: string;
+  /** Absolute path as dropped (.exe, .lnk, folder or file). Opened with the shell default action. */
+  path: string;
+  /** Display name: shortcut / file name without extension, folder name. */
+  name: string;
+  kind: DockKind;
+  /** 64×64 PNG icon as a data: URL ("" if Windows gave none). */
+  icon: string;
+}
+
 // ───────────────────────────── Command & event registry ─────────────────────────────
 
 /**
@@ -195,6 +246,8 @@ export interface Commands {
   settings_set: [{ patch: Partial<Settings> }, Settings];
   /** Recently seen fullscreen apps, newest first (≤ 20, persisted by R1). */
   window_recent_fullscreen_apps: [Record<string, never>, FullscreenApp[]];
+  /** v0.2: recently seen maximized foreground apps, newest first (for the auto-hide list, §14). */
+  window_recent_maximized_apps: [Record<string, never>, FullscreenApp[]];
   // updater (R1, v0.1)
   updater_check: [Record<string, never>, UpdateInfo | null];
   updater_install: [Record<string, never>, void];
@@ -217,6 +270,24 @@ export interface Commands {
   notes_list: [Record<string, never>, Note[]];
   notes_save: [{ note: Omit<Note, "id" | "updatedAt"> & { id: number | null } }, Note];
   notes_delete: [{ id: number }, void];
+  // capture (v0.2). Resolves when done; null = cancelled (Esc / right click). Rejects with a user-facing reason
+  // (e.g. OCR language pack missing). The island hides itself for the duration of the capture.
+  capture_start: [{ mode: CaptureMode; action: CaptureAction }, CaptureResult | null];
+  /** Folder for "save" captures (default: Pictures\Screenshots\CCOTT, created on demand). */
+  capture_open_folder: [Record<string, never>, void];
+  /** v0.2: frozen-screen overlay with a magnifier; click picks the pixel, HEX goes to the clipboard. null = cancelled. */
+  capture_pick_color: [Record<string, never>, PickedColor | null];
+  // dock (R2, v0.2). Order of the returned list = display order.
+  dock_list: [Record<string, never>, DockItem[]];
+  /** Adds paths in order (duplicates by path are ignored, max 12 items); returns the new list. */
+  dock_add: [{ paths: string[] }, DockItem[]];
+  dock_remove: [{ id: string }, DockItem[]];
+  /** `ids` = full new order. */
+  dock_reorder: [{ ids: string[] }, DockItem[]];
+  /** Opens the item with the shell default action; rejects with a user-facing reason if the path is gone. */
+  dock_open: [{ id: string }, void];
+  /** Starts a native copy drag of the item's file/folder (drag-out of the dock). Rejects if the path is gone. */
+  dock_start_drag: [{ id: string }, void];
 }
 
 export type CommandName = keyof Commands;
@@ -238,6 +309,8 @@ export interface Events {
   "audio://changed": AudioState;
   "clipboard://added": ClipItem;
   "clipboard://changed": null;
+  /** R2: the dock list changed (any window/source). */
+  "dock://changed": DockItem[];
 }
 
 export type EventName = keyof Events;

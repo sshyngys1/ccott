@@ -1,4 +1,5 @@
-// JSON pretty / minify with precise Russian error messages.
+import { t } from "../../i18n";
+// JSON pretty / minify with precise localized error messages.
 //
 // A small strict RFC 8259 parser is used instead of JSON.parse + JSON.stringify for two reasons:
 //  1. engine error messages differ between V8 versions and have no stable line/column;
@@ -31,7 +32,7 @@ class Parser {
     this.ws();
     const node = this.value(0);
     this.ws();
-    if (this.i < this.s.length) throw new JsonSyntaxError(this.i, "лишний текст после JSON");
+    if (this.i < this.s.length) throw new JsonSyntaxError(this.i, t("extraTextAfterJson"));
     return node;
   }
 
@@ -40,12 +41,12 @@ class Parser {
   }
 
   private unexpected(): JsonSyntaxError {
-    if (this.i >= this.s.length) return new JsonSyntaxError(this.i, "неожиданный конец текста");
-    return new JsonSyntaxError(this.i, `неожиданный символ «${this.s[this.i]}»`);
+    if (this.i >= this.s.length) return new JsonSyntaxError(this.i, t("unexpectedEndOfText"));
+    return new JsonSyntaxError(this.i, t("unexpectedCharacter", { p0: this.s[this.i] }));
   }
 
   private value(depth: number): Node {
-    if (depth > MAX_DEPTH) throw new JsonSyntaxError(this.i, "слишком глубокая вложенность");
+    if (depth > MAX_DEPTH) throw new JsonSyntaxError(this.i, t("nestingIsTooDeep"));
     const c = this.s[this.i];
     if (c === "{") return this.object(depth);
     if (c === "[") return this.array(depth);
@@ -57,8 +58,8 @@ class Parser {
         return { t: "lit", raw: word };
       }
     }
-    if (this.i >= this.s.length) throw new JsonSyntaxError(this.i, "неожиданный конец текста, ожидалось значение");
-    if (c === "}" || c === "]" || c === ",") throw new JsonSyntaxError(this.i, `ожидалось значение, найдено «${c}»`);
+    if (this.i >= this.s.length) throw new JsonSyntaxError(this.i, t("unexpectedEndOfTextExpectedAValue"));
+    if (c === "}" || c === "]" || c === ",") throw new JsonSyntaxError(this.i, t("expectedAValueFound", { p0: c }));
     throw this.unexpected();
   }
 
@@ -74,11 +75,11 @@ class Parser {
       this.ws();
       if (this.s[this.i] !== '"') {
         if (this.i >= this.s.length) throw this.unexpected();
-        throw new JsonSyntaxError(this.i, "ожидалось имя свойства в двойных кавычках");
+        throw new JsonSyntaxError(this.i, t("expectedADoubleQuotedPropertyName"));
       }
       const key = this.string();
       this.ws();
-      if (this.s[this.i] !== ":") throw new JsonSyntaxError(this.i, this.i >= this.s.length ? "неожиданный конец текста, ожидалось «:»" : "ожидалось «:»");
+      if (this.s[this.i] !== ":") throw new JsonSyntaxError(this.i, this.i >= this.s.length ? t("unexpectedEndOfTextExpected") : t("expected"));
       this.i++;
       this.ws();
       entries.push([key, this.value(depth + 1)]);
@@ -92,7 +93,7 @@ class Parser {
         this.i++;
         return { t: "obj", entries };
       }
-      throw new JsonSyntaxError(this.i, this.i >= this.s.length ? "неожиданный конец текста, ожидалась «,» или «}»" : "ожидалась «,» или «}»");
+      throw new JsonSyntaxError(this.i, this.i >= this.s.length ? t("unexpectedEndOfTextExpectedOr") : t("expectedOr"));
     }
   }
 
@@ -117,7 +118,7 @@ class Parser {
         this.i++;
         return { t: "arr", items };
       }
-      throw new JsonSyntaxError(this.i, this.i >= this.s.length ? "неожиданный конец текста, ожидалась «,» или «]»" : "ожидалась «,» или «]»");
+      throw new JsonSyntaxError(this.i, this.i >= this.s.length ? t("unexpectedEndOfTextExpectedOrAlt") : t("expectedOrAlt"));
     }
   }
 
@@ -125,22 +126,22 @@ class Parser {
     const start = this.i;
     this.i++; // opening quote
     for (;;) {
-      if (this.i >= this.s.length) throw new JsonSyntaxError(start, "строка не закрыта");
+      if (this.i >= this.s.length) throw new JsonSyntaxError(start, t("unterminatedString"));
       const c = this.s[this.i];
       if (c === '"') {
         this.i++;
         return this.s.slice(start, this.i);
       }
-      if (c < " ") throw new JsonSyntaxError(this.i, "недопустимый управляющий символ в строке (перенос строки нужно записывать как \\n)");
+      if (c < " ") throw new JsonSyntaxError(this.i, t("invalidControlCharacterInAStringUseNForALineBreak"));
       if (c === "\\") {
         const e = this.s[this.i + 1];
         if (e === "u") {
-          if (!/^[0-9a-fA-F]{4}$/.test(this.s.slice(this.i + 2, this.i + 6))) throw new JsonSyntaxError(this.i, "после \\u ожидались 4 шестнадцатеричные цифры");
+          if (!/^[0-9a-fA-F]{4}$/.test(this.s.slice(this.i + 2, this.i + 6))) throw new JsonSyntaxError(this.i, t("expectedFourHexadecimalDigitsAfterU"));
           this.i += 6;
         } else if (e !== undefined && '"\\/bfnrt'.includes(e)) {
           this.i += 2;
         } else {
-          throw new JsonSyntaxError(this.i, "недопустимая escape-последовательность");
+          throw new JsonSyntaxError(this.i, t("invalidEscapeSequence"));
         }
         continue;
       }
@@ -150,7 +151,7 @@ class Parser {
 
   private number(): string {
     const m = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(this.s.slice(this.i, this.i + 400));
-    if (!m) throw new JsonSyntaxError(this.i, "некорректное число");
+    if (!m) throw new JsonSyntaxError(this.i, t("invalidNumber"));
     this.i += m[0].length;
     return m[0];
   }
@@ -183,16 +184,16 @@ export function lineColumn(text: string, pos: number): { line: number; column: n
 }
 
 function run(text: string, indent: string): JsonResult {
-  if (!text.trim()) return { ok: false, error: "Неверный JSON: пустой текст" };
+  if (!text.trim()) return { ok: false, get error() { return t("invalidJsonTextIsEmpty"); } };
   try {
     const node = new Parser(text).parse();
     return { ok: true, value: serialize(node, indent, 0) };
   } catch (e) {
     if (e instanceof JsonSyntaxError) {
       const { line, column } = lineColumn(text, e.pos);
-      return { ok: false, error: `Неверный JSON: строка ${line}, символ ${column} — ${e.reason}` };
+      return { ok: false, error: t("invalidJsonLineColumn", { p0: line, p1: column, p2: e.reason }) };
     }
-    return { ok: false, error: "Неверный JSON: слишком сложная структура" };
+    return { ok: false, get error() { return t("invalidJsonStructureIsTooComplex"); } };
   }
 }
 

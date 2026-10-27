@@ -1,3 +1,4 @@
+import { t, useT } from "../../i18n";
 import { motion } from "motion/react";
 import { useState, type CSSProperties } from "react";
 import { IconMusic, IconNext, IconPause, IconPlay, IconPrevious } from "../../design/icons";
@@ -9,6 +10,7 @@ import { formatTrackTime } from "../../lib/time/format";
 const tap = { whileTap: { scale: pressScale }, transition: springs.press } as const;
 
 export function PlayerCard() {
+  useT();
   const media = useMedia();
   const positionMs = useMediaPosition();
   const { playPause, next, previous, seek } = useMediaStore.getState();
@@ -28,17 +30,17 @@ export function PlayerCard() {
   };
 
   return (
-    <section className="ig-glass-card hm-player" aria-label="Мини-плеер">
+    <section className="ig-glass-card hm-player" aria-label={t("miniPlayer")}>
       <div className="hm-player-top">
         <span className="ig-art hm-art-shadow" aria-hidden="true">
           {has && media.artwork ? <img src={media.artwork} alt="" draggable={false} /> : <IconMusic size={32} />}
         </span>
         <div className="hm-meta">
-          <span className="mod-caption ig-truncate hm-source" title={has ? sourceAppLabel(media.sourceApp) : undefined}>{has ? `Сейчас играет · ${sourceAppLabel(media.sourceApp) || "плеер"}` : "Плеер"}</span>
+          <span className="mod-caption ig-truncate hm-source" title={has ? sourceAppLabel(media.sourceApp) : undefined}>{has ? t("nowPlaying", { p0: sourceAppLabel(media.sourceApp) || t("player") }) : t("playerAlt")}</span>
           <span className="hm-track ig-truncate" title={has ? media.title : undefined}>
-            {has ? media.title || "Без названия" : "Ничего не играет"}
+            {has ? media.title || t("untitled") : t("nothingPlaying")}
           </span>
-          <span className="hm-artist ig-truncate">{has ? media.artist || media.album : "Запустите любой плеер"}</span>
+          <span className="hm-artist ig-truncate">{has ? media.artist || media.album : t("openAMediaPlayer")}</span>
           <div className="hm-controls">
             <motion.button
               type="button"
@@ -46,7 +48,7 @@ export function PlayerCard() {
               {...tap}
               disabled={!has || !media.canPrevious}
               onClick={() => void previous()}
-              aria-label="Предыдущий трек"
+              aria-label={t("previousTrack")}
             >
               <IconPrevious size={18} />
             </motion.button>
@@ -56,7 +58,7 @@ export function PlayerCard() {
               {...tap}
               disabled={!has || !media.canPlayPause}
               onClick={() => void playPause()}
-              aria-label={playing ? "Пауза" : "Воспроизвести"}
+              aria-label={playing ? t("pause") : t("play")}
             >
               {playing ? <IconPause size={18} /> : <IconPlay size={18} />}
             </motion.button>
@@ -66,7 +68,7 @@ export function PlayerCard() {
               {...tap}
               disabled={!has || !media.canNext}
               onClick={() => void next()}
-              aria-label="Следующий трек"
+              aria-label={t("nextTrack")}
             >
               <IconNext size={18} />
             </motion.button>
@@ -89,8 +91,8 @@ export function PlayerCard() {
           onKeyUp={commit}
           onBlur={commit}
           style={{ "--ig-value": `${percent}%` } as CSSProperties}
-          aria-label="Позиция трека"
-          aria-valuetext={knownDuration ? `${formatTrackTime(shown)} из ${formatTrackTime(media.durationMs)}` : undefined}
+          aria-label={t("trackPosition")}
+          aria-valuetext={knownDuration ? t("of", { p0: formatTrackTime(shown), p1: formatTrackTime(media.durationMs) }) : undefined}
         />
         <span className="hm-time ig-num">{knownDuration ? formatTrackTime(media.durationMs) : "–:––"}</span>
       </div>

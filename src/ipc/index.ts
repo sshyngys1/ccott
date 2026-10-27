@@ -2,7 +2,7 @@
 // Tauri runtime → @tauri-apps/api; plain browser (npm run dev, vitest) → ./mock.
 // The mock is loaded with a dynamic import() only on the no-Tauri branch, so Vite splits it into its own chunk and the
 // production bundle that runs inside Tauri never downloads or parses it.
-import type { CommandArgs, CommandName, CommandResult, EventName, Events } from "../shared/types";
+import type { CommandArgs, CommandName, CommandResult, EventName, Events, FullscreenApp } from "../shared/types";
 import { version as packageVersion } from "../../package.json";
 
 export type Unlisten = () => void;
@@ -37,6 +37,11 @@ export async function invoke<C extends CommandName>(cmd: C, ...args: InvokeArgs<
     return tauriInvoke<CommandResult<C>>(cmd, payload as Record<string, unknown> | undefined);
   }
   return (await loadMock()).mockInvoke(cmd, payload);
+}
+
+/** Recently seen maximized apps (auto-hide list in settings). */
+export function invokeRecentMaximizedApps(): Promise<FullscreenApp[]> {
+  return invoke("window_recent_maximized_apps");
 }
 
 export async function listen<E extends EventName>(event: E, cb: (payload: Events[E]) => void): Promise<Unlisten> {

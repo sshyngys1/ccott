@@ -23,6 +23,14 @@ use win::{Captured, Content, Raw};
 /// Encoded PNGs above this size are not stored.
 const MAX_PNG_BYTES: usize = 20 * 1024 * 1024;
 
+/// New captures must go through the normal clipboard listener, unlike history re-pastes.
+pub(crate) fn copy_capture(png: Vec<u8>) -> Result<(), String> {
+    win::write_capture(&Content::Image(png))
+}
+pub(crate) fn copy_ocr(text: String) -> Result<(), String> {
+    win::write_capture(&Content::Text(text))
+}
+
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum PasteMode {

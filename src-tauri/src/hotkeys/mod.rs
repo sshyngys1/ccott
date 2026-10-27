@@ -16,6 +16,102 @@ pub const DEFAULT_SUMMON_HOTKEY: &str = "Ctrl+Alt+I";
 #[derive(Default)]
 pub struct HotkeyState {
     registered: Mutex<Option<Shortcut>>,
+    escape: Mutex<EscapeShortcutState>,
+}
+
+pub fn escape_shortcut() -> Shortcut {
+    Shortcut::new(None, Code::Escape)
+}
+
+/// Pure state machine for the temporary global `Escape` shortcut (contract §14).
+///
+/// While the island is expanded via `summonHotkey` (`summoned_open`) and does not hold native
+/// keyboard focus (`!keyboard_focus`), `Escape` is registered globally so the user can dismiss
+/// the non-activating island without stealing focus from the foreground app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EscapeShortcutState {
+    summoned_open: bool,
+    keyboard_focus: bool,
+    registered: bool,
+}
+
+impl Default for EscapeShortcutState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EscapeShortcutState {
+    pub const fn new() -> Self {
+        Self {
+            summoned_open: false,
+            keyboard_focus: false,
+            registered: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn is_registered(&self) -> bool {
+        self.registered
+    }
+
+    #[cfg(test)]
+    pub fn is_summoned_open(&self) -> bool {
+        self.summoned_open
+    }
+
+    fn sync<B: ShortcutBackend>(&mut self, backend: &mut B) {
+        let wanted = self.summoned_open && !self.keyboard_focus;
+        let esc = escape_shortcut();
+        match (self.registered, wanted) {
+            (false, true) => match backend.register(esc) {
+                Ok(()) => {
+                    self.registered = true;
+                    log::debug!("hotkeys: temporary Escape registered");
+                }
+                Err(e) => {
+                    log::warn!("hotkeys: cannot register temporary Escape: {e}");
+                }
+            },
+            (true, false) => {
+                if let Err(e) = backend.unregister(esc) {
+                    log::warn!("hotkeys: failed to unregister temporary Escape: {e}");
+                }
+                self.registered = false;
+                log::debug!("hotkeys: temporary Escape unregistered");
+            }
+            _ => {}
+        }
+    }
+
+    /// The island was opened via `summonHotkey`.
+    pub fn on_summoned<B: ShortcutBackend>(&mut self, backend: &mut B) {
+        self.summoned_open = true;
+        self.sync(backend);
+    }
+
+    /// The island collapsed (any cause: Esc, repeat hotkey, hover leave, collapse button).
+    pub fn on_collapsed<B: ShortcutBackend>(&mut self, backend: &mut B) {
+        self.summoned_open = false;
+        self.sync(backend);
+    }
+
+    /// Native keyboard focus of the island changed. Acquiring focus unregisters global `Escape`
+    /// so normal WebView `Escape` handling (contract §3a) takes over.
+    pub fn on_focus_changed<B: ShortcutBackend>(&mut self, backend: &mut B, focused: bool) {
+        self.keyboard_focus = focused;
+        if focused {
+            self.summoned_open = false;
+        }
+        self.sync(backend);
+    }
+
+    /// Application exit / window destruction.
+    pub fn on_exit<B: ShortcutBackend>(&mut self, backend: &mut B) {
+        self.summoned_open = false;
+        self.keyboard_focus = false;
+        self.sync(backend);
+    }
 }
 
 /// Result of parsing and validating a hotkey string.
@@ -56,12 +152,56 @@ impl<R: Runtime> ShortcutBackend for TauriShortcutBackend<'_, R> {
 
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     tauri_plugin_global_shortcut::Builder::new()
-        .with_handler(|app, _shortcut, event| {
+        .with_handler(|app, shortcut, event| {
             if event.state == ShortcutState::Pressed {
-                crate::window::summon_for_runtime(app);
+                if *shortcut == escape_shortcut() {
+                    crate::window::collapse_summoned_for_runtime(app);
+                } else {
+                    crate::window::summon_for_runtime(app);
+                }
             }
         })
         .build()
+}
+
+/// Registers temporary `Escape` when the island is opened by `summonHotkey` (if not focused).
+pub fn on_summoned(app: &AppHandle) {
+    let Some(state) = app.try_state::<HotkeyState>() else {
+        return;
+    };
+    let mut esc = state.escape.lock().unwrap_or_else(|e| e.into_inner());
+    let mut backend = TauriShortcutBackend { app };
+    esc.on_summoned(&mut backend);
+}
+
+/// Unregisters temporary `Escape` when the island collapses.
+pub fn on_collapsed(app: &AppHandle) {
+    let Some(state) = app.try_state::<HotkeyState>() else {
+        return;
+    };
+    let mut esc = state.escape.lock().unwrap_or_else(|e| e.into_inner());
+    let mut backend = TauriShortcutBackend { app };
+    esc.on_collapsed(&mut backend);
+}
+
+/// Updates keyboard-focus state and unregisters temporary `Escape` when the island takes focus.
+pub fn on_focus_changed(app: &AppHandle, focused: bool) {
+    let Some(state) = app.try_state::<HotkeyState>() else {
+        return;
+    };
+    let mut esc = state.escape.lock().unwrap_or_else(|e| e.into_inner());
+    let mut backend = TauriShortcutBackend { app };
+    esc.on_focus_changed(&mut backend, focused);
+}
+
+/// Unregisters temporary `Escape` on application exit.
+pub fn on_exit(app: &AppHandle) {
+    let Some(state) = app.try_state::<HotkeyState>() else {
+        return;
+    };
+    let mut esc = state.escape.lock().unwrap_or_else(|e| e.into_inner());
+    let mut backend = TauriShortcutBackend { app };
+    esc.on_exit(&mut backend);
 }
 
 /// Registers the initial `summonHotkey` from `SettingsState`. Must run after `settings::setup` and
@@ -385,5 +525,70 @@ mod tests {
         assert!(err.contains("Ctrl+Shift+X"));
         assert_eq!(current, Some(initial));
         assert!(backend.registered.contains(&initial));
+    }
+
+    #[test]
+    fn temporary_escape_registers_only_on_summon_and_unregisters_on_collapse_focus_or_exit() {
+        let mut backend = FakeBackend::default();
+        let mut esc = EscapeShortcutState::new();
+        let esc_sc = escape_shortcut();
+
+        // Not registered initially (e.g. hover expansion never calls on_summoned).
+        assert!(!esc.is_registered());
+        assert!(!backend.registered.contains(&esc_sc));
+
+        // Summon registers Escape.
+        esc.on_summoned(&mut backend);
+        assert!(esc.is_registered());
+        assert!(esc.is_summoned_open());
+        assert!(backend.registered.contains(&esc_sc));
+
+        // Collapse unregisters Escape.
+        esc.on_collapsed(&mut backend);
+        assert!(!esc.is_registered());
+        assert!(!esc.is_summoned_open());
+        assert!(!backend.registered.contains(&esc_sc));
+
+        // Summon again, then island acquires keyboard focus: Escape is unregistered immediately
+        // and stays unregistered when focus is released.
+        esc.on_summoned(&mut backend);
+        assert!(esc.is_registered());
+        esc.on_focus_changed(&mut backend, true);
+        assert!(!esc.is_registered());
+        assert!(!backend.registered.contains(&esc_sc));
+        esc.on_focus_changed(&mut backend, false);
+        assert!(!esc.is_registered());
+        assert!(!backend.registered.contains(&esc_sc));
+
+        // Summon while already holding keyboard focus does not register Escape.
+        esc.on_focus_changed(&mut backend, true);
+        esc.on_summoned(&mut backend);
+        assert!(!esc.is_registered());
+        assert!(!backend.registered.contains(&esc_sc));
+        esc.on_focus_changed(&mut backend, false);
+
+        // Exit unregisters an active Escape.
+        esc.on_summoned(&mut backend);
+        assert!(esc.is_registered());
+        esc.on_exit(&mut backend);
+        assert!(!esc.is_registered());
+        assert!(!backend.registered.contains(&esc_sc));
+    }
+
+    #[test]
+    fn temporary_escape_registration_failure_is_quiet_and_non_fatal() {
+        let mut backend = FakeBackend::default();
+        let esc_sc = escape_shortcut();
+        backend.occupied_externally.insert(esc_sc);
+
+        let mut esc = EscapeShortcutState::new();
+        esc.on_summoned(&mut backend);
+        assert!(!esc.is_registered());
+        assert!(esc.is_summoned_open());
+
+        // Collapse afterwards does not panic or unregister the external owner's shortcut.
+        esc.on_collapsed(&mut backend);
+        assert!(!esc.is_registered());
+        assert!(!esc.is_summoned_open());
     }
 }

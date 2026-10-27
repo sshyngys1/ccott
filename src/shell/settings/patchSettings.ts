@@ -1,3 +1,4 @@
+import { t, localizeMessage } from "../../i18n";
 // Owner: F1. Writes settings: optimistic in the store, then `settings_set`; the answer (or a re-read) is authoritative.
 import { invoke } from "../../ipc";
 import type { Settings } from "../../shared/types";
@@ -16,8 +17,8 @@ export async function patchSettings(patch: Partial<Settings>): Promise<string | 
     } catch {
       useIslandStore.getState().applySettings(before);
     }
-    if (err instanceof Error && err.message) return err.message;
-    if (typeof err === "string" && err.trim()) return err;
-    return "Не удалось сохранить настройку";
+    if (err instanceof Error && err.message) return localizeMessage(err.message);
+    if (typeof err === "string" && err.trim()) return localizeMessage(err);
+    return t("couldnTSaveTheSetting");
   }
 }

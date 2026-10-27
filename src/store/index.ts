@@ -1,6 +1,8 @@
 // Owner: F1. Global UI state of the shell (Zustand).
 import { create } from "zustand";
+import { setLanguage } from "../i18n";
 import type { IslandMode, ModuleId, Settings, ThemeMode, UpdateInfo, VibrancyMode } from "../shared/types";
+import { DEFAULT_AUTO_HIDE_APPS } from "../shell/settings/hotkey";
 import { DEFAULT_COLLAPSE_DELAY_MS, DEFAULT_EXPAND_DELAY_MS } from "./hover";
 
 export type ResolvedTheme = "light" | "dark";
@@ -10,6 +12,7 @@ export type PanelView = "tabs" | "settings";
 
 /** Values used until `settings_get` answers (equal to the Rust defaults). */
 export const DEFAULT_SETTINGS: Settings = {
+  language: "auto",
   theme: "auto",
   vibrancy: "none",
   monitor: "primary",
@@ -20,6 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideInFullscreen: true,
   summonHotkey: "Ctrl+Alt+I",
   fullscreenAllowlist: [],
+  autoHideApps: [...DEFAULT_AUTO_HIDE_APPS],
 };
 
 export interface PillToast {
@@ -29,6 +33,11 @@ export interface PillToast {
   label: string;
   /** Secondary text after the label (copied text); empty for plain messages. */
   preview: string;
+  /** UI-only preview; copied text remains verbatim when this is absent. */
+  previewKey?: "image" | "files";
+  onClick?: () => void;
+  actionLabel?: string;
+  color?: string;
 }
 
 export interface IslandState {
@@ -101,7 +110,8 @@ export const useIslandStore = create<IslandState>()((set) => ({
   setActiveTab: (activeTab) => set({ activeTab }),
   setView: (view) => set({ view }),
   setKeyboardFocus: (keyboardFocus) => set({ keyboardFocus }),
-  applySettings: (settings) =>
+  applySettings: (settings) => {
+    setLanguage(settings.language ?? "auto");
     set((s) => ({
       settings,
       themeMode: settings.theme,
@@ -110,7 +120,8 @@ export const useIslandStore = create<IslandState>()((set) => ({
       doNotDisturb: settings.doNotDisturb,
       // DND switched on while a toast is visible: drop it right away.
       toast: settings.doNotDisturb ? null : s.toast,
-    })),
+    }));
+  },
   setHoverInside: (hoverInside) => set({ hoverInside }),
   setVibrancy: (vibrancy) => set({ vibrancy }),
   setTheme: (theme) => set({ theme }),
@@ -118,5 +129,6 @@ export const useIslandStore = create<IslandState>()((set) => ({
 
 /** Reset to initial values (tests). */
 export function resetIslandStore(): void {
+  setLanguage("auto");
   useIslandStore.setState(initialState());
 }

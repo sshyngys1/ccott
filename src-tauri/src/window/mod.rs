@@ -2,6 +2,7 @@
 //! Owner: R1 (Rust-Shell). Contract: `docs/contracts.md` section 2 & 8.
 //!
 //! Debug-build environment switches (ignored in release builds):
+//! - `ISLAND_TEST_ORIGIN=x,y` - physical window origin for testing beside an installed instance.
 //! - `ISLAND_VIBRANCY=acrylic|mica` - apply the native backdrop at startup (bypasses the
 //!   `NATIVE_BLUR_ENABLED` switch; the frontend normally goes through `window_set_vibrancy`).
 //! - `ISLAND_NATIVE_BLUR=1` - let `window_set_vibrancy` apply native blur (off by default, see
@@ -12,7 +13,10 @@
 //! - `npm run tauri dev` with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`
 //!   exposes the WebView over CDP (used by the spike to drive `island_set_shape`).
 
+pub(crate) mod capture_overlay;
+mod capture_visibility;
 mod focus;
+pub(crate) use capture_visibility::CaptureVisibility;
 mod fullscreen;
 mod hover;
 mod monitor;
@@ -42,6 +46,7 @@ pub(crate) static APP: OnceLock<AppHandle> = OnceLock::new();
 /// Managed state of the island window, shared by commands and the hover thread.
 /// Locks are never held across calls into the windowing layer.
 pub struct IslandState {
+    pub(crate) capture_active: AtomicBool,
     /// Current visible shape (CSS px, relative to the window).
     pub(crate) shape: RwLock<IslandShape>,
     pub(crate) mode: RwLock<IslandMode>,
@@ -64,19 +69,28 @@ pub struct IslandState {
     pub(crate) hwnd: AtomicIsize,
     /// `Settings::monitor`: a monitor id or `"primary"`.
     pub(crate) monitor_pref: RwLock<String>,
-    /// The island is hidden because a fullscreen app is in the foreground (`fullscreen.rs`).
+    /// The island is hidden because a fullscreen or auto-hide app is in the foreground (`fullscreen.rs`).
     pub(crate) fullscreen_hidden: AtomicBool,
-    /// Temporarily shown over a fullscreen app via `summonHotkey` until collapsed.
+    /// Foreground window currently matches `autoHideApps` (maximized or top-edge, not fullscreen).
+    pub(crate) autohide_active: AtomicBool,
+    /// Temporarily shown over a fullscreen or auto-hide app via `summonHotkey` until collapsed.
     pub(crate) summoned: AtomicBool,
+    /// Temporarily shown over an auto-hide app via top-edge cursor dwell until collapsed / cursor leaves.
+    pub(crate) dwell_revealed: AtomicBool,
+    /// Top-edge 400 ms dwell state machine (`hover.rs`).
+    pub(crate) dwell: Mutex<hover::TopEdgeDwell>,
     /// Thread id of the fullscreen watcher while it runs.
     pub(crate) fullscreen_thread: Mutex<Option<u32>>,
     /// Recently seen fullscreen apps (`fullscreen_seen.json`).
     pub(crate) fullscreen_seen: Mutex<fullscreen::SeenStore>,
+    /// Recently seen maximized / top-edge apps (`maximized_seen.json`).
+    pub(crate) maximized_seen: Mutex<fullscreen::SeenStore>,
 }
 
 impl Default for IslandState {
     fn default() -> Self {
         Self {
+            capture_active: AtomicBool::new(false),
             shape: RwLock::new(IslandShape::DEFAULT_PILL),
             mode: RwLock::new(IslandMode::Collapsed),
             vibrancy: Mutex::new(VibrancyMode::None),
@@ -89,9 +103,13 @@ impl Default for IslandState {
             hwnd: AtomicIsize::new(0),
             monitor_pref: RwLock::new("primary".to_string()),
             fullscreen_hidden: AtomicBool::new(false),
+            autohide_active: AtomicBool::new(false),
             summoned: AtomicBool::new(false),
+            dwell_revealed: AtomicBool::new(false),
+            dwell: Mutex::new(hover::TopEdgeDwell::new()),
             fullscreen_thread: Mutex::new(None),
             fullscreen_seen: Mutex::new(fullscreen::SeenStore::default()),
+            maximized_seen: Mutex::new(fullscreen::SeenStore::default()),
         }
     }
 }
@@ -116,10 +134,14 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             }
         })
         .on_event(|app, event| {
-            if matches!(event, RunEvent::Exit)
-                && let Some(state) = app.try_state::<IslandState>()
-            {
-                hover::stop(&state);
+            if matches!(event, RunEvent::Exit) {
+                if let Some(wry_app) = APP.get() {
+                    crate::hotkeys::on_exit(wry_app);
+                    fullscreen::stop(wry_app);
+                }
+                if let Some(state) = app.try_state::<IslandState>() {
+                    hover::stop(&state);
+                }
             }
         })
         .build()
@@ -130,9 +152,11 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(IslandState::default());
 
     if let Ok(dir) = app.path().app_data_dir() {
-        fullscreen::init_seen_store(
-            &app.state::<IslandState>(),
-            dir.join(fullscreen::SEEN_FILE_NAME),
+        let state = app.state::<IslandState>();
+        fullscreen::init_seen_store(&state, dir.join(fullscreen::SEEN_FILE_NAME));
+        fullscreen::init_maximized_seen_store(
+            &state,
+            dir.join(fullscreen::MAXIMIZED_SEEN_FILE_NAME),
         );
     }
 
@@ -187,14 +211,15 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
             vibrancy::sync_region(&w, &state);
         }
-        WindowEvent::Destroyed => hover::stop(&w.state::<IslandState>()),
+        WindowEvent::Destroyed => {
+            crate::hotkeys::on_exit(w.app_handle());
+            hover::stop(&w.state::<IslandState>());
+        }
         _ => {}
     });
 
     hover::spawn(app.handle(), &window);
-    if settings.is_none_or(|s| s.hide_in_fullscreen) {
-        fullscreen::set_enabled(app.handle(), true);
-    }
+    fullscreen::set_enabled(app.handle(), true);
     Ok(())
 }
 
@@ -228,10 +253,22 @@ pub fn set_fullscreen_allowlist(app: &AppHandle) {
     fullscreen::recheck(app);
 }
 
+/// `Settings::autoHideApps` changed: re-evaluate the current foreground window immediately.
+pub fn set_auto_hide_apps(app: &AppHandle) {
+    fullscreen::recheck(app);
+}
+
 /// Called by the global shortcut plugin when `summonHotkey` is pressed.
 pub fn summon_for_runtime<R: Runtime>(_app: &AppHandle<R>) {
     if let Some(app) = APP.get() {
         fullscreen::summon(app);
+    }
+}
+
+/// Called by the global shortcut plugin when temporary `Escape` is pressed.
+pub fn collapse_summoned_for_runtime<R: Runtime>(_app: &AppHandle<R>) {
+    if let Some(app) = APP.get() {
+        fullscreen::collapse_summoned(app);
     }
 }
 
@@ -269,6 +306,8 @@ pub fn island_set_mode(
         state
             .summoned
             .store(false, std::sync::atomic::Ordering::Release);
+        hover::on_collapsed(&state);
+        crate::hotkeys::on_collapsed(&app);
         fullscreen::recheck(&app);
     }
     hover::resync_on_mode(&app, &state);
@@ -303,4 +342,9 @@ pub fn window_list_monitors(window: WebviewWindow) -> Result<Vec<MonitorInfo>, S
 #[tauri::command]
 pub fn window_recent_fullscreen_apps(state: State<'_, IslandState>) -> Vec<FullscreenApp> {
     fullscreen::recent_apps(&state)
+}
+
+#[tauri::command]
+pub fn window_recent_maximized_apps(state: State<'_, IslandState>) -> Vec<FullscreenApp> {
+    fullscreen::recent_maximized_apps(&state)
 }

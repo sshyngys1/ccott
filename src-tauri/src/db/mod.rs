@@ -35,6 +35,16 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_notes_updated ON notes(updated_at DESC);",
     // v2: Unicode-folded search text, populated once below in Rust (SQLite lower is ASCII-only).
     "ALTER TABLE clips ADD COLUMN text_fold TEXT NOT NULL DEFAULT '';",
+    // v3: launcher paths and cached shell icons; order is explicit and survives restarts.
+    "CREATE TABLE dock (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL,
+        path_key TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT '',
+        position INTEGER NOT NULL
+    );",
 ];
 
 /// Current schema version (= number of migrations).
@@ -162,7 +172,7 @@ mod tests {
             .unwrap();
         assert_eq!(v, schema_version());
         migrate(&mut conn).unwrap();
-        for table in ["clips", "notes"] {
+        for table in ["clips", "notes", "dock"] {
             let n: i64 = conn
                 .query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -199,7 +209,7 @@ mod tests {
                 .unwrap(),
             "<p>Текст</p>"
         );
-        assert_eq!(schema_version(), 2);
+        assert_eq!(schema_version(), 3);
     }
 
     #[test]

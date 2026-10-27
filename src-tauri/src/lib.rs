@@ -9,8 +9,10 @@ mod updater;
 mod window;
 // ── modules: R2 (Rust-System) ──
 mod audio;
+mod capture;
 mod clipboard;
 mod db;
+mod dock;
 mod media;
 mod notes;
 
@@ -33,6 +35,7 @@ pub fn run() {
         .plugin(updater::plugin())
         .plugin(window::plugin())
         // ── plugins: R2 ──
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // ── setup: R1 ──
             settings::setup(app)?; // before the window: it reads the monitor / fullscreen settings
@@ -55,11 +58,21 @@ pub fn run() {
             window::window_list_monitors,
             window::island_set_keyboard_focus,
             window::window_recent_fullscreen_apps,
+            window::window_recent_maximized_apps,
             settings::settings_get,
             settings::settings_set,
             updater::updater_check,
             updater::updater_install,
             // ── commands: R2 ──
+            dock::dock_list,
+            dock::dock_add,
+            dock::dock_remove,
+            dock::dock_reorder,
+            dock::dock_open,
+            dock::dock_start_drag,
+            capture::capture_start,
+            capture::capture_pick_color,
+            capture::capture_open_folder,
             audio::audio_get_state,
             audio::audio_set_volume,
             audio::audio_set_muted,

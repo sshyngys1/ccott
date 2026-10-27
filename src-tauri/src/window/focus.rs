@@ -240,6 +240,7 @@ fn focus_webview(app: &AppHandle) {
 }
 
 fn emit_changed(app: &AppHandle, active: bool) {
+    crate::hotkeys::on_focus_changed(app, active);
     let _ = app.emit(FOCUS_EVENT, FocusPayload { active });
 }
 
@@ -266,6 +267,7 @@ pub fn set_active(app: &AppHandle, request: FocusRequest) -> Result<(), String> 
 
 fn activate(app: &AppHandle, hwnd: HWND, request: FocusRequest) -> Result<(), String> {
     if ACTIVE.load(Ordering::Acquire) && is_foreground(hwnd) {
+        crate::hotkeys::on_focus_changed(app, true);
         focus_webview(app); // idempotent: just make sure the page has the keyboard
         if !DESIRED.is_current(request) {
             deactivate(app, hwnd);
