@@ -143,11 +143,17 @@ Built with [Tauri 2](https://tauri.app), Rust, React 19, TypeScript, Vite, Motio
 
 ## Roadmap
 
-- Quick tools: screenshot of an area or the whole screen, text from screen (OCR), color picker, QR codes, screen recording
-- App and folder dock with drag & drop
-- English interface
-- Native Mica/Acrylic backdrop
-- Code-signed installer
+| Version | Planned |
+| --- | --- |
+| **0.1.x** | Bug fixes from Issues, a faster first expand after a long idle period |
+| **0.2** — Quick tools | English interface (RU/EN switch), area or full-screen screenshots, text from screen (offline OCR), color picker, QR codes (create and scan), app and folder dock with drag & drop, automated builds with GitHub Actions |
+| **0.3** — Command bar & files | Command bar on a hotkey (apps, files, calculator, unit and currency converter, quick timers), file shelf (drop files on the pill and drag them out), download monitor, winget package |
+| **0.4** — Info & controls | Weather with hourly and 7-day forecasts and rain alerts, quick controls (Wi-Fi, Bluetooth, dark mode, power mode, Bluetooth headset battery), natural-language reminders, AI coding agent status (e.g. Claude Code is waiting or done) |
+| **0.5** — Media & polish | Synced song lyrics, audio visualizer, screen recording to MP4, native Mica/Acrylic backdrop |
+| **1.0** — Stable | Code-signed installer, idle footprint under 60 MB RAM and 0% CPU, Windows 10 and multi-monitor/mixed-DPI testing, docs for writing modules |
+| **Later** | Windows notifications in the pill, original desktop pets, optional AI features (bring your own key or a local model) |
+
+Plans may change based on feedback.
 
 Ideas and bug reports are welcome in [Issues](https://github.com/sshyngys1/ccott/issues).
 
