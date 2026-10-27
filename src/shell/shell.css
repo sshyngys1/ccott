@@ -1,0 +1,201 @@
+/* Owner: F1. Shell layout only: colors, radii, spacing and type come from var(--ig-*) tokens and src/design classes. */
+
+/* The one morphing element. Size/radius are animated by Motion; `top` is set inline. It is centered with auto margins
+   (width is always explicit) instead of `translateX(-50%)`: a transform would make it a compositor layer. */
+.ig-island {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  overflow: hidden;
+  box-sizing: border-box;
+  cursor: default;
+  user-select: none;
+  color: var(--ig-text);
+  font-family: var(--ig-font);
+}
+.ig-island:focus-visible {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: var(--ig-outline-offset);
+}
+
+/* Content layers: pill content fills the island; panel content has the final panel size and is clipped by the island. */
+.ig-island-layer {
+  position: absolute;
+  inset: 0;
+}
+.ig-island-layer--panel {
+  inset: 0 auto auto 50%;
+  width: var(--ig-panel-width);
+  height: var(--ig-panel-height);
+  margin-left: calc(var(--ig-panel-width) / -2);
+  transform-origin: 50% 0;
+}
+
+/* ── Pill content ── */
+.ig-pill-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2-5);
+  height: 100%;
+  padding: 0 var(--ig-space-3-5) 0 var(--ig-space-1-5);
+  font-size: var(--ig-text-sm);
+  white-space: nowrap;
+}
+.ig-pill-row--idle {
+  justify-content: center;
+  padding: 0 var(--ig-space-3-5);
+}
+.ig-pill-time {
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font);
+  letter-spacing: 0.01em;
+}
+.ig-pill-label {
+  font-weight: var(--ig-weight-semibold);
+}
+.ig-pill-label--solo {
+  flex: 1;
+  min-width: 0;
+}
+.ig-pill-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.ig-pill-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--ig-badge-size);
+  height: var(--ig-badge-size);
+  border-radius: 50%;
+  color: var(--ig-text-on-accent);
+  background: var(--ig-success);
+}
+.ig-pill-badge .ig-icon {
+  stroke-width: var(--ig-icon-stroke-bold);
+}
+
+/* ── Panel ── */
+.ig-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--ig-panel-padding);
+}
+.ig-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ig-tabbar-height);
+  flex: none;
+}
+.ig-panel-head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+}
+.ig-head-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: var(--ig-space-1-5);
+  line-height: var(--ig-leading-tight);
+}
+.ig-head-time {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.ig-head-date {
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.ig-panel-body {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--ig-radius-lg);
+}
+.ig-panel-body:focus-visible {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: calc(var(--ig-outline-offset) * -1);
+}
+
+/* ── Settings view (spec §6.8): back button + title in the head, two cards in the body ── */
+.ig-settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+}
+.ig-view-title {
+  margin: 0;
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font-display);
+}
+.ig-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ig-space-3);
+  align-items: start;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ig-stroke-strong) transparent;
+}
+.ig-settings-card {
+  padding: var(--ig-space-1) 0;
+}
+.ig-settings-card--wide {
+  grid-column: 1 / -1;
+}
+.ig-hotkey-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  width: 100%;
+}
+.ig-hotkey-input {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-family: var(--ig-font-mono, var(--ig-font));
+}
+.ig-hotkey-input[data-recording="true"] {
+  border-color: var(--ig-accent);
+  color: var(--ig-accent);
+}
+.ig-hotkey-error {
+  color: var(--ig-danger, #ef4444);
+}
+.ig-fullscreen-empty {
+  margin: 0;
+  padding: var(--ig-space-2) var(--ig-space-3);
+}
+.ig-setting-row:has(.ig-monitor-picker) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ig-space-1);
+}
+.ig-monitor-picker {
+  flex: none;
+  max-height: calc(var(--ig-control-height) * 2 + var(--ig-space-1) * 2 + var(--ig-row-gap));
+  min-width: 0;
+}
+.ig-monitor-picker > .ig-list-row {
+  height: var(--ig-control-height);
+  font-size: var(--ig-text-sm);
+}
+.ig-settings-label {
+  margin: 0;
+  padding-top: var(--ig-space-1-5);
+  padding-left: var(--ig-space-3);
+}
+.ig-settings-foot {
+  margin: 0;
+  padding: var(--ig-space-2) var(--ig-space-3);
+  border-top: 1px solid var(--ig-stroke);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}

@@ -1,0 +1,882 @@
+/* Owner: Designer. Preview-only chrome (pv-*). Island visuals come exclusively from tokens.css + glass.css.
+   Literal colours below belong to the fake wallpapers/artwork — i.e. "content", not UI. */
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--ig-font);
+  color: var(--ig-text);
+  -webkit-font-smoothing: antialiased;
+}
+html {
+  background: #101018;
+}
+* {
+  box-sizing: border-box;
+}
+
+/* ───────── Wallpapers ───────── */
+.pv-wall {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+.pv-wall--vivid {
+  background:
+    radial-gradient(60vw 50vh at 18% 12%, #ff7a3d 0, transparent 60%),
+    radial-gradient(50vw 50vh at 85% 8%, #6d5bff 0, transparent 60%),
+    radial-gradient(60vw 60vh at 55% 85%, #00bfa6 0, transparent 60%),
+    linear-gradient(135deg, #1a1446, #5b1f70 38%, #c43f6a 68%, #f4a24a);
+}
+.pv-wall--night {
+  background:
+    radial-gradient(50vw 40vh at 30% 15%, #27306b 0, transparent 70%),
+    radial-gradient(40vw 40vh at 75% 60%, #3a1d4f 0, transparent 70%),
+    linear-gradient(180deg, #070912, #0d1222);
+}
+.pv-wall--white {
+  background: #eef0f4;
+}
+.pv-blob {
+  position: absolute;
+  border-radius: 50%;
+}
+.pv-blob--a {
+  left: calc(50% - 300px);
+  top: 120px;
+  width: 220px;
+  height: 220px;
+  background: #ffd84a;
+}
+.pv-blob--b {
+  left: calc(50% + 120px);
+  top: 70px;
+  width: 140px;
+  height: 140px;
+  background: #ffffff;
+}
+.pv-blob--c {
+  left: calc(50% - 40px);
+  top: 330px;
+  width: 300px;
+  height: 120px;
+  border-radius: 60px;
+  background: #13e0c4;
+  transform: rotate(-12deg);
+}
+.pv-stripes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 150px;
+  height: 90px;
+  background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.85) 0 14px, transparent 14px 40px);
+  transform: skewY(-6deg);
+  opacity: 0.6;
+}
+.pv-fake-window {
+  display: none;
+}
+.pv-wall--night .pv-blob,
+.pv-wall--night .pv-stripes,
+.pv-wall--white .pv-blob,
+.pv-wall--white .pv-stripes {
+  display: none;
+}
+/* "White window" wallpaper: a bright browser tab under the island — the worst case for dark glass. */
+.pv-wall--white .pv-fake-window {
+  display: block;
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(#dfe3ea, #dfe3ea) 0 0 / 100% 44px no-repeat,
+    linear-gradient(#ffffff, #ffffff) 0 44px / 100% 100% no-repeat;
+}
+.pv-fake-window i {
+  position: absolute;
+  height: 10px;
+  border-radius: 5px;
+  background: #c9ced8;
+}
+.pv-fake-window i:nth-child(1) {
+  left: calc(50% - 320px);
+  top: 110px;
+  width: 520px;
+}
+.pv-fake-window i:nth-child(2) {
+  left: calc(50% - 320px);
+  top: 140px;
+  width: 380px;
+}
+.pv-fake-window i:nth-child(3) {
+  left: calc(50% - 320px);
+  top: 200px;
+  width: 600px;
+  height: 160px;
+  border-radius: 12px;
+  background: #4f7cff;
+}
+
+/* ───────── Page ───────── */
+.pv-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 12px 16px 64px;
+}
+.pv-toolbar {
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ig-space-3) var(--ig-space-5);
+  padding: 10px 14px;
+  border-radius: 24px;
+}
+.pv-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+}
+.pv-brand > div {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--ig-text-md);
+}
+.pv-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 120%, var(--ig-accent) 0 55%, transparent 56%),
+    var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke-strong);
+}
+.pv-seg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pv-seg-label {
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.pv-section {
+  margin-top: 28px;
+}
+.pv-section h2 {
+  display: inline-block;
+  margin: 0 0 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1.2 var(--ig-font-display);
+  background: var(--ig-surface);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.pv-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.pv-section-head h2 {
+  margin: 0;
+}
+.pv-section-head .pv-row {
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--ig-surface);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+  padding-left: 12px;
+}
+.pv-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pv-row--stretch > * {
+  flex: 1;
+}
+.pv-caption {
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.pv-dim {
+  color: var(--ig-text-secondary);
+}
+.pv-h3 {
+  margin: 4px 0 0;
+  font: var(--ig-weight-semibold) var(--ig-text-xs) / 1.2 var(--ig-font-mono);
+  color: var(--ig-text-tertiary);
+}
+
+/* ───────── 800×520 window frame ───────── */
+.pv-window {
+  position: relative;
+  width: 800px;
+  height: 520px;
+  margin: 0 auto;
+  border-radius: 4px;
+  outline: 1px dashed rgb(255 255 255 / 0.55);
+  outline-offset: 0;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+.pv-window-label {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 11px/1.4 var(--ig-font-mono);
+  color: #fff;
+  background: rgb(0 0 0 / 0.45);
+}
+
+/* Native vibrancy SIMULATION (preview only): the real app gets this blur from DWM under the transparent window. */
+.pv-window--acrylic .pv-island {
+  backdrop-filter: blur(30px) saturate(1.8);
+}
+.pv-window--mica .pv-island {
+  backdrop-filter: blur(80px) saturate(1.3) contrast(0.6) brightness(0.45);
+}
+:root[data-theme="light"] .pv-window--mica .pv-island {
+  backdrop-filter: blur(80px) saturate(1.2) contrast(0.35) brightness(1.55);
+}
+
+/* ───────── Island ───────── */
+.pv-island {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-inline: auto; /* no translateX(-50%): a transform makes the island a compositor layer (see spec §14) */
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+}
+.pv-island-layer {
+  position: absolute;
+  inset: 0;
+}
+.pv-island-layer--panel {
+  inset: 0 auto auto 50%;
+  margin-left: calc(var(--ig-panel-width) / -2);
+  transform-origin: 50% 0;
+}
+
+/* Pill content (layout classes .ig-pill-row / .ig-pill-title / .ig-pill-time live in glass.css) */
+.pv-pill-ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+.pv-pill-weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ig-text-secondary);
+}
+.pv-pill-label {
+  font-weight: var(--ig-weight-semibold);
+}
+.pv-pill-preview {
+  flex: 1;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.pv-badge-ok {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #06210f;
+  background: var(--ig-success);
+}
+.pv-badge-ok .ig-icon {
+  stroke-width: 2.25px;
+}
+
+/* Artwork / screenshot placeholders (content imagery, stands in for <img>) */
+.pv-art-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 28% 30%, #ffd36e 0, transparent 42%),
+    radial-gradient(circle at 75% 72%, #ff4f7b 0, transparent 48%),
+    linear-gradient(135deg, #2b1f7a, #0bb3a6);
+}
+.pv-art-shadow {
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    0 6px 16px -6px rgb(0 0 0 / 0.5);
+}
+.pv-shot {
+  background:
+    linear-gradient(#20232e, #20232e) 8px 8px / 30px 4px no-repeat,
+    linear-gradient(#4f7cff, #4f7cff) 8px 16px / 56px 18px no-repeat,
+    linear-gradient(#ffffff, #ffffff) 8px 38px / 40px 3px no-repeat,
+    linear-gradient(160deg, #dfe3ea, #c4cad6);
+}
+
+/* ───────── Panel ───────── */
+.pv-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+  height: 100%;
+  padding: var(--ig-panel-padding);
+}
+.pv-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ig-tabbar-height);
+  flex: none;
+}
+.pv-panel-head-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pv-head-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: 6px;
+  line-height: 1.15;
+}
+.pv-head-time {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.pv-panel-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.pv-home {
+  display: grid;
+  grid-template-columns: 328px 1fr;
+  grid-template-rows: 1fr var(--ig-dock-height);
+  gap: var(--ig-space-3);
+  height: 100%;
+}
+.pv-home-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+  min-height: 0;
+}
+.pv-player {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--ig-space-3);
+}
+.pv-player-top {
+  display: flex;
+  gap: var(--ig-space-3);
+  min-width: 0;
+}
+.pv-player-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  padding-top: 2px;
+}
+.pv-track {
+  margin-top: 4px;
+  font: var(--ig-weight-semibold) var(--ig-text-lg) / var(--ig-leading-tight) var(--ig-font-display);
+}
+.pv-artist {
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-secondary);
+}
+.pv-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+}
+.pv-play {
+  background-color: var(--ig-surface-selected);
+}
+.pv-seek {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+}
+.pv-time {
+  width: 30px;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.pv-time:last-child {
+  text-align: right;
+}
+.pv-volume {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  height: 60px;
+  flex: none;
+  padding: 0 var(--ig-space-3) 0 var(--ig-space-4);
+}
+.pv-volume .ig-glass-slider,
+.pv-seek .ig-glass-slider {
+  flex: 1;
+}
+.pv-vol-value {
+  width: 34px;
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-secondary);
+  text-align: right;
+}
+.pv-device {
+  height: 30px;
+  padding: 0 10px;
+  font-size: var(--ig-text-xs);
+}
+.pv-tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: var(--ig-space-2);
+  min-height: 0;
+}
+.pv-tools .ig-glass-control--tile {
+  min-height: 0;
+  height: 100%;
+  border-radius: var(--ig-radius-lg);
+}
+.pv-dock {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  padding: 0 10px;
+}
+.pv-dock-app {
+  border-radius: var(--ig-radius-md);
+}
+.pv-dock-sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--ig-stroke-strong);
+}
+.pv-dock-add {
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+}
+.pv-dock-hint {
+  margin-left: auto;
+  padding-right: 6px;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+
+.pv-device .ig-icon:last-child {
+  color: var(--ig-text-tertiary);
+  margin-left: -2px;
+}
+
+/* ───────── Wave 2 tabs (layout only; visuals come from glass.css) ───────── */
+.pv-fill {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.pv-grow {
+  flex: 1;
+}
+.pv-label-first {
+  padding-top: var(--ig-space-1-5);
+}
+.pv-label-flush {
+  min-height: 16px;
+  padding: 0 2px;
+}
+.pv-empty-action {
+  margin-top: var(--ig-space-1-5);
+}
+
+/* Clipboard: head 32 · gap 8 · card 246 · gap 8 · hints 18 = 312 */
+.pv-clipboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2);
+  height: 100%;
+}
+.pv-clip-head {
+  display: flex;
+  gap: var(--ig-space-2);
+  flex: none;
+}
+.pv-clip-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.pv-hints {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3-5);
+  flex: none;
+  height: var(--ig-kbd-height);
+  padding: 0 var(--ig-space-1);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.pv-hints > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+}
+
+/* Text: field (1fr) | transforms 264 */
+.pv-text {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: var(--ig-space-3);
+  height: 100%;
+}
+.pv-banner-wrap {
+  flex: none;
+  padding: 0 var(--ig-space-1-5) var(--ig-space-1-5);
+}
+.pv-stats {
+  padding-left: var(--ig-space-1-5);
+}
+.pv-transforms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2-5);
+  min-height: 0;
+}
+.pv-transform-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+}
+.pv-transform-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ig-space-1);
+}
+.pv-transform {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+/* Notes: list 168 | editor 1fr | timer 196; chips row on top of list+editor */
+.pv-notes {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) 196px;
+  grid-template-rows: var(--ig-chip-height) minmax(0, 1fr);
+  gap: var(--ig-space-2-5) var(--ig-space-3);
+  height: 100%;
+}
+.pv-folders {
+  grid-column: 1 / 3;
+  display: flex;
+  gap: var(--ig-space-1-5);
+  min-width: 0;
+  overflow: hidden;
+}
+.pv-note-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pv-note-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: var(--ig-space-1) var(--ig-space-1) 0 var(--ig-space-2-5);
+}
+.pv-note-title {
+  font-weight: var(--ig-weight-medium);
+}
+.pv-empty-small {
+  gap: var(--ig-space-1);
+}
+.pv-editor {
+  min-height: 0;
+}
+.pv-timer {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ig-space-3);
+}
+.pv-timer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+}
+.pv-timer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.pv-timer-face {
+  position: relative;
+  width: var(--ig-ring-size);
+  height: var(--ig-ring-size);
+}
+.pv-timer-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.pv-timer-time {
+  font: var(--ig-weight-semibold) var(--ig-text-xl) / 1 var(--ig-font-display);
+  letter-spacing: 0.01em;
+}
+.pv-timer-done {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.pv-success-icon {
+  color: var(--ig-success);
+  stroke-width: var(--ig-icon-stroke-bold);
+}
+.pv-timer-presets {
+  display: flex;
+  gap: var(--ig-space-1);
+}
+.pv-preset {
+  width: 30px;
+  padding: 0;
+}
+.pv-timer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2-5);
+}
+
+/* Settings view */
+.pv-settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+}
+.pv-view-title {
+  margin: 0;
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font-display);
+}
+.pv-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ig-space-3);
+  align-items: start;
+  height: 100%;
+}
+.pv-settings-card {
+  padding: var(--ig-space-1) 0;
+}
+.pv-settings-label {
+  padding-top: var(--ig-space-1-5);
+  padding-left: var(--ig-space-3);
+}
+.pv-settings-foot {
+  margin: 0;
+  padding: var(--ig-space-2) var(--ig-space-3);
+  border-top: 1px solid var(--ig-stroke);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+
+/* Focus gallery */
+.pv-gallery--single {
+  grid-template-columns: 1fr;
+}
+.pv-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ig-space-4) var(--ig-space-5);
+}
+.pv-focus-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2);
+  min-width: 0;
+}
+.pv-focus-field {
+  height: 84px;
+}
+.pv-focus-list {
+  padding: 0;
+}
+
+/* Screenshot mode (?solo=island|pills|focus) */
+.pv-solo {
+  display: inline-block;
+  padding: 10px;
+}
+.pv-solo .pv-window {
+  outline: none;
+  box-shadow: none;
+  transform: none;
+}
+.pv-solo--pills .pv-states {
+  width: 1100px;
+}
+.pv-solo--focus .pv-gallery {
+  width: 1000px;
+}
+.pv-section-head--sub {
+  margin-top: -4px;
+}
+
+/* ───────── Pill states gallery ───────── */
+.pv-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.pv-state {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pv-state-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 344px;
+  height: 72px;
+  border-radius: 16px;
+  outline: 1px dashed rgb(255 255 255 / 0.4);
+}
+.pv-state figcaption {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-secondary);
+  background: var(--ig-surface);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.pv-state figcaption b {
+  color: var(--ig-text);
+  font-weight: var(--ig-weight-semibold);
+}
+.pv-static-pill {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Goo demo */
+.pv-goo-stage {
+  cursor: pointer;
+}
+.pv-goo-shapes,
+.pv-goo-content {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.pv-goo-shapes > *,
+.pv-goo-content > * {
+  grid-area: 1 / 1;
+}
+.pv-goo-pill,
+.pv-goo-drop {
+  background: var(--ig-surface-strong);
+}
+.pv-goo-drop {
+  border-radius: 50%;
+}
+.pv-goo-content {
+  --ig-text: var(--ig-text-on-strong);
+  --ig-text-secondary: color-mix(in srgb, var(--ig-text-on-strong) 70%, transparent);
+  color: var(--ig-text-on-strong);
+  pointer-events: none;
+}
+.pv-goo-drop-content {
+  display: grid;
+  place-items: center;
+  color: var(--ig-success-on-strong);
+}
+
+/* ───────── Controls gallery ───────── */
+.pv-gallery {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: var(--ig-space-5);
+  padding: 20px;
+  border-radius: 28px;
+}
+.pv-gallery-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.pv-lens-bed {
+  position: relative;
+  height: 170px;
+  border-radius: var(--ig-radius-lg);
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(90deg, #ffffff 0 10px, #1d1f2b 10px 22px),
+    #1d1f2b;
+  display: grid;
+  place-items: center;
+}
+.pv-lens-text {
+  font: 700 34px/1 var(--ig-font-display);
+  color: #ff5a7a;
+  mix-blend-mode: normal;
+  text-shadow: 0 1px 0 #000;
+}
+.pv-lens {
+  position: absolute;
+  left: 100px;
+  top: 37px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  cursor: grab;
+}
+
+@media (max-width: 860px) {
+  .pv-window {
+    transform: scale(0.9);
+    transform-origin: 0 0;
+  }
+  .pv-gallery {
+    grid-template-columns: 1fr;
+  }
+}

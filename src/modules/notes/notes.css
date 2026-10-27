@@ -1,0 +1,133 @@
+/* Owner: F2. «Заметки» layout: list 168 | editor 1fr | timer 196; chips row above list+editor (ported from the Designer's preview stand). */
+.nt-root {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) 196px;
+  grid-template-rows: var(--ig-chip-height) minmax(0, 1fr);
+  gap: var(--ig-space-2-5) var(--ig-space-3);
+  height: 100%;
+}
+.nt-folders {
+  grid-column: 1 / 3;
+  display: flex;
+  gap: var(--ig-space-1-5);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.nt-folders::-webkit-scrollbar {
+  display: none;
+}
+.nt-folders > * {
+  flex: none;
+}
+.nt-folder-tabs { display: flex; gap: var(--ig-space-1-5); }
+.nt-folder-input {
+  width: 120px;
+  height: var(--ig-chip-height);
+  padding: 0 var(--ig-space-2-5);
+  font-size: var(--ig-text-xs);
+}
+
+/* List */
+.nt-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.nt-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: var(--ig-space-1) var(--ig-space-1) 0 var(--ig-space-2-5);
+}
+.nt-list-title {
+  font-weight: var(--ig-weight-medium);
+}
+.nt-empty {
+  gap: var(--ig-space-1);
+}
+
+/* Editor */
+.nt-editor {
+  min-height: 0;
+}
+.nt-delete[data-armed="true"] {
+  background-color: var(--ig-danger-soft);
+  color: var(--ig-danger-text);
+}
+
+/* Timer */
+.nt-timer {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ig-space-3);
+}
+.nt-timer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+}
+.nt-timer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.nt-timer-face {
+  position: relative;
+  width: var(--ig-ring-size);
+  height: var(--ig-ring-size);
+}
+.nt-timer-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.nt-timer-time {
+  font: var(--ig-weight-semibold) var(--ig-text-xl) / 1 var(--ig-font-display);
+  letter-spacing: 0.01em;
+}
+.nt-timer-done {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.nt-success-icon {
+  color: var(--ig-success);
+  stroke-width: var(--ig-icon-stroke-bold);
+}
+.nt-presets {
+  display: flex;
+  gap: var(--ig-space-1);
+}
+.nt-preset {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+.nt-timer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2-5);
+}
+
+/* Pill */
+.nt-pill-ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--ig-art-size-pill);
+  height: var(--ig-art-size-pill);
+}

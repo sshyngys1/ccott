@@ -1,0 +1,52 @@
+/* Owner: F2. «Буфер» layout: head 32 · gap 8 · card 246 · gap 8 · hints 18 = 312 (ported from the Designer's preview stand). */
+.cb-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2);
+  height: 100%;
+}
+.cb-head {
+  display: flex;
+  gap: var(--ig-space-2);
+  flex: none;
+}
+.cb-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.cb-row { position: relative; }
+.cb-action-space { width: calc(var(--ig-control-height-sm) * 2 + var(--ig-space-1)); }
+.cb-row > .ig-list-row__actions {
+  position: absolute;
+  right: var(--ig-space-1-5);
+  top: 50%;
+  transform: translateY(-50%);
+}
+.cb-row:hover > .ig-list-row__actions > *,
+.cb-row:focus-within > .ig-list-row__actions > *,
+.cb-row > [aria-selected="true"] + .ig-list-row__actions > * { opacity: 1; }
+.cb-label-first {
+  padding-top: var(--ig-space-1-5);
+}
+.cb-empty-action {
+  margin-top: var(--ig-space-1-5);
+}
+.cb-hints {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3-5);
+  flex: none;
+  height: var(--ig-kbd-height);
+  padding: 0 var(--ig-space-1);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+  white-space: nowrap;
+}
+.cb-hints > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+}

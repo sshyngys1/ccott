@@ -1,0 +1,76 @@
+[package]
+name = "island-win"
+version = "0.1.0"
+description = "Open-source Dynamic Island for Windows"
+authors = ["island-win contributors"]
+license = "MIT"
+edition = "2024"
+
+[lib]
+# The `_lib` suffix is needed on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "island_win_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+# Owner: Orchestrator. Agents add deps/features only inside their own section below
+# and list every change in their report.
+[dependencies]
+tauri = { version = "2", features = ["image-png", "tray-icon"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4.34"
+thiserror = "2.0.21"
+# ── R1 (Rust-Shell) ──
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+window-vibrancy = "0.8.1"
+# ── R2 (Rust-System) ──
+rusqlite = { version = "0.41.0", features = ["bundled", "functions"] }
+tauri-plugin-log = "2"
+base64 = "0.22"
+# Needed by the #[implement]/#[interface] COM macros (same version the `windows` crate uses).
+windows-core = "0.62"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+# windows-rs is shared: add features to the list (one per line, keep sorted), never remove others'.
+[dependencies.windows]
+version = "0.62.2"
+features = [
+  "Foundation",
+  "Foundation_Collections",
+  "Media_Control",
+  "Storage_Streams",
+  "Win32_Devices_FunctionDiscovery",
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_DataExchange",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_System_Variant",
+  "Win32_UI_Accessibility",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,341 @@
+/*
+ * Owner: Designer. Visual language "Meniscus" — design tokens.
+ * Names from docs/contracts.md §6 are fixed; extra tokens are additive.
+ * Full reference with rationale: docs/design-spec.md.
+ *
+ * Axes (attributes on <html>):
+ *   data-theme    = "dark" (default) | "light"
+ *   data-vibrancy = "none" (default: dense fallback, browser) | "acrylic" | "mica"
+ * Cascade: :root (dark + none) → theme overrides → vibrancy overrides → theme×vibrancy overrides.
+ */
+
+/* Registered so the pointer light can fade in/out with a transition. */
+@property --ig-pointer-active {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/* ───────────────────────── Theme-independent: geometry, type, motion ───────────────────────── */
+:root {
+  /* Geometry — collapsed pill. Window is 800×520 (ISLAND_WINDOW); island is anchored top-center. */
+  --ig-pill-width: 224px;
+  --ig-pill-height: 36px;
+  --ig-pill-top: 8px;
+  --ig-pill-width-activity: 304px; /* + media / timer activity */
+  --ig-pill-width-toast: 312px; /* «Скопировано» */
+  --ig-pill-hover-grow: 12px; /* extra width on hover (height grows by 1/6 of it) */
+
+  /* Geometry — expanded panel. 720×396 at top 8px → bottom edge 404px; shadow ≤ 40px sideways, ≤ 64px down. */
+  --ig-panel-width: 720px;
+  --ig-panel-height: 396px;
+  --ig-panel-padding: 16px;
+  --ig-tabbar-height: 36px;
+  --ig-dock-height: 60px;
+  --ig-control-height: 32px;
+  --ig-control-height-lg: 40px;
+
+  /* Radii — concentric: inner = outer − padding (32 − 16 = 16). */
+  --ig-radius-pill: 18px; /* = pill-height / 2 */
+  --ig-radius-panel: 32px;
+  --ig-radius-lg: 16px; /* cards directly inside the panel */
+  --ig-radius-md: 12px; /* controls, tiles */
+  --ig-radius-sm: 8px; /* inputs inside cards, small chips */
+  --ig-radius-xs: 6px; /* mini artwork, badges */
+
+  /* Spacing — 4px base. */
+  --ig-space-1: 4px;
+  --ig-space-2: 8px;
+  --ig-space-3: 12px;
+  --ig-space-4: 16px;
+  --ig-space-5: 24px;
+  --ig-space-6: 32px;
+  /* Half steps for dense rows (pill content, control groups). */
+  --ig-space-0-5: 2px;
+  --ig-space-1-5: 6px;
+  --ig-space-2-5: 10px;
+  --ig-space-3-5: 14px;
+
+  /* Typography — Segoe UI Variable has optical sizes; Text for ≤ 17px, Display for larger. */
+  --ig-font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --ig-font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --ig-font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --ig-text-xs: 11px;
+  --ig-text-sm: 12.5px;
+  --ig-text-md: 14px;
+  --ig-text-lg: 17px;
+  --ig-text-xl: 22px;
+  --ig-leading-tight: 1.2;
+  --ig-leading: 1.4;
+  --ig-weight-regular: 400;
+  --ig-weight-medium: 500;
+  --ig-weight-semibold: 600;
+
+  /* Icons */
+  --ig-icon-size: 20px;
+  --ig-icon-size-sm: 16px;
+  --ig-icon-stroke: 1.75px;
+  --ig-icon-stroke-bold: 2.25px; /* check mark in a filled badge */
+  --ig-badge-size: 24px; /* round status badge inside the pill (toast check) */
+  --ig-outline-width: 2px; /* :focus-visible ring */
+  --ig-outline-offset: 2px;
+  --ig-press-scale: 0.96; /* CSS mirror of pressScale in motion.ts */
+
+  /* Motion (CSS side; springs for Motion live in motion.ts) */
+  --ig-dur-instant: 60ms;
+  --ig-dur-fast: 100ms;
+  --ig-dur-med: 160ms;
+  --ig-dur-slow: 260ms;
+  --ig-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ig-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ig-ease-spring: linear(0, 0.22 7%, 0.62 16%, 0.92 26%, 1.05 36%, 1.06 44%, 1.02 58%, 0.995 76%, 1); /* CSS approximation of springs.expand (time-normalised; use with --ig-dur-med…slow) */
+
+  /* Effects (theme-independent part) */
+  --ig-blur: 28px; /* CSS backdrop blur for inner overlays (menus over content); NOT the desktop blur */
+  --ig-rim-width: 1px;
+  /* Pointer light is a hint, not a spotlight: a small soft spot under the cursor and a short catch-light on the rim. */
+  --ig-pointer-radius: 96px; /* surface glow on the expanded panel (was 220px) */
+  --ig-pointer-rim-radius: 56px; /* rim catch-light, local to the cursor (was 132px = 0.6 × 220) */
+  --ig-pointer-radius-pill: 56px; /* glow on the collapsed pill (was 90px) */
+  --ig-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0 0 0 0 1'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --ig-noise-size: 160px;
+
+  /* ── Wave 2: tabs (Буфер / Текст / Заметки), settings view, pill activities. See design-spec §6.3–§6.9. ── */
+  --ig-control-height-sm: 28px; /* dense buttons: text transforms, editor toolbar */
+  --ig-chip-height: 26px; /* .ig-chip — folders, timer presets */
+  --ig-row-height: 48px; /* .ig-list-row — two-line row (text / link / files) */
+  --ig-row-height-media: 64px; /* .ig-list-row--media — image clip with thumbnail */
+  --ig-row-gap: 2px;
+  --ig-row-lead: 32px; /* leading kind badge in a row */
+  --ig-thumb-width: 72px; /* image thumbnail in a media row (3:2) */
+  --ig-thumb-height: 48px;
+  --ig-art-size: 96px; /* player artwork (Home) */
+  --ig-art-size-pill: 24px; /* mini artwork in the pill activity */
+  --ig-scroll-fade: 20px; /* .ig-scroll-fade edge mask */
+  --ig-progress-height: 4px; /* .ig-progress bar */
+  --ig-ring-size: 120px; /* .ig-ring — timer panel */
+  --ig-ring-stroke: 6px;
+  --ig-ring-size-pill: 22px; /* .ig-ring--pill — timer activity */
+  --ig-ring-stroke-pill: 2.5px;
+  --ig-switch-width: 36px; /* .ig-switch */
+  --ig-switch-height: 20px;
+  --ig-setting-row-height: 44px; /* .ig-setting-row (single-line control) */
+  --ig-kbd-height: 18px; /* .ig-kbd key hint */
+  --ig-focus-ring-width: 3px; /* halo of --ig-focus-ring */
+  /* Focus ring for text fields (input, textarea, contenteditable). A 1px line in a contrast-safe accent + a soft halo:
+     the line carries the ≥ 3:1 non-text contrast on every backdrop, the halo makes it visible at a glance. */
+  --ig-focus-ring: inset 0 0 0 1px var(--ig-accent-text), 0 0 0 var(--ig-focus-ring-width) var(--ig-focus-halo);
+}
+
+/* ───────────────────────── Dark theme (default) — fallback surfaces (data-vibrancy="none") ───────────────────────── */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  /* Fully opaque on purpose: at 0.97 the 3 % that leaks through a dark panel is enough to read white text of the window below
+     (measured in the live window: ≈ 4.5 % of the backdrop contrast came through). Rim, grain and glow are layered on top. */
+  --ig-surface: rgb(22 23 29 / 1); /* panel glass, dense: nothing blurred under it */
+  --ig-surface-strong: rgb(5 5 7 / 1); /* collapsed pill at rest — a hardware-notch black */
+  --ig-surface-raised: rgb(255 255 255 / 0.065); /* cards, tiles, controls */
+  --ig-surface-hover: rgb(255 255 255 / 0.11);
+  --ig-surface-pressed: rgb(255 255 255 / 0.04);
+  --ig-surface-sunken: rgb(0 0 0 / 0.26); /* tracks, inputs */
+  --ig-surface-selected: rgb(255 255 255 / 0.15); /* active tab thumb, selected tile */
+  --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.07) 0%, rgb(255 255 255 / 0.015) 38%, rgb(255 255 255 / 0) 60%);
+
+  /* Strokes & highlights */
+  --ig-stroke: rgb(255 255 255 / 0.09);
+  --ig-stroke-strong: rgb(255 255 255 / 0.2);
+  --ig-specular: linear-gradient(
+    172deg,
+    rgb(255 255 255 / 0.5) 0%,
+    rgb(255 255 255 / 0.14) 16%,
+    rgb(255 255 255 / 0.04) 40%,
+    rgb(255 255 255 / 0.03) 72%,
+    rgb(255 255 255 / 0.16) 100%
+  );
+  --ig-specular-control: linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0.03) 55%, rgb(255 255 255 / 0.08));
+  --ig-glow: rgb(255 255 255 / 0.05);
+  --ig-inner-glow: inset 0 0 28px 0 var(--ig-glow);
+  --ig-pointer-glow: rgb(255 255 255 / 0.045); /* surface glow under the cursor (was 0.07) */
+  --ig-pointer-rim: rgb(255 255 255 / 0.55); /* rim catch-light near the cursor (was 0.85) */
+  --ig-edge-shade: inset 0 0 0 0.5px rgb(0 0 0 / 0.5); /* hairline that separates glass from bright backgrounds */
+
+  /* Text */
+  --ig-text: #f4f5f8;
+  --ig-text-secondary: rgb(244 245 248 / 0.72);
+  --ig-text-tertiary: rgb(244 245 248 / 0.5);
+  --ig-text-on-accent: #04201d;
+  --ig-text-on-strong: #f4f5f8; /* text on the black pill — used by .ig-glass--pill in both themes */
+  --ig-accent-on-strong: #3dd6c6; /* accent on the black pill (eq bars, progress) — same in both themes */
+  --ig-success-on-strong: #43d17f;
+
+  /* Accent & status — "meniscus teal" identity accent */
+  --ig-accent: #3dd6c6;
+  --ig-accent-soft: rgb(61 214 198 / 0.18);
+  --ig-success: #43d17f;
+  --ig-warning: #f6c04e;
+  --ig-danger: #ff6461;
+  --ig-focus: rgb(61 214 198 / 0.9);
+
+  /* Wave 2: coloured TEXT (links, errors, «Сохранено», timer done). Fills/icons keep --ig-accent/--ig-danger/…;
+     text uses these, re-tuned per vibrancy so they keep 4.5:1 on the worst backdrop (contrast.test.ts). */
+  --ig-accent-text: #3dd6c6;
+  --ig-danger-text: #ff6461;
+  --ig-success-text: #43d17f;
+  --ig-warning-text: #f6c04e;
+  --ig-focus-halo: rgb(61 214 198 / 0.3);
+  --ig-row-selected: rgb(61 214 198 / 0.14); /* keyboard-selected list row */
+  --ig-row-current: rgb(255 255 255 / 0.12); /* open item in a list (current note) — neutral */
+  --ig-danger-soft: rgb(255 100 97 / 0.14); /* error banner, destructive hover */
+  --ig-success-soft: rgb(67 209 127 / 0.14); /* timer finished */
+
+  /* Elevation — fits the 800×520 window (see header comment); ≤ 18px sideways, ≤ 30px down */
+  /* Two layers, blur ≤ 24px: the former third layer (56px blur) was re-rasterised on every frame of the resize animation
+     and was the heaviest single item in the GPU raster of an expand (p95 frame 15 ms → 8.7 ms without it). */
+  --ig-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 12px 24px -6px rgb(0 0 0 / 0.42);
+  --ig-shadow-pill: 0 2px 6px rgb(0 0 0 / 0.35), 0 8px 18px -6px rgb(0 0 0 / 0.4);
+  --ig-shadow-control: 0 1px 2px rgb(0 0 0 / 0.25);
+  --ig-noise-opacity: 0.05;
+}
+
+/* ───────────────────────── Light theme — fallback surfaces ───────────────────────── */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --ig-surface: rgb(238 239 244 / 1);
+  /* --ig-surface-strong stays near-black: the collapsed pill is a notch in both themes. */
+  --ig-surface-raised: rgb(255 255 255 / 0.72);
+  --ig-surface-hover: rgb(255 255 255 / 0.95);
+  --ig-surface-pressed: rgb(214 216 224 / 0.75);
+  --ig-surface-sunken: rgb(20 24 40 / 0.07);
+  --ig-surface-selected: rgb(255 255 255 / 1);
+  --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.55) 0%, rgb(255 255 255 / 0.12) 40%, rgb(255 255 255 / 0) 65%);
+
+  --ig-stroke: rgb(20 24 40 / 0.09);
+  --ig-stroke-strong: rgb(20 24 40 / 0.18);
+  --ig-specular: linear-gradient(
+    172deg,
+    rgb(255 255 255 / 1) 0%,
+    rgb(255 255 255 / 0.6) 18%,
+    rgb(255 255 255 / 0.2) 45%,
+    rgb(20 24 40 / 0.06) 75%,
+    rgb(20 24 40 / 0.12) 100%
+  );
+  --ig-specular-control: linear-gradient(180deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.3) 50%, rgb(20 24 40 / 0.06));
+  --ig-glow: rgb(255 255 255 / 0.5);
+  --ig-pointer-glow: rgb(255 255 255 / 0.3);
+  --ig-pointer-rim: rgb(255 255 255 / 0.85);
+  --ig-edge-shade: inset 0 0 0 0.5px rgb(20 24 40 / 0.16);
+
+  --ig-text: #15161b;
+  --ig-text-secondary: rgb(21 22 27 / 0.7);
+  --ig-text-tertiary: rgb(21 22 27 / 0.52);
+  --ig-text-on-accent: #ffffff;
+
+  --ig-accent: #0a7369;
+  --ig-accent-soft: rgb(10 115 105 / 0.14);
+  --ig-success: #1d8a4c;
+  --ig-warning: #9a6200;
+  --ig-danger: #cf2f2c;
+  --ig-focus: rgb(10 115 105 / 0.85);
+
+  --ig-accent-text: #0a6e65;
+  --ig-danger-text: #b82a27;
+  --ig-success-text: #18713e;
+  --ig-warning-text: #8b5800;
+  --ig-focus-halo: rgb(10 115 105 / 0.22);
+  --ig-row-selected: rgb(10 115 105 / 0.1);
+  --ig-row-current: rgb(255 255 255 / 1);
+  --ig-danger-soft: rgb(207 47 44 / 0.1);
+  --ig-success-soft: rgb(29 138 76 / 0.1);
+
+  --ig-shadow:
+    0 1px 2px rgb(20 24 40 / 0.12),
+    0 12px 24px -6px rgb(20 24 40 / 0.22);
+  --ig-shadow-control: 0 1px 2px rgb(20 24 40 / 0.1), 0 2px 6px -2px rgb(20 24 40 / 0.08);
+  --ig-noise-opacity: 0.035;
+}
+
+/* ───────────────────────── Native vibrancy: the desktop is already blurred under the island ─────────────────────────
+ * The window region (SetWindowRgn) clips everything outside the shape, so outer shadows are invisible → removed.
+ * Surfaces are tints over the blurred desktop; alphas are chosen so primary text keeps WCAG AA (4.5:1) even over a
+ * pure-white (dark theme) / pure-black (light theme) desktop — see docs/design-spec.md §10.
+ */
+:root[data-vibrancy="acrylic"] {
+  --ig-surface: rgb(16 17 22 / 0.72);
+  --ig-surface-raised: rgb(255 255 255 / 0.065);
+  --ig-surface-hover: rgb(255 255 255 / 0.12);
+  --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.1) 0%, rgb(255 255 255 / 0.02) 40%, rgb(255 255 255 / 0) 60%);
+  --ig-glow: rgb(255 255 255 / 0.07);
+  --ig-text-secondary: rgb(244 245 248 / 0.85);
+  --ig-text-tertiary: rgb(244 245 248 / 0.62);
+  --ig-shadow: none;
+  --ig-shadow-pill: none;
+  --ig-noise-opacity: 0.035; /* Acrylic already carries its own grain */
+  /* Over a white desktop the tinted acrylic is mid-grey: coloured text must be pastel to keep 4.5:1. */
+  /* Over a white desktop any brightening tint pushes secondary text below AA → tint by DARKENING towards deep teal/green. */
+  --ig-row-selected: rgb(0 52 48 / 0.32);
+  --ig-row-current: rgb(0 0 0 / 0.22); /* a darker plate, same reason */
+  --ig-success-soft: rgb(0 56 26 / 0.3);
+  --ig-accent-text: #a8ede5;
+  --ig-danger-text: #ffd1d0;
+  --ig-success-text: #aeebc8;
+  --ig-warning-text: #fbe0a7;
+}
+
+:root[data-vibrancy="mica"] {
+  /* Mica samples the wallpaper (not what is under the window) and is nearly opaque by itself → light tint only. */
+  --ig-surface: rgb(18 19 24 / 0.42);
+  --ig-surface-raised: rgb(255 255 255 / 0.07);
+  --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.08) 0%, rgb(255 255 255 / 0) 55%);
+  --ig-text-secondary: rgb(244 245 248 / 0.76);
+  --ig-text-tertiary: rgb(244 245 248 / 0.56);
+  --ig-shadow: none;
+  --ig-shadow-pill: none;
+  --ig-noise-opacity: 0.03;
+  --ig-danger-text: #ff9795;
+}
+
+:root[data-theme="light"][data-vibrancy="acrylic"] {
+  --ig-surface: rgb(246 247 251 / 0.68);
+  --ig-surface-raised: rgb(255 255 255 / 0.55);
+  --ig-surface-hover: rgb(255 255 255 / 0.8);
+  --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.5) 0%, rgb(255 255 255 / 0.1) 45%, rgb(255 255 255 / 0) 70%);
+  --ig-glow: rgb(255 255 255 / 0.45);
+  --ig-text-secondary: rgb(21 22 27 / 0.78);
+  --ig-text-tertiary: rgb(21 22 27 / 0.62);
+  /* Over a black desktop tints must BRIGHTEN (pale teal/green), otherwise text on them drops below AA. */
+  --ig-row-selected: rgb(212 242 238 / 0.6);
+  --ig-row-current: rgb(255 255 255 / 1);
+  --ig-success-soft: rgb(218 244 226 / 0.6);
+  /* Over a black desktop the tinted acrylic is mid-grey: coloured text must be deep to keep 4.5:1. */
+  --ig-accent-text: #053d38;
+  --ig-danger-text: #671716;
+  --ig-success-text: #0d3f23;
+  --ig-warning-text: #4d3100;
+}
+
+:root[data-theme="light"][data-vibrancy="mica"] {
+  --ig-surface: rgb(246 247 251 / 0.45);
+  --ig-surface-raised: rgb(255 255 255 / 0.6);
+  --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.45) 0%, rgb(255 255 255 / 0) 60%);
+  --ig-text-secondary: rgb(21 22 27 / 0.74);
+  --ig-text-tertiary: rgb(21 22 27 / 0.58);
+  --ig-accent-text: #085f57;
+  --ig-danger-text: #9f2422;
+  --ig-success-text: #156337;
+  --ig-warning-text: #784c00;
+}
+
+/* Users who ask for less transparency get the dense fallback surfaces regardless of vibrancy. */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-vibrancy] {
+    --ig-surface: rgb(22 23 29 / 1);
+  }
+  :root[data-theme="light"][data-vibrancy] {
+    --ig-surface: rgb(238 239 244 / 1);
+  }
+}

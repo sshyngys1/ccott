@@ -1,0 +1,36 @@
+/* Owner: F2. «Текст» layout: field (1fr) | transforms 264 (ported from the Designer's preview stand). */
+.tx-root {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: var(--ig-space-3);
+  height: 100%;
+}
+.tx-banner-wrap {
+  flex: none;
+  padding: 0 var(--ig-space-1-5) var(--ig-space-1-5);
+}
+.tx-stats {
+  padding-left: var(--ig-space-1-5);
+  white-space: nowrap;
+}
+.tx-transforms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2-5);
+  min-height: 0;
+}
+.tx-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+}
+.tx-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ig-space-1);
+}
+.tx-transform {
+  justify-content: flex-start;
+  min-width: 0;
+}

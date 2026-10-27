@@ -1,0 +1,26 @@
+/* Owner: Orchestrator. Global entry stylesheet: Tailwind + design system. */
+@import "tailwindcss";
+@import "./design/tokens.css";
+@import "./design/glass.css";
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* The native window is transparent: never paint a page background. */
+  background: transparent;
+  font-family: var(--ig-font);
+  color: var(--ig-text);
+  user-select: none;
+}
+
+/* Chrome is not selectable, content is: inputs, editors and anything marked `.ig-selectable`. */
+input,
+textarea,
+[contenteditable="true"],
+.ig-selectable {
+  user-select: text;
+}

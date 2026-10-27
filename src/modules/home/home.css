@@ -1,0 +1,251 @@
+/* Owner: F2. «Главная» layout (ported from the Designer's preview stand; visuals come from glass.css, values from tokens). */
+.hm-home {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  gap: var(--ig-space-3);
+  height: 100%;
+}
+.hm-home:has(.hm-tools) {
+  grid-template-columns: 328px 1fr;
+  grid-template-rows: 1fr var(--ig-dock-height);
+}
+@supports not selector(:has(*)) {
+  .hm-home.hm-home--with-tools {
+    grid-template-columns: 328px 1fr;
+    grid-template-rows: 1fr var(--ig-dock-height);
+  }
+}
+.hm-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Player */
+.hm-player {
+  --ig-art-size: calc(var(--ig-ring-size) + var(--ig-space-5));
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--ig-space-4);
+  padding: var(--ig-space-5);
+  min-width: 0;
+}
+.hm-home:has(.hm-tools) .hm-player {
+  --ig-art-size: 96px;
+  gap: 0;
+  padding: var(--ig-space-3);
+}
+.hm-player-top {
+  display: flex;
+  align-items: stretch;
+  gap: var(--ig-space-5);
+  min-width: 0;
+}
+.hm-home:has(.hm-tools) .hm-player-top {
+  gap: var(--ig-space-3);
+}
+.ig-art.hm-art-shadow {
+  border-radius: var(--ig-radius-lg);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    0 6px 16px -6px rgb(0 0 0 / 0.5);
+}
+.hm-home:has(.hm-tools) .ig-art.hm-art-shadow {
+  border-radius: var(--ig-radius-md);
+}
+.hm-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  min-width: 0;
+  flex: 1;
+  padding: var(--ig-space-1) 0;
+  box-sizing: border-box;
+}
+.hm-home:has(.hm-tools) .hm-meta {
+  gap: 0;
+  padding: 2px 0 0;
+}
+.hm-source {
+  max-width: 100%;
+}
+.hm-track {
+  margin-top: var(--ig-space-0-5);
+  font: var(--ig-weight-semibold) var(--ig-text-xl) / var(--ig-leading-tight) var(--ig-font-display);
+}
+.hm-home:has(.hm-tools) .hm-track {
+  margin-top: 4px;
+  font-size: var(--ig-text-lg);
+}
+.hm-artist {
+  font-size: var(--ig-text-md);
+  color: var(--ig-text-secondary);
+}
+.hm-home:has(.hm-tools) .hm-artist {
+  font-size: var(--ig-text-sm);
+}
+.hm-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  margin-top: auto;
+}
+.hm-home:has(.hm-tools) .hm-controls {
+  gap: 4px;
+}
+.hm-play {
+  background-color: var(--ig-surface-selected);
+}
+.hm-seek {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+}
+.hm-home:has(.hm-tools) .hm-seek {
+  gap: var(--ig-space-2);
+}
+.hm-time {
+  width: 34px;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.hm-home:has(.hm-tools) .hm-time {
+  width: 30px;
+}
+.hm-time:last-child {
+  text-align: right;
+}
+.hm-seek .ig-glass-slider,
+.hm-volume .ig-glass-slider {
+  flex: 1;
+}
+
+/* Volume */
+.hm-volume {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) max-content minmax(140px, 196px);
+  align-items: center;
+  gap: var(--ig-space-3);
+  height: var(--ig-dock-height);
+  flex: none;
+  padding: 0 var(--ig-space-5);
+}
+.hm-home:has(.hm-tools) .hm-volume {
+  grid-template-columns: auto minmax(0, 1fr) max-content minmax(0, 1.5fr);
+  gap: var(--ig-space-2);
+  padding: 0 var(--ig-space-3) 0 var(--ig-space-4);
+}
+.hm-vol-value {
+  width: 34px;
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+.hm-vol-value[data-muted="true"] {
+  width: auto;
+  min-width: 34px;
+}
+.hm-device {
+  height: calc(var(--ig-control-height-sm) + var(--ig-space-0-5));
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--ig-space-2-5);
+  font-size: var(--ig-text-xs);
+}
+.hm-home:has(.hm-tools) .hm-device {
+  padding: 0 var(--ig-space-2);
+}
+.hm-device > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.hm-device .ig-icon:last-child {
+  flex: none;
+  color: var(--ig-text-tertiary);
+  margin-left: -2px;
+}
+.hm-menu {
+  position: absolute;
+  right: var(--ig-space-5);
+  bottom: calc(100% + var(--ig-space-2));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-0-5);
+  width: max-content;
+  min-width: calc(var(--ig-control-height-lg) * 4);
+  max-width: calc(100% - var(--ig-space-5) * 2);
+  max-height: calc(var(--ig-control-height-sm) * 5 + var(--ig-space-2) * 2);
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--ig-space-1);
+  list-style: none;
+  border-radius: var(--ig-radius-md);
+}
+.hm-home:has(.hm-tools) .hm-menu {
+  /* The tools column has room for the popover; opening here leaves the seek bar clear. */
+  left: calc(100% + var(--ig-space-3));
+  right: auto;
+  bottom: 0;
+  max-width: 100%;
+}
+.hm-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.hm-menu li { min-width: 0; }
+.hm-menu .ig-truncate { min-width: 0; }
+
+/* Tools + dock (placeholders) */
+.hm-tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: var(--ig-space-2);
+  min-height: 0;
+}
+.hm-tools .ig-glass-control--tile {
+  min-height: 0;
+  height: 100%;
+  border-radius: var(--ig-radius-lg);
+}
+.hm-dock {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  padding: 0 10px;
+}
+.hm-dock-app {
+  border-radius: var(--ig-radius-md);
+}
+.hm-dock-sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--ig-stroke-strong);
+}
+.ig-glass-control.hm-dock-add {
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+}
+.hm-dock-hint {
+  margin-left: auto;
+  padding-right: 6px;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}

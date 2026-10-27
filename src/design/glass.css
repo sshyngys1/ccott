@@ -1,0 +1,1411 @@
+/*
+ * Owner: Designer. "Meniscus" glass primitives. Every class is documented in docs/design-spec.md §6.
+ * Only var(--ig-*) tokens are used here — no literal colours except pure black/white in masks.
+ *
+ * Layering of .ig-glass (inside its own stacking context, `isolation: isolate`):
+ *   background-color  --ig-surface (tint; over native Acrylic it is translucent, in fallback it is dense)
+ *   background-image  pointer glow (follows --ig-pointer-x/y) + sheen gradient
+ *   ::before          specular rim — gradient ring cut out with mask-composite, brightens near the cursor
+ *   ::after           grain (noise tile, soft-light blend)
+ *   box-shadow        inner glow + edge hairline + outer elevation (outer shadow is "none" with native vibrancy)
+ *   children          content (z-index auto → above both pseudo-elements)
+ */
+
+/* ───────────────────────── .ig-glass — main glass surface (expanded panel, popovers) ───────────────────────── */
+.ig-glass {
+  --_rim: var(--ig-specular);
+  position: relative;
+  isolation: isolate;
+  color: var(--ig-text);
+  background-color: var(--ig-surface);
+  /* Pointer glow: small and soft — a smooth 3-stop falloff instead of one linear ramp, so there is no visible "disc". */
+  background-image:
+    radial-gradient(
+      circle var(--ig-pointer-radius) at var(--ig-pointer-x, 50%) var(--ig-pointer-y, -200px),
+      color-mix(in srgb, var(--ig-pointer-glow) calc(var(--ig-pointer-active) * 100%), transparent) 0%,
+      color-mix(in srgb, var(--ig-pointer-glow) calc(var(--ig-pointer-active) * 35%), transparent) 45%,
+      transparent 100%
+    ),
+    var(--ig-sheen);
+  box-shadow: var(--ig-inner-glow), var(--ig-edge-shade), var(--ig-shadow);
+  transition:
+    background-color var(--ig-dur-med) var(--ig-ease-out),
+    box-shadow var(--ig-dur-med) var(--ig-ease-out),
+    --ig-pointer-active var(--ig-dur-slow) var(--ig-ease-out);
+}
+
+/* Specular rim: a 1px gradient ring (padding-box minus content-box) + a catch-light around the cursor. */
+.ig-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  padding: var(--ig-rim-width);
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle var(--ig-pointer-rim-radius) at var(--ig-pointer-x, 50%) var(--ig-pointer-y, -200px),
+      color-mix(in srgb, var(--ig-pointer-rim) calc(var(--ig-pointer-active) * 100%), transparent) 0%,
+      color-mix(in srgb, var(--ig-pointer-rim) calc(var(--ig-pointer-active) * 30%), transparent) 50%,
+      transparent 100%
+    ),
+    var(--_rim);
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+
+/* Grain: cached raster tile, blended softly so it reads as material, not dirt. */
+.ig-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-image: var(--ig-noise);
+  background-size: var(--ig-noise-size);
+  mix-blend-mode: soft-light;
+  opacity: var(--ig-noise-opacity);
+  pointer-events: none;
+}
+
+/* ── Modifier: collapsed pill (near-black notch). Text tokens are remapped so content stays light in BOTH themes. ── */
+.ig-glass--pill {
+  --ig-text: var(--ig-text-on-strong);
+  --ig-text-secondary: color-mix(in srgb, var(--ig-text-on-strong) 70%, transparent);
+  --ig-text-tertiary: color-mix(in srgb, var(--ig-text-on-strong) 50%, transparent);
+  --ig-accent: var(--ig-accent-on-strong);
+  --ig-success: var(--ig-success-on-strong);
+  --ig-text-on-accent: #04201d;
+  --ig-surface-raised: rgb(255 255 255 / 0.1);
+  --ig-stroke: rgb(255 255 255 / 0.1);
+  --_rim: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.04) 45%, rgb(255 255 255 / 0.1));
+  --ig-pointer-glow: rgb(255 255 255 / 0.05);
+  --ig-pointer-rim: rgb(255 255 255 / 0.4);
+  color-scheme: dark;
+  background-color: var(--ig-surface-strong);
+  background-image: radial-gradient(
+    circle var(--ig-pointer-radius-pill) at var(--ig-pointer-x, 50%) var(--ig-pointer-y, -200px),
+    color-mix(in srgb, var(--ig-pointer-glow) calc(var(--ig-pointer-active) * 100%), transparent) 0%,
+    color-mix(in srgb, var(--ig-pointer-glow) calc(var(--ig-pointer-active) * 35%), transparent) 45%,
+    transparent 100%
+  );
+  box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.06), var(--ig-shadow-pill);
+}
+/* Hover (mouse over the collapsed pill, before it expands): rim lights up. Size growth is done in JS (Motion). */
+.ig-glass--pill:hover,
+.ig-glass--pill[data-hover="true"] {
+  background-color: color-mix(in srgb, var(--ig-surface-strong) 94%, white);
+  --_rim: linear-gradient(180deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.06) 45%, rgb(255 255 255 / 0.16));
+}
+
+/* ── Modifier: refraction of whatever is behind a SMALL element (≤ ~120×120). Chromium-only (backdrop-filter: url()). ── */
+.ig-glass--refract {
+  backdrop-filter: url(#ig-refraction) saturate(1.4) brightness(1.06);
+}
+
+/* ── Modifier: almost no tint — a clear lens (pair with --refract; text on it needs its own plate). ── */
+.ig-glass--clear {
+  background-color: color-mix(in srgb, var(--ig-surface) 10%, transparent);
+  background-image: var(--ig-sheen);
+}
+
+/* ── Modifier: no outer shadow (nested glass, glass inside glass). ── */
+.ig-glass--flat {
+  box-shadow: var(--ig-inner-glow), var(--ig-edge-shade);
+}
+
+/* ───────────────────────── .ig-glass-card — static raised section inside the panel ───────────────────────── */
+.ig-glass-card {
+  position: relative;
+  border-radius: var(--ig-radius-lg);
+  background-color: var(--ig-surface-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    inset 0 1px 0 0 var(--ig-glow),
+    var(--ig-shadow-control);
+}
+
+/* ───────────────────────── .ig-glass-control — button / tile ─────────────────────────
+ * States: :hover · :active (pressed) · [aria-pressed="true"]/[aria-selected="true"]/[data-selected] · :focus-visible · :disabled/[aria-disabled]
+ * Variants: --icon (square), --round (capsule), --tile (icon over label), --accent (filled), --lg (40px), --ghost (no plate at rest)
+ */
+.ig-glass-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ig-space-2);
+  min-width: var(--ig-control-height);
+  height: var(--ig-control-height);
+  padding: 0 var(--ig-space-3);
+  border: 0;
+  border-radius: var(--ig-radius-md);
+  background-color: var(--ig-surface-raised);
+  background-image: none;
+  color: var(--ig-text);
+  font: inherit;
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    var(--ig-shadow-control);
+  transition:
+    background-color var(--ig-dur-fast) var(--ig-ease-out),
+    box-shadow var(--ig-dur-fast) var(--ig-ease-out),
+    color var(--ig-dur-fast) var(--ig-ease-out),
+    opacity var(--ig-dur-fast) var(--ig-ease-out),
+    transform var(--ig-dur-med) var(--ig-ease-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+/* Specular top edge of the control (lighter than the panel rim). */
+.ig-glass-control::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: var(--ig-rim-width);
+  border-radius: inherit;
+  background: var(--ig-specular-control);
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-glass-control:hover {
+  background-color: var(--ig-surface-hover);
+}
+.ig-glass-control:hover::before {
+  opacity: 1;
+}
+.ig-glass-control:active,
+.ig-glass-control[data-pressed="true"] {
+  background-color: var(--ig-surface-pressed);
+  transform: scale(var(--ig-press-scale));
+  transition-duration: var(--ig-dur-instant);
+}
+.ig-glass-control:active::before,
+.ig-glass-control[data-pressed="true"]::before {
+  opacity: 0.25;
+}
+.ig-glass-control[aria-pressed="true"],
+.ig-glass-control[aria-selected="true"],
+.ig-glass-control[data-selected="true"] {
+  background-color: var(--ig-surface-selected);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke-strong),
+    var(--ig-shadow-control);
+}
+.ig-glass-control:focus-visible,
+.ig-glass-control[data-focus-visible="true"] {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: var(--ig-outline-offset);
+}
+.ig-glass-control:disabled,
+.ig-glass-control[aria-disabled="true"] {
+  opacity: 0.38;
+  pointer-events: none;
+}
+.ig-glass-control svg {
+  flex: none;
+}
+
+.ig-glass-control--icon {
+  width: var(--ig-control-height);
+  padding: 0;
+}
+.ig-glass-control--round {
+  border-radius: 999px;
+}
+.ig-glass-control--lg {
+  height: var(--ig-control-height-lg);
+  min-width: var(--ig-control-height-lg);
+}
+.ig-glass-control--icon.ig-glass-control--lg {
+  width: var(--ig-control-height-lg);
+}
+.ig-glass-control--ghost {
+  background-color: transparent;
+  box-shadow: none;
+}
+.ig-glass-control--ghost::before {
+  opacity: 0;
+}
+.ig-glass-control--ghost:hover {
+  background-color: var(--ig-surface-raised);
+}
+.ig-glass-control--tile {
+  flex-direction: column;
+  gap: var(--ig-space-1-5);
+  height: auto;
+  min-height: 64px;
+  padding: var(--ig-space-2);
+  font-size: var(--ig-text-xs);
+  font-weight: var(--ig-weight-medium);
+  color: var(--ig-text-secondary);
+  white-space: normal;
+  text-align: center;
+  line-height: var(--ig-leading-tight);
+}
+.ig-glass-control--tile:hover {
+  color: var(--ig-text);
+}
+.ig-glass-control--tile svg {
+  color: var(--ig-text);
+}
+.ig-glass-control--accent {
+  background-color: var(--ig-accent);
+  color: var(--ig-text-on-accent);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.18),
+    var(--ig-shadow-control);
+}
+.ig-glass-control--accent:hover {
+  background-color: color-mix(in srgb, var(--ig-accent) 88%, white);
+}
+.ig-glass-control--accent:active {
+  background-color: color-mix(in srgb, var(--ig-accent) 85%, black);
+}
+
+/* ───────────────────────── .ig-glass-input — text field / search ───────────────────────── */
+.ig-glass-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: var(--ig-control-height);
+  padding: 0 var(--ig-space-3);
+  border: 0;
+  border-radius: var(--ig-radius-md);
+  background-color: var(--ig-surface-sunken);
+  color: var(--ig-text);
+  font: inherit;
+  font-size: var(--ig-text-sm);
+  outline: none;
+  caret-color: var(--ig-accent);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke), inset 0 1px 2px rgb(0 0 0 / 0.12);
+  transition:
+    box-shadow var(--ig-dur-fast) var(--ig-ease-out),
+    background-color var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-glass-input::placeholder {
+  color: var(--ig-text-tertiary);
+}
+.ig-glass-input:hover {
+  box-shadow: inset 0 0 0 1px var(--ig-stroke-strong), inset 0 1px 2px rgb(0 0 0 / 0.12);
+}
+/* Text fields show the ring on ANY focus (mouse too): typing needs a visible "where am I" in both themes (§6.9). */
+.ig-glass-input:focus-visible,
+.ig-glass-input:focus,
+.ig-glass-input[data-focus-visible="true"] {
+  box-shadow: var(--ig-focus-ring);
+}
+.ig-glass-input[aria-invalid="true"] {
+  box-shadow:
+    inset 0 0 0 1px var(--ig-danger-text),
+    0 0 0 var(--ig-focus-ring-width) var(--ig-danger-soft);
+}
+.ig-glass-input:disabled {
+  opacity: 0.45;
+}
+.ig-glass-input::selection {
+  background: var(--ig-accent-soft);
+}
+textarea.ig-glass-input {
+  height: auto;
+  padding: var(--ig-space-2) var(--ig-space-3);
+  line-height: var(--ig-leading);
+  resize: none;
+}
+
+/* ───────────────────────── .ig-glass-slider — styled <input type="range"> (volume, seek) ─────────────────────────
+ * Set the fill with style={{ "--ig-value": "64%" }}. Thicker on hover (Liquid-style "swell").
+ */
+.ig-glass-slider {
+  --ig-value: 50%;
+  --_track: 4px;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  min-width: 0;
+  margin: 0;
+  background: transparent;
+  outline: none;
+  cursor: default;
+}
+.ig-glass-slider:hover,
+.ig-glass-slider:active {
+  --_track: 6px;
+}
+.ig-glass-slider::-webkit-slider-runnable-track {
+  height: var(--_track);
+  border-radius: 999px;
+  background:
+    linear-gradient(var(--ig-text), var(--ig-text)) 0 0 / var(--ig-value) 100% no-repeat,
+    var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+  transition: height var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-glass-slider--accent::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(var(--ig-accent), var(--ig-accent)) 0 0 / var(--ig-value) 100% no-repeat,
+    var(--ig-surface-sunken);
+}
+.ig-glass-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: calc((var(--_track) - 14px) / 2);
+  border-radius: 50%;
+  background: var(--ig-text-on-strong);
+  box-shadow:
+    0 0 0 0.5px rgb(0 0 0 / 0.25),
+    0 1px 4px rgb(0 0 0 / 0.35);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--ig-dur-fast) var(--ig-ease-out),
+    transform var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-glass-slider:hover::-webkit-slider-thumb,
+.ig-glass-slider:focus-visible::-webkit-slider-thumb,
+.ig-glass-slider:active::-webkit-slider-thumb {
+  opacity: 1;
+  transform: scale(1);
+}
+.ig-glass-slider:focus-visible::-webkit-slider-runnable-track {
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    0 0 0 3px var(--ig-accent-soft);
+}
+/* Muted volume: fill fades to tertiary, the value stays visible (unmute restores it). */
+.ig-glass-slider[data-muted="true"]::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(var(--ig-text-tertiary), var(--ig-text-tertiary)) 0 0 / var(--ig-value) 100% no-repeat,
+    var(--ig-surface-sunken);
+}
+
+/* ───────────────────────── .ig-tabbar / .ig-tab — tab row of the expanded panel ─────────────────────────
+ * The moving thumb is a separate element `.ig-tab-thumb` (Motion layoutId, springs.tab) rendered inside the active tab.
+ */
+.ig-tabbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-0-5);
+  height: var(--ig-tabbar-height);
+  padding: 3px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background-color: var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  height: 100%;
+  padding: 0 var(--ig-space-3);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ig-text-secondary);
+  font: inherit;
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-medium);
+  cursor: default;
+  outline: none;
+  transition: color var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-tab:hover {
+  color: var(--ig-text);
+}
+.ig-tab[aria-selected="true"],
+.ig-tab[aria-checked="true"] {
+  color: var(--ig-text);
+}
+.ig-tab:focus-visible,
+.ig-tab[data-focus-visible="true"] {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: 1px;
+}
+.ig-tab > * {
+  position: relative;
+  z-index: 1;
+}
+.ig-tab-thumb {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background-color: var(--ig-surface-selected);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke-strong),
+    inset 0 1px 0 0 var(--ig-glow),
+    var(--ig-shadow-control);
+}
+
+/* ───────────────────────── .ig-icon — stroke icon defaults (see icons.tsx) ───────────────────────── */
+.ig-icon {
+  display: block;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--ig-icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ───────────────────────── .ig-eq — compact equalizer (pill live activity). Animates ONLY with [data-playing]. ───── */
+.ig-eq {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 14px;
+  color: var(--ig-accent);
+}
+.ig-eq > i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: 50% 50%;
+  transform: scaleY(0.3);
+}
+.ig-eq[data-playing="true"] > i {
+  animation: ig-eq-bar 900ms var(--ig-ease-in-out) infinite alternate;
+}
+.ig-eq[data-playing="true"] > i:nth-child(2) {
+  animation-duration: 640ms;
+  animation-delay: -200ms;
+}
+.ig-eq[data-playing="true"] > i:nth-child(3) {
+  animation-duration: 780ms;
+  animation-delay: -420ms;
+}
+.ig-eq[data-playing="true"] > i:nth-child(4) {
+  animation-duration: 560ms;
+  animation-delay: -120ms;
+}
+@keyframes ig-eq-bar {
+  0% {
+    transform: scaleY(0.25);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+/* ───────────────────────── Text helpers ───────────────────────── */
+.ig-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.ig-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ═════════════════════════════════ Wave 2 — tabs, settings, pill activities (design-spec §6.3–§6.9, §15b) ═════════════════════════════════
+ * Performance (§14): nothing below uses backdrop-filter or filter; rows are plain backgrounds (cheap to scroll),
+ * progress moves by transform / stroke-dashoffset only, the only infinite animation is the "saving" dot.
+ */
+
+/* ── Card tone: finished timer (green tint over the raised card; text stays --ig-text, see contrast.test.ts) ── */
+.ig-glass-card--success {
+  background-image: linear-gradient(var(--ig-success-soft), var(--ig-success-soft));
+}
+
+/* ── Control variants ── */
+.ig-glass-control--sm {
+  height: var(--ig-control-height-sm);
+  min-width: var(--ig-control-height-sm);
+  padding: 0 var(--ig-space-2-5);
+  border-radius: var(--ig-radius-sm);
+  gap: var(--ig-space-1-5);
+  font-size: var(--ig-text-xs);
+}
+.ig-glass-control--icon.ig-glass-control--sm {
+  width: var(--ig-control-height-sm);
+  padding: 0;
+}
+/* Destructive: neutral at rest, red only under the pointer (delete clip, delete note, «Очистить»). */
+.ig-glass-control--danger:hover {
+  background-color: var(--ig-danger-soft);
+  color: var(--ig-danger-text);
+}
+
+/* ── .ig-kbd — key hint (Enter, Shift, Del, Esc) ── */
+.ig-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--ig-kbd-height);
+  min-width: var(--ig-kbd-height);
+  padding: 0 var(--ig-space-1-5);
+  border-radius: var(--ig-radius-xs);
+  background-color: var(--ig-surface-raised);
+  color: var(--ig-text-secondary);
+  font: var(--ig-weight-medium) var(--ig-text-xs) / 1 var(--ig-font);
+  white-space: nowrap;
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    inset 0 -1px 0 0 var(--ig-stroke-strong);
+}
+
+/* ── .ig-section-label — small heading above a group («Закреплённые», «Регистр») ── */
+.ig-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  margin: 0;
+  min-height: 20px;
+  padding: 0 var(--ig-space-2-5);
+  color: var(--ig-text-tertiary);
+  font: var(--ig-weight-semibold) var(--ig-text-xs) / var(--ig-leading-tight) var(--ig-font);
+  letter-spacing: 0.02em;
+}
+
+/* ── .ig-search — search field with a leading icon and a trailing key hint ── */
+.ig-search {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.ig-search > .ig-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--ig-space-2-5);
+  margin-top: -8px;
+  color: var(--ig-text-tertiary);
+  pointer-events: none;
+}
+.ig-search > .ig-glass-input {
+  padding-left: 34px;
+  padding-right: 44px;
+}
+.ig-search > .ig-kbd {
+  position: absolute;
+  top: 50%;
+  right: var(--ig-space-2);
+  margin-top: calc(var(--ig-kbd-height) / -2);
+  pointer-events: none;
+}
+.ig-search > .ig-glass-input:focus ~ .ig-icon,
+.ig-search:focus-within > .ig-icon {
+  color: var(--ig-accent-text);
+}
+
+/* ── .ig-field — sunken container for a textarea / contenteditable editor, with optional toolbar/footer bars ──
+ * <div class="ig-field"> [.ig-field-bar] <textarea class="ig-textarea"/> | <div class="ig-editor" contenteditable/> [.ig-field-bar--footer] </div>
+ * Ring on :focus-within, red ring with [data-invalid="true"].
+ */
+.ig-field {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-radius: var(--ig-radius-md);
+  background-color: var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke), inset 0 1px 2px rgb(0 0 0 / 0.12);
+  transition: box-shadow var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-field:hover {
+  box-shadow: inset 0 0 0 1px var(--ig-stroke-strong), inset 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.ig-field:focus-within,
+.ig-field[data-focus-visible="true"] {
+  box-shadow: var(--ig-focus-ring);
+}
+.ig-field[data-invalid="true"] {
+  box-shadow:
+    inset 0 0 0 1px var(--ig-danger-text),
+    0 0 0 var(--ig-focus-ring-width) var(--ig-danger-soft);
+}
+.ig-field-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+  flex: none;
+  min-height: 36px;
+  padding: var(--ig-space-1) var(--ig-space-1-5);
+  box-sizing: border-box;
+}
+.ig-field-bar--header {
+  border-bottom: 1px solid var(--ig-stroke);
+}
+.ig-field-bar--footer {
+  border-top: 1px solid var(--ig-stroke);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.ig-field-bar__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--ig-space-1);
+  background: var(--ig-stroke-strong);
+}
+.ig-field-bar__spacer {
+  flex: 1;
+}
+
+/* ── .ig-textarea / .ig-editor — bare text surfaces that live inside .ig-field ── */
+.ig-textarea,
+.ig-editor {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--ig-space-2-5) var(--ig-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--ig-text);
+  font: var(--ig-weight-regular) var(--ig-text-sm) / var(--ig-leading) var(--ig-font);
+  caret-color: var(--ig-accent);
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ig-stroke-strong) transparent;
+  user-select: text;
+  cursor: text;
+}
+.ig-textarea--mono {
+  font-family: var(--ig-font-mono);
+  font-size: var(--ig-text-sm);
+}
+.ig-textarea::placeholder {
+  color: var(--ig-text-tertiary);
+}
+.ig-textarea::selection,
+.ig-editor ::selection,
+.ig-editor::selection {
+  background: var(--ig-accent-soft);
+}
+/* Standalone contenteditable (not inside .ig-field) still shows the ring. */
+.ig-editor:not(.ig-field > .ig-editor):focus {
+  border-radius: var(--ig-radius-md);
+  box-shadow: var(--ig-focus-ring);
+}
+.ig-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--ig-text-tertiary);
+  pointer-events: none;
+}
+.ig-editor > :first-child {
+  margin-top: 0;
+}
+.ig-editor p,
+.ig-editor ul,
+.ig-editor ol {
+  margin: 0 0 var(--ig-space-1-5);
+}
+.ig-editor h3 {
+  margin: 0 0 var(--ig-space-1-5);
+  font: var(--ig-weight-semibold) var(--ig-text-md) / var(--ig-leading-tight) var(--ig-font);
+}
+.ig-editor strong,
+.ig-editor b {
+  font-weight: var(--ig-weight-semibold);
+}
+.ig-editor ul,
+.ig-editor ol {
+  padding-left: 20px;
+}
+.ig-editor li::marker {
+  color: var(--ig-text-tertiary);
+}
+.ig-editor a {
+  color: var(--ig-accent-text);
+}
+/* Checklist: <ul data-type="checklist"><li data-checked="true|false">…</li></ul>.
+   The box is a pseudo-element; F2 toggles when the click lands in the first 22px of the <li>. */
+.ig-editor ul[data-type="checklist"] {
+  padding-left: 0;
+  list-style: none;
+}
+.ig-editor ul[data-type="checklist"] > li {
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: var(--ig-space-0-5);
+}
+.ig-editor ul[data-type="checklist"] > li::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px var(--ig-text-tertiary);
+  cursor: default;
+}
+.ig-editor ul[data-type="checklist"] > li[data-checked="true"] {
+  color: var(--ig-text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: var(--ig-text-tertiary);
+}
+.ig-editor ul[data-type="checklist"] > li[data-checked="true"]::before {
+  background: var(--ig-accent);
+  box-shadow: none;
+}
+.ig-editor ul[data-type="checklist"] > li[data-checked="true"]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  width: 4px;
+  height: 7px;
+  border: solid var(--ig-text-on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ── .ig-banner — inline message (invalid JSON / Base64) ── */
+.ig-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  min-height: var(--ig-control-height-sm);
+  padding: var(--ig-space-1-5) var(--ig-space-2-5);
+  box-sizing: border-box;
+  border-radius: var(--ig-radius-sm);
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading-tight);
+  color: var(--ig-text);
+  background: var(--ig-surface-raised);
+}
+.ig-banner > .ig-icon {
+  flex: none;
+}
+.ig-banner--danger {
+  background: var(--ig-danger-soft);
+  color: var(--ig-danger-text);
+}
+
+/* ── .ig-status — autosave indicator: data-state="saving" | "saved" | "error" ── */
+.ig-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+  white-space: nowrap;
+}
+.ig-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ig-text-tertiary);
+}
+.ig-status[data-state="saved"]::before {
+  background: var(--ig-success);
+}
+.ig-status[data-state="saving"]::before {
+  background: var(--ig-warning);
+  animation: ig-status-pulse 900ms var(--ig-ease-in-out) infinite alternate; /* only while saving (≤ ~1 s) */
+}
+.ig-status[data-state="error"] {
+  color: var(--ig-danger-text);
+}
+.ig-status[data-state="error"]::before {
+  background: var(--ig-danger);
+}
+@keyframes ig-status-pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+
+/* ── .ig-scroll / .ig-scroll-fade — scroll container with edges that fade out (mask, no extra layers) ──
+ * useScrollFade(ref) (src/design/useScrollFade.ts) sets data-at-start / data-at-end so the fade only shows
+ * where there is more content to scroll to.
+ */
+.ig-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ig-stroke-strong) transparent;
+}
+.ig-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.ig-scroll::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--ig-stroke-strong);
+}
+.ig-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ig-scroll-fade {
+  --_fade-top: var(--ig-scroll-fade);
+  --_fade-bottom: var(--ig-scroll-fade);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--_fade-top),
+    #000 calc(100% - var(--_fade-bottom)),
+    transparent 100%
+  );
+}
+.ig-scroll-fade[data-at-start="true"] {
+  --_fade-top: 0px;
+}
+.ig-scroll-fade[data-at-end="true"] {
+  --_fade-bottom: 0px;
+}
+
+/* ── .ig-list / .ig-list-row — clipboard history, note list ──
+ * <ul class="ig-list" role="listbox"> <li class="ig-list-row" role="option" aria-selected> lead · body · actions </li> </ul>
+ * Rows have no plate at rest (quiet list); hover = raised, keyboard selection = tinted + 1px accent line.
+ */
+.ig-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-row-gap);
+  margin: 0;
+  padding: var(--ig-space-1);
+  list-style: none;
+}
+.ig-list-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ig-row-lead) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--ig-space-2-5);
+  flex: none;
+  height: var(--ig-row-height);
+  padding: 0 var(--ig-space-1-5) 0 var(--ig-space-2);
+  box-sizing: border-box;
+  border-radius: var(--ig-radius-md);
+  color: var(--ig-text);
+  background-color: transparent;
+  outline: none;
+  cursor: default;
+  transition:
+    background-color var(--ig-dur-fast) var(--ig-ease-out),
+    box-shadow var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-list-row:hover {
+  background-color: var(--ig-surface-hover);
+}
+.ig-list-row:active {
+  background-color: var(--ig-surface-pressed);
+}
+/* Open item (the note shown in the editor): neutral plate, like a selected control. */
+.ig-list-row[aria-current="true"] {
+  background-color: var(--ig-row-current);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke-strong),
+    var(--ig-shadow-control);
+}
+/* Keyboard cursor (arrow keys): accent tint + 1px accent line. Wins over aria-current when both apply. */
+.ig-list-row[aria-selected="true"],
+.ig-list-row[data-selected="true"] {
+  background-color: var(--ig-row-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ig-accent-text) 65%, transparent);
+}
+.ig-list-row:focus-visible,
+.ig-list-row[data-focus-visible="true"] {
+  box-shadow: inset 0 0 0 var(--ig-outline-width) var(--ig-focus);
+}
+.ig-list-row--media {
+  grid-template-columns: var(--ig-thumb-width) minmax(0, 1fr) auto;
+  height: var(--ig-row-height-media);
+}
+.ig-list-row--compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  height: 44px;
+  padding-left: var(--ig-space-2-5);
+}
+.ig-list-row__lead {
+  display: grid;
+  place-items: center;
+  width: var(--ig-row-lead);
+  height: var(--ig-row-lead);
+  border-radius: var(--ig-radius-sm);
+  background-color: var(--ig-surface-sunken);
+  color: var(--ig-text-secondary);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-list-row__lead[data-kind="link"] {
+  color: var(--ig-accent-text);
+}
+.ig-list-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ig-list-row__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ig-text-sm);
+  line-height: var(--ig-leading-tight);
+}
+.ig-list-row__title[data-kind="link"] {
+  color: var(--ig-accent-text);
+}
+.ig-list-row__title--mono {
+  font-family: var(--ig-font-mono);
+  font-size: var(--ig-text-xs);
+}
+.ig-list-row__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading-tight);
+  color: var(--ig-text-tertiary);
+}
+.ig-list-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-0-5);
+}
+/* Actions appear on hover / keyboard selection / focus inside; an active pin stays visible as a status mark. */
+.ig-list-row__actions > * {
+  opacity: 0;
+  transition: opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-list-row:hover .ig-list-row__actions > *,
+.ig-list-row:focus-within .ig-list-row__actions > *,
+.ig-list-row[aria-selected="true"] .ig-list-row__actions > *,
+.ig-list-row[data-selected="true"] .ig-list-row__actions > *,
+.ig-list-row__actions > [aria-pressed="true"] {
+  opacity: 1;
+}
+.ig-list-row__actions > [aria-pressed="true"] {
+  color: var(--ig-accent-text);
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* ── .ig-thumb — image preview (clip thumbnail) ── */
+.ig-thumb {
+  display: block;
+  width: var(--ig-thumb-width);
+  height: var(--ig-thumb-height);
+  border-radius: var(--ig-radius-sm);
+  object-fit: cover;
+  background-color: var(--ig-surface-sunken);
+  outline: 1px solid var(--ig-stroke);
+  outline-offset: -1px;
+}
+
+/* ── .ig-art — artwork (img inside) or empty placeholder (icon inside) ── */
+.ig-art {
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  width: var(--ig-art-size);
+  height: var(--ig-art-size);
+  border-radius: var(--ig-radius-md);
+  background-color: var(--ig-surface-sunken);
+  color: var(--ig-text-tertiary);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-art > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ig-art--pill {
+  width: var(--ig-art-size-pill);
+  height: var(--ig-art-size-pill);
+  border-radius: var(--ig-radius-xs);
+}
+
+/* ── .ig-empty — empty state (no clips, no media, no notes, nothing found) ── */
+.ig-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ig-space-1-5);
+  height: 100%;
+  min-height: 0;
+  padding: var(--ig-space-4);
+  box-sizing: border-box;
+  text-align: center;
+}
+.ig-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--ig-space-1);
+  border-radius: 50%;
+  background-color: var(--ig-surface-sunken);
+  color: var(--ig-text-secondary);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-empty__title {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+  color: var(--ig-text);
+}
+.ig-empty__text {
+  max-width: 300px;
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading);
+  color: var(--ig-text-tertiary);
+}
+
+/* ── .ig-chip — folder / preset chip (toggle). Selected: aria-pressed | aria-selected | aria-checked ── */
+.ig-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ig-space-1-5);
+  flex: none;
+  height: var(--ig-chip-height);
+  padding: 0 var(--ig-space-2-5);
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 999px;
+  background-color: var(--ig-surface-raised);
+  color: var(--ig-text-secondary);
+  font: var(--ig-weight-medium) var(--ig-text-xs) / 1 var(--ig-font);
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+  transition:
+    background-color var(--ig-dur-fast) var(--ig-ease-out),
+    color var(--ig-dur-fast) var(--ig-ease-out),
+    transform var(--ig-dur-med) var(--ig-ease-spring);
+}
+.ig-chip:hover {
+  background-color: var(--ig-surface-hover);
+  color: var(--ig-text);
+}
+.ig-chip:active {
+  transform: scale(var(--ig-press-scale));
+  transition-duration: var(--ig-dur-instant);
+}
+.ig-chip[aria-pressed="true"],
+.ig-chip[aria-selected="true"],
+.ig-chip[aria-checked="true"] {
+  background-color: var(--ig-surface-selected);
+  color: var(--ig-text);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke-strong),
+    var(--ig-shadow-control);
+}
+.ig-chip:focus-visible,
+.ig-chip[data-focus-visible="true"] {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: var(--ig-outline-offset);
+}
+.ig-chip:disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+.ig-chip--add {
+  width: var(--ig-chip-height);
+  padding: 0;
+  background-color: transparent;
+  box-shadow: none;
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+}
+.ig-chip__count {
+  color: var(--ig-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── .ig-segmented — equal-width segmented control (theme, vibrancy). Items are .ig-tab + .ig-tab-thumb ── */
+.ig-segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--ig-space-0-5);
+  height: var(--ig-control-height);
+  padding: 3px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background-color: var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-segmented > .ig-tab {
+  justify-content: center;
+  padding: 0 var(--ig-space-2-5);
+  font-size: var(--ig-text-xs);
+}
+
+/* ── .ig-switch — <input type="checkbox" role="switch" class="ig-switch"> ── */
+.ig-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: var(--ig-switch-width);
+  height: var(--ig-switch-height);
+  margin: 0;
+  border-radius: 999px;
+  background-color: var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke-strong);
+  cursor: default;
+  outline: none;
+  transition:
+    background-color var(--ig-dur-fast) var(--ig-ease-out),
+    box-shadow var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(var(--ig-switch-height) - 4px);
+  height: calc(var(--ig-switch-height) - 4px);
+  border-radius: 50%;
+  background: var(--ig-text-on-strong);
+  box-shadow:
+    0 0 0 0.5px rgb(0 0 0 / 0.2),
+    0 1px 3px rgb(0 0 0 / 0.3);
+  transition: transform var(--ig-dur-med) var(--ig-ease-spring);
+}
+.ig-switch:checked {
+  background-color: var(--ig-accent);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+.ig-switch:checked::before {
+  transform: translateX(calc(var(--ig-switch-width) - var(--ig-switch-height)));
+}
+.ig-switch:focus-visible,
+.ig-switch[data-focus-visible="true"] {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: var(--ig-outline-offset);
+}
+.ig-switch:disabled {
+  opacity: 0.38;
+}
+
+/* ── .ig-select — wrapper around a native <select> with our chevron ── */
+.ig-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.ig-select > select {
+  appearance: none;
+  height: var(--ig-control-height-sm);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 28px 0 var(--ig-space-2-5);
+  border: 0;
+  border-radius: var(--ig-radius-sm);
+  background-color: var(--ig-surface-raised);
+  color: var(--ig-text);
+  font: var(--ig-weight-medium) var(--ig-text-xs) / 1 var(--ig-font);
+  text-overflow: ellipsis;
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+  cursor: default;
+}
+.ig-select > select:hover {
+  background-color: var(--ig-surface-hover);
+}
+.ig-select > select:focus-visible {
+  box-shadow: var(--ig-focus-ring);
+}
+.ig-select > .ig-icon {
+  position: absolute;
+  right: var(--ig-space-2);
+  top: 50%;
+  margin-top: -7px;
+  color: var(--ig-text-secondary);
+  pointer-events: none;
+}
+
+/* ── .ig-setting-row — one setting: label (+ description) on the left, control on the right ── */
+.ig-setting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  min-height: var(--ig-setting-row-height);
+  padding: var(--ig-space-1-5) var(--ig-space-3);
+  box-sizing: border-box;
+}
+.ig-setting-row + .ig-setting-row {
+  border-top: 1px solid var(--ig-stroke);
+}
+.ig-setting-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ig-space-1);
+  padding-top: var(--ig-space-2);
+  padding-bottom: var(--ig-space-1);
+}
+.ig-setting-row__label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ig-setting-row--stacked .ig-setting-row__label {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.ig-setting-row__title {
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text);
+}
+.ig-setting-row__desc {
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading-tight);
+  color: var(--ig-text-tertiary);
+}
+.ig-setting-row__value {
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── .ig-progress — thin bar. style={{ "--ig-progress": 0.42 }} (0..1, unitless). Moves by transform only. ── */
+.ig-progress {
+  --ig-progress: 0;
+  position: relative;
+  display: block;
+  height: var(--ig-progress-height);
+  overflow: hidden;
+  border-radius: 999px;
+  background-color: var(--ig-surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ig-accent);
+  transform-origin: 0 50%;
+  transform: scaleX(var(--ig-progress));
+  transition: transform var(--ig-dur-slow) linear;
+}
+.ig-progress[data-state="done"]::after {
+  background: var(--ig-success);
+}
+.ig-progress[data-state="paused"]::after {
+  background: var(--ig-text-tertiary);
+}
+
+/* ── .ig-ring — circular progress (timer). Use <ProgressRing/> from src/design/ProgressRing.tsx ── */
+.ig-ring {
+  --ig-progress: 0;
+  display: block;
+  flex: none;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+.ig-ring > circle {
+  fill: none;
+}
+.ig-ring__track {
+  stroke: var(--ig-surface-sunken);
+}
+.ig-ring__value {
+  stroke: var(--ig-accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: calc(100 - var(--ig-progress) * 100);
+  transition:
+    stroke-dashoffset var(--ig-dur-slow) linear,
+    stroke var(--ig-dur-med) var(--ig-ease-out);
+}
+.ig-ring[data-state="idle"] .ig-ring__value {
+  opacity: 0;
+}
+.ig-ring[data-state="paused"] .ig-ring__value {
+  stroke: var(--ig-text-tertiary);
+}
+.ig-ring[data-state="done"] .ig-ring__value {
+  stroke: var(--ig-success);
+}
+.ig-glass--pill .ig-ring__track {
+  stroke: rgb(255 255 255 / 0.16);
+}
+
+/* ── Pill content (live activities, toast, idle clock) — shared by F1's pill slot and F2's compact views ── */
+.ig-pill-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2-5);
+  height: 100%;
+  padding: 0 var(--ig-space-3-5) 0 var(--ig-space-1-5);
+  box-sizing: border-box;
+  font-size: var(--ig-text-sm);
+}
+.ig-pill-row--idle {
+  justify-content: space-between;
+  padding: 0 var(--ig-space-3-5) 0 var(--ig-space-4);
+}
+.ig-pill-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ig-text-secondary);
+}
+.ig-pill-title b {
+  font-weight: var(--ig-weight-medium);
+  color: var(--ig-text);
+}
+.ig-pill-time {
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.ig-pill-row[data-state="paused"] .ig-pill-title,
+.ig-pill-row[data-state="paused"] .ig-pill-time {
+  color: var(--ig-text-tertiary);
+}
+.ig-pill-row[data-state="done"] .ig-pill-time {
+  color: var(--ig-success);
+}
+
+/* ───────────────────────── Reduced motion ───────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .ig-eq[data-playing="true"] > i {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+  .ig-glass-control,
+  .ig-glass-control:active,
+  .ig-chip,
+  .ig-chip:active {
+    transform: none;
+    transition-duration: 0ms;
+  }
+  .ig-switch::before,
+  .ig-progress::after,
+  .ig-ring__value {
+    transition-duration: 0ms;
+  }
+  .ig-status[data-state="saving"]::before {
+    animation: none;
+  }
+}
