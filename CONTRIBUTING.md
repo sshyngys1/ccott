@@ -34,4 +34,4 @@ Include your Windows version, steps to reproduce, expected behavior, actual beha
 
 ## License
 
-Contributions are provided under the project's [MIT License](LICENSE).
+Contributions are accepted under the project's [PolyForm Noncommercial License 1.0.0](LICENSE). By submitting a contribution you agree that the author may also license it to others, including under commercial terms.

@@ -6,7 +6,7 @@
   <a href="https://github.com/sshyngys1/ccott/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sshyngys1/ccott?label=release&color=7c5cff" /></a>
   <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-0078d4?logo=windows11&logoColor=white" />
   <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri&logoColor=white" />
-  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-22c55e" /></a>
+  <a href="LICENSE"><img alt="PolyForm Noncommercial License" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-f59e0b" /></a>
 </p>
 
 <p align="center">
@@ -170,5 +170,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Releases are described in [docs/RELEASIN
 
 ## License
 
-[MIT](LICENSE) © CCOTT contributors. CCOTT is an independent project inspired by the Dynamic Island idea and is
+[PolyForm Noncommercial 1.0.0](LICENSE) © 2026 sshyngys1. Free to use, study, modify and share for any noncommercial purpose; selling CCOTT or a modified version, or other commercial use, needs the author's written permission. Versions up to 0.2.1 were released under MIT.
+
+CCOTT is an independent project inspired by the Dynamic Island idea and is
 not affiliated with Apple or Microsoft.

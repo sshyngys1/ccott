@@ -3,7 +3,7 @@ name = "island-win"
 version = "0.2.1"
 description = "Open-source Dynamic Island for Windows"
 authors = ["island-win contributors"]
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
 edition = "2024"
 
 [lib]
