@@ -73,6 +73,7 @@ pub fn run() {
             capture::capture_start,
             capture::capture_pick_color,
             capture::capture_open_folder,
+            capture::capture_ocr_languages,
             audio::audio_get_state,
             audio::audio_set_volume,
             audio::audio_set_muted,

@@ -88,6 +88,9 @@ export interface Settings {
   /** v0.2: lower-case exe names; while such an app is the maximized foreground window, the pill hides itself
    *  (shown again by the summon hotkey or a ~400 ms cursor dwell at the top edge). Default: common browsers. */
   autoHideApps: string[];
+  /** v0.2.1: OCR recognizer language — "auto" (Windows user-profile languages) or a BCP-47 tag from
+   *  `capture_ocr_languages`, e.g. "en-US", "ru". Default "auto". */
+  ocrLanguage: string;
   /** UI and tray language. Default "auto". */
   language: LanguageMode;
 }
@@ -202,6 +205,14 @@ export interface CaptureResult {
 }
 
 /** A color picked from the screen (v0.2). */
+/** An OCR recognizer language installed in Windows (v0.2.1). */
+export interface OcrLanguage {
+  /** BCP-47 tag, e.g. "en-US", "ru". */
+  tag: string;
+  /** Display name as Windows gives it, e.g. "English (United States)". */
+  name: string;
+}
+
 export interface PickedColor {
   /** "#RRGGBB", upper-case. */
   hex: string;
@@ -277,6 +288,8 @@ export interface Commands {
   capture_open_folder: [Record<string, never>, void];
   /** v0.2: frozen-screen overlay with a magnifier; click picks the pixel, HEX goes to the clipboard. null = cancelled. */
   capture_pick_color: [Record<string, never>, PickedColor | null];
+  /** v0.2.1: OCR languages available on this PC (OcrEngine.AvailableRecognizerLanguages). */
+  capture_ocr_languages: [Record<string, never>, OcrLanguage[]];
   // dock (R2, v0.2). Order of the returned list = display order.
   dock_list: [Record<string, never>, DockItem[]];
   /** Adds paths in order (duplicates by path are ignored, max 12 items); returns the new list. */
@@ -303,6 +316,9 @@ export interface Events {
   "island://open-settings": null;
   /** R1: the summon hotkey was pressed. The island is already shown (even over fullscreen); UI toggles expand/collapse. */
   "island://summoned": null;
+  /** v0.2.1, R1: the cursor is approaching the collapsed pill (or the summon hotkey was pressed) — the UI wakes the
+   *  WebView2 compositor with one cheap invisible frame so the coming expand starts smoothly. Throttled by R1. */
+  "island://prewarm": null;
   "settings://changed": Settings;
   "updater://available": UpdateInfo;
   "media://changed": MediaState;

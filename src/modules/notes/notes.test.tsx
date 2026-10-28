@@ -6,10 +6,10 @@ import { AUTOSAVE_DEBOUNCE_MS, resetNotesStore, useNotesStore } from "../../lib/
 import { MINUTE_MS } from "../../lib/timer/machine";
 import { resetTimerStore, useTimerStore } from "../../lib/timer/store";
 import { onShellRequest, type ShellRequest } from "../../shared/shellBus";
+import { NotesTab } from "./NotesTab";
 import notes from "./index";
 import { TimerPill } from "./TimerPill";
 
-const NotesTab = notes.Tab;
 const editor = () => screen.getByRole("textbox", { name: "Текст заметки" });
 
 beforeEach(() => {

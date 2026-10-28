@@ -4,7 +4,7 @@ import { t, useT, localizeMessage } from "../../i18n";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { IconTrash } from "../../design/icons";
 import { APP_VERSION, getAppVersion, invoke, invokeRecentMaximizedApps, listen } from "../../ipc";
-import type { FullscreenApp, LanguageMode, MonitorInfo, ThemeMode } from "../../shared/types";
+import type { FullscreenApp, LanguageMode, MonitorInfo, OcrLanguage, ThemeMode } from "../../shared/types";
 import { useIslandStore } from "../../store";
 import { announceUpdate } from "../toast";
 import { Segmented, SliderRow } from "./controls";
@@ -18,6 +18,7 @@ import {
   toggleFullscreenAllowlist,
 } from "./hotkey";
 import { MonitorPicker } from "./MonitorPicker";
+import { OcrLanguagePicker } from "./OcrLanguagePicker";
 import { monitorOptions, selectedMonitor } from "./monitors";
 import { patchSettings } from "./patchSettings";
 
@@ -125,6 +126,23 @@ export function SettingsView() {
   const maximizedApps = useMaximizedApps();
   const appVersion = useAppVersion();
   const options = monitorOptions(monitors);
+  const [ocrLanguages, setOcrLanguages] = useState<OcrLanguage[]>([]);
+  const [ocrLanguagesFailed, setOcrLanguagesFailed] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    invoke("capture_ocr_languages").then(
+      (languages) => {
+        if (!disposed) setOcrLanguages(languages);
+      },
+      () => {
+        if (!disposed) setOcrLanguagesFailed(true);
+      },
+    );
+    return () => {
+      disposed = true;
+    };
+  }, []);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [checkedUpToDate, setCheckedUpToDate] = useState(false);
@@ -287,6 +305,16 @@ export function SettingsView() {
             <span className="ig-setting-row__title">{t("language.label")}</span>
           </span>
           <Segmented label={t("language.label")} value={settings.language} options={LANGUAGE_OPTIONS} onChange={(language) => void patchSettings({ language })} />
+        </div>
+        <div className="ig-setting-row ig-setting-row--stacked">
+          <label className="ig-setting-row__title" htmlFor="ig-ocr-language">{t("ocrLanguage.label")}</label>
+          <OcrLanguagePicker
+            value={settings.ocrLanguage}
+            languages={ocrLanguages}
+            onChange={(ocrLanguage) => void patchSettings({ ocrLanguage })}
+          />
+          <p id="ig-ocr-hint" className="ig-setting-row__desc">{t("ocrLanguage.hint")}</p>
+          {ocrLanguagesFailed && <p className="ig-setting-row__desc" role="status">{t("ocrLanguage.loadError")}</p>}
         </div>
         <div className="ig-setting-row">
           <span className="ig-setting-row__label">

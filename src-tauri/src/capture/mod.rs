@@ -19,6 +19,14 @@ use windows::Win32::{
 };
 
 static BUSY: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub async fn capture_ocr_languages() -> Result<Vec<ocr::OcrLanguage>, String> {
+    tauri::async_runtime::spawn_blocking(ocr::installed_languages)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 struct Busy;
 impl Drop for Busy {
     fn drop(&mut self) {
@@ -117,7 +125,12 @@ fn run(
         let text = if action == CaptureAction::Qr {
             qr::decode(width, height, rgba)
         } else {
-            ocr::recognize(width, height, rgba)?
+            ocr::recognize(
+                width,
+                height,
+                rgba,
+                &crate::settings::current(app).ocr_language,
+            )?
         };
         if !text.is_empty() {
             crate::clipboard::copy_ocr(text.clone())?;

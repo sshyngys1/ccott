@@ -4,6 +4,7 @@
 // production bundle that runs inside Tauri never downloads or parses it.
 import type { CommandArgs, CommandName, CommandResult, EventName, Events, FullscreenApp } from "../shared/types";
 import { version as packageVersion } from "../../package.json";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
 export type Unlisten = () => void;
 
@@ -33,7 +34,6 @@ export async function getAppVersion(): Promise<string> {
 export async function invoke<C extends CommandName>(cmd: C, ...args: InvokeArgs<C>): Promise<CommandResult<C>> {
   const payload = args[0] as CommandArgs<C> | undefined;
   if (isTauri()) {
-    const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
     return tauriInvoke<CommandResult<C>>(cmd, payload as Record<string, unknown> | undefined);
   }
   return (await loadMock()).mockInvoke(cmd, payload);

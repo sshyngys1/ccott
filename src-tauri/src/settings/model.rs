@@ -31,6 +31,10 @@ pub fn default_auto_hide_apps() -> Vec<String> {
         .collect()
 }
 
+fn default_ocr_language() -> String {
+    "auto".to_string()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ThemeMode {
@@ -52,6 +56,8 @@ pub enum LanguageMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default = "default_ocr_language")]
+    pub ocr_language: String,
     #[serde(default)]
     pub language: LanguageMode,
     pub theme: ThemeMode,
@@ -72,6 +78,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            ocr_language: default_ocr_language(),
             language: LanguageMode::Auto,
             theme: ThemeMode::Auto,
             vibrancy: VibrancyMode::None,
@@ -170,6 +177,7 @@ impl Settings {
         };
         let mut rejected = Vec::new();
         take(map, "language", &mut self.language, &mut rejected);
+        take(map, "ocrLanguage", &mut self.ocr_language, &mut rejected);
         take(map, "theme", &mut self.theme, &mut rejected);
         take(map, "vibrancy", &mut self.vibrancy, &mut rejected);
         take(map, "monitor", &mut self.monitor, &mut rejected);
@@ -224,6 +232,7 @@ mod tests {
     #[test]
     fn defaults_match_the_contract() {
         let d = Settings::default();
+        assert_eq!(d.ocr_language, "auto");
         assert_eq!(d.theme, ThemeMode::Auto);
         assert_eq!(d.vibrancy, VibrancyMode::None);
         assert_eq!(d.monitor, "primary");
@@ -245,6 +254,7 @@ mod tests {
             v,
             json!({
                 "language": "auto",
+                "ocrLanguage": "auto",
                 "theme": "auto", "vibrancy": "none", "monitor": "primary",
                 "autostart": false, "doNotDisturb": false,
                 "hoverExpandDelayMs": 120, "hoverCollapseDelayMs": 350,
@@ -281,6 +291,34 @@ mod tests {
         assert_eq!(s.fullscreen_allowlist, vec!["cs2.exe", "chrome.exe"]);
         // Untouched fields keep their value.
         assert_eq!(s.hover_expand_delay_ms, 120);
+    }
+
+    #[test]
+    fn ocr_language_defaults_in_serde_and_accepts_saved_tags() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("ocrLanguage");
+        assert_eq!(
+            serde_json::from_value::<Settings>(value)
+                .unwrap()
+                .ocr_language,
+            "auto"
+        );
+        assert_eq!(Settings::from_json_lossy(&json!({})).ocr_language, "auto");
+        let mut settings = Settings::default();
+        assert!(
+            settings
+                .merge_json(&json!({"ocrLanguage": "en-US"}))
+                .is_empty()
+        );
+        assert_eq!(settings.ocr_language, "en-US");
+        let saved = serde_json::to_value(&settings).unwrap();
+        assert_eq!(saved["ocrLanguage"], "en-US");
+        assert_eq!(serde_json::from_value::<Settings>(saved).unwrap(), settings);
+        assert_eq!(
+            settings.merge_json(&json!({"ocrLanguage": 42})),
+            vec!["ocrLanguage"]
+        );
+        assert_eq!(settings.ocr_language, "en-US");
     }
 
     #[test]

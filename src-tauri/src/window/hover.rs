@@ -49,6 +49,61 @@ pub const REVEALED_KEEP_MARGIN_Y: f64 = 12.0;
 pub const REEMIT_GAP: Duration = Duration::from_millis(1000);
 
 pub const HOVER_EVENT: &str = "island://hover";
+pub const PREWARM_EVENT: &str = "island://prewarm";
+const PREWARM_COOLDOWN: Duration = Duration::from_millis(500);
+const PREWARM_IDLE: Duration = Duration::from_millis(750);
+
+/// CSS coordinates account for monitor DPI and the debug test origin automatically.
+pub fn in_prewarm_zone(px: f64, py: f64, pill: &IslandShape) -> bool {
+    px >= pill.x - 48.0 && px <= pill.x + pill.width + 48.0 && (-4.0..=80.0).contains(&py)
+}
+
+/// An edge-triggered wake-up, never a timer/animation loop while the pointer stays nearby.
+#[derive(Debug, Default)]
+pub struct PrewarmGate {
+    in_zone: bool,
+    last_request: Option<Instant>,
+    last_activity: Option<Instant>,
+}
+
+impl PrewarmGate {
+    pub fn note_activity(&mut self, now: Instant) {
+        self.last_activity = Some(now);
+    }
+
+    pub fn request(&mut self, now: Instant) -> bool {
+        let idle = self
+            .last_activity
+            .is_none_or(|last| now.saturating_duration_since(last) >= PREWARM_IDLE);
+        let due = self
+            .last_request
+            .is_none_or(|last| now.saturating_duration_since(last) >= PREWARM_COOLDOWN);
+        if !idle || !due {
+            return false;
+        }
+        self.last_request = Some(now);
+        self.note_activity(now);
+        true
+    }
+
+    pub fn update(&mut self, near: bool, mode: IslandMode, now: Instant) -> bool {
+        let near = near && mode == IslandMode::Collapsed;
+        let entered = near && !self.in_zone;
+        self.in_zone = near;
+        entered && self.request(now)
+    }
+}
+
+pub fn prewarm_for_summon(app: &AppHandle, state: &IslandState) {
+    if state
+        .prewarm
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .request(Instant::now())
+    {
+        let _ = app.emit(PREWARM_EVENT, ());
+    }
+}
 
 /// Decides when the current `inside` value must be emitted again (pure, unit-tested; the clock is
 /// passed in).
@@ -123,6 +178,11 @@ fn emit_current(app: &AppHandle, state: &IslandState) {
 
 /// Called by `island_set_shape`.
 pub fn resync_on_shape(app: &AppHandle, state: &IslandState) {
+    state
+        .prewarm
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .note_activity(Instant::now());
     let mut sync = state.hover_sync.lock().unwrap_or_else(|e| e.into_inner());
     if sync.on_set_shape(Instant::now()) {
         emit_current(app, state);
@@ -131,6 +191,11 @@ pub fn resync_on_shape(app: &AppHandle, state: &IslandState) {
 
 /// Called by `island_set_mode`.
 pub fn resync_on_mode(app: &AppHandle, state: &IslandState) {
+    state
+        .prewarm
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .note_activity(Instant::now());
     let mut sync = state.hover_sync.lock().unwrap_or_else(|e| e.into_inner());
     if sync.on_set_mode(Instant::now()) {
         emit_current(app, state);
@@ -312,6 +377,11 @@ fn run(app: &AppHandle, window: &WebviewWindow, hwnd_raw: isize) {
         let mut dwelling = false;
 
         if !visible {
+            state
+                .prewarm
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .update(false, mode, Instant::now());
             // A hidden window gets no clicks and the cursor position means nothing: drop the
             // `inside` state once (one event) and go back to click-through.
             if inside {
@@ -346,6 +416,15 @@ fn run(app: &AppHandle, window: &WebviewWindow, hwnd_raw: isize) {
             let (px, py) = screen_to_window_css(cursor, (rect.0, rect.1), scale);
             // Copy the shape out so no lock is held while talking to the window.
             let shape = *state.shape.read().unwrap_or_else(|e| e.into_inner());
+            let warm = state
+                .prewarm
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .update(in_prewarm_zone(px, py, &shape), mode, Instant::now());
+            if warm {
+                log::debug!("island prewarm: pointer entered approach zone");
+                let _ = app.emit(PREWARM_EVENT, ());
+            }
             let now_inside = hover_inside(&shape, px, py, inside);
             if now_inside != inside {
                 inside = now_inside;
@@ -386,6 +465,68 @@ fn run(app: &AppHandle, window: &WebviewWindow, hwnd_raw: isize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prewarm_zone_uses_pill_width_and_window_css_coordinates() {
+        let pill = IslandShape::DEFAULT_PILL;
+        assert!(in_prewarm_zone(pill.x - 48.0, 80.0, &pill));
+        assert!(in_prewarm_zone(pill.x + pill.width + 48.0, -4.0, &pill));
+        assert!(!in_prewarm_zone(pill.x - 48.1, 40.0, &pill));
+        assert!(!in_prewarm_zone(400.0, 80.1, &pill));
+        assert!(!in_prewarm_zone(400.0, -4.1, &pill));
+        assert!(!in_prewarm_zone(f64::NAN, 40.0, &pill));
+        let (px, py) = screen_to_window_css((650, 605), (50, 500), 1.5);
+        assert!(in_prewarm_zone(px, py, &pill));
+    }
+
+    #[test]
+    fn prewarm_is_quiet_far_away_and_fires_only_once_per_entry() {
+        let start = Instant::now();
+        let mut gate = PrewarmGate::default();
+        for seconds in [0, 2, 5, 30] {
+            assert!(!gate.update(
+                false,
+                IslandMode::Collapsed,
+                start + Duration::from_secs(seconds)
+            ));
+        }
+        assert!(gate.update(true, IslandMode::Collapsed, start + Duration::from_secs(31)));
+        assert!(!gate.update(true, IslandMode::Collapsed, start + Duration::from_secs(60)));
+        assert!(!gate.update(
+            false,
+            IslandMode::Collapsed,
+            start + Duration::from_secs(61)
+        ));
+        assert!(gate.update(true, IslandMode::Collapsed, start + Duration::from_secs(62)));
+    }
+
+    #[test]
+    fn prewarm_throttles_reentry_summon_and_recent_transitions() {
+        let start = Instant::now();
+        let mut gate = PrewarmGate::default();
+        gate.note_activity(start);
+        assert!(!gate.update(
+            true,
+            IslandMode::Collapsed,
+            start + Duration::from_millis(100)
+        ));
+        assert!(!gate.update(true, IslandMode::Collapsed, start + Duration::from_secs(5)));
+        assert!(!gate.update(false, IslandMode::Collapsed, start + Duration::from_secs(5)));
+        assert!(gate.update(true, IslandMode::Collapsed, start + Duration::from_secs(6)));
+        assert!(!gate.request(start + Duration::from_secs(6)));
+        assert!(!gate.request(start)); // a backwards clock cannot bypass the gate
+        gate.last_activity = None;
+        assert!(!gate.request(start + Duration::from_secs(6) + Duration::from_millis(499)));
+        assert!(gate.request(start + Duration::from_secs(6) + PREWARM_COOLDOWN));
+    }
+
+    #[test]
+    fn expanded_island_never_prewarns_and_return_to_collapsed_rearms_entry() {
+        let start = Instant::now();
+        let mut gate = PrewarmGate::default();
+        assert!(!gate.update(true, IslandMode::Expanded, start));
+        assert!(gate.update(true, IslandMode::Collapsed, start));
+    }
 
     #[test]
     fn interval_adapts_to_distance_and_mode() {

@@ -58,6 +58,7 @@ pub struct IslandState {
     pub(crate) inside: AtomicBool,
     /// When the current `inside` value is emitted again (also serializes hover emits).
     pub(crate) hover_sync: Mutex<HoverSync>,
+    pub(crate) prewarm: Mutex<hover::PrewarmGate>,
     /// Set on exit / window destruction: the hover thread leaves its loop.
     pub(crate) stop: AtomicBool,
     /// Handle used to wake the hover thread when `stop` is set.
@@ -97,6 +98,7 @@ impl Default for IslandState {
             region: Mutex::new(None),
             inside: AtomicBool::new(false),
             hover_sync: Mutex::new(HoverSync::new()),
+            prewarm: Mutex::new(hover::PrewarmGate::default()),
             stop: AtomicBool::new(false),
             hover_thread: Mutex::new(None),
             repositioning: AtomicBool::new(false),

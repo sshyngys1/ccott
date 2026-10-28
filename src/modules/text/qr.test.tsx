@@ -5,6 +5,15 @@ import { resetTextStore, useTextStore } from "../../lib/text/store";
 import { generateQr, MAX_QR_BYTES } from "../../lib/qr/generate";
 import { TextTab } from "./TextTab";
 beforeEach(()=>{resetTextStore();useTextStore.getState().markPrefilled();});
+it.each(["ru", "en"] as const)("%s keeps QR in the format grid with a compact whitespace label", lang => {
+  setLanguage(lang);
+  render(<TextTab />);
+  const qr = screen.getByRole("button", { name: lang === "ru" ? "QR-код" : "QR code" });
+  const format = screen.getByRole("button", { name: lang === "ru" ? "JSON красиво" : "Format JSON" });
+  expect(qr.parentElement).toHaveClass("tx-grid");
+  expect(qr.parentElement).toBe(format.parentElement);
+  expect(screen.getByRole("button", { name: lang === "ru" ? "Сжать пробелы" : "Squeeze spaces" })).toBeInTheDocument();
+});
 it.each(["ru","en"] as const)("%s generates QR from the selection and closes without changing user text", lang => {
   setLanguage(lang);
   useTextStore.getState().edit("prefix CCOTT suffix");

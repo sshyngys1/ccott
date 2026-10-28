@@ -3,9 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockCopy, resetMock } from "../../ipc/mock";
 import { onShellRequest, type ShellRequest } from "../../shared/shellBus";
 import { resetTextStore, useTextStore } from "../../lib/text/store";
-import text from "./index";
-
-const TextTab = text.Tab;
+import { TextTab } from "./TextTab";
 
 beforeEach(() => {
   resetMock();

@@ -3,6 +3,7 @@ import { listenDockDrop, type DockDrop } from "../ipc/dock";
 import { addDockPaths, useDockStore } from "../lib/dock/store";
 import { useIslandStore } from "../store";
 import type { HoverControls } from "../store/useHoverSync";
+
 export async function handleDockDrop(event: DockDrop, controls: HoverControls): Promise<void> {
   if (useDockStore.getState().outgoing)
     return;
@@ -25,21 +26,22 @@ export async function handleDockDrop(event: DockDrop, controls: HoverControls): 
     }
   }
 }
+
 export function useDockDrop(controls: HoverControls) {
   useEffect(() => {
-    let disposed = false, off = () => {
-    };
-    listenDockDrop(e => {
-      void handleDockDrop(e, controls);
-    }).then(fn => {
+    let disposed = false;
+    let unlisten = () => {};
+    listenDockDrop(event => {
+      void handleDockDrop(event, controls);
+    }).then(off => {
       if (disposed)
-        fn();
+        off();
       else
-        off = fn;
-    }, e => console.warn("[dock] drop subscription failed", e));
+        unlisten = off;
+    }, error => console.warn("[dock] drop subscription failed", error));
     return () => {
       disposed = true;
-      off();
+      unlisten();
       useDockStore.setState({ dragging: false });
     };
   }, [controls]);

@@ -37,6 +37,33 @@ afterEach(() => {
 const backend = () => invoke("settings_get");
 
 describe("SettingsView", () => {
+  it.each([
+    ["ru", "Язык распознавания текста", "Как в Windows", "Оптическое распознавание символов"],
+    ["en", "Text recognition language", "System", "Optical character recognition"],
+  ] as const)("%s lists OCR languages, saves a choice and restores it on reopen", async (language, label, system, hint) => {
+    await invoke("settings_set", { patch: { language } });
+    useIslandStore.getState().applySettings(await backend());
+    const view = render(<Harness />);
+    const picker = screen.getByRole("combobox", { name: label });
+    fireEvent.click(picker);
+    const list = screen.getByRole("listbox", { name: label });
+    await waitFor(() => expect(within(list).getAllByRole("option")).toHaveLength(3));
+    expect(within(list).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      system, "English (United States)", "Русский",
+    ]);
+    expect(picker).toHaveTextContent(system);
+    expect(picker).toHaveAccessibleDescription(expect.stringContaining(hint));
+    fireEvent.click(within(list).getByRole("option", { name: "English (United States)" }));
+    await waitFor(async () => expect((await backend()).ocrLanguage).toBe("en-US"));
+    expect(useIslandStore.getState().settings.ocrLanguage).toBe("en-US");
+    view.unmount();
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: label })).toHaveTextContent("English (United States)"));
+    fireEvent.click(screen.getByRole("combobox", { name: label }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: label })).getByRole("option", { name: system }));
+    await waitFor(async () => expect((await backend()).ocrLanguage).toBe("auto"));
+  });
+
   it("renders the current values", async () => {
     await invoke("settings_set", { patch: { theme: "dark", autostart: true, hoverExpandDelayMs: 150, hoverCollapseDelayMs: 400 } });
     useIslandStore.getState().applySettings(await backend());
@@ -166,7 +193,7 @@ describe("SettingsView", () => {
 
   it("shows the current version and checks for updates manually when no release is available", async () => {
     render(<SettingsView />);
-    expect(screen.getByText("Версия 0.2.0")).toBeInTheDocument();
+    expect(screen.getByText("Версия 0.2.1")).toBeInTheDocument();
     const checkBtn = screen.getByRole("button", { name: "Проверить обновления" });
     fireEvent.click(checkBtn);
     await waitFor(() => expect(mockStats.updaterChecks).toBe(1));

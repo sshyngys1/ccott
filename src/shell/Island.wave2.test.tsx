@@ -254,6 +254,20 @@ describe("shell bus", () => {
 });
 
 describe("settings view", () => {
+  it("hover reopens on Home after collapse, while the tray can still open Settings", async () => {
+    await mountIsland(FIELD_MODULES);
+    await expandAndShow("notes");
+    expect(useIslandStore.getState().activeTab).toBe("notes");
+    act(() => { void requestShell({ type: "collapse" }); });
+    act(() => mockEmit("island://hover", { inside: true }));
+    await waitFor(() => expect(useIslandStore.getState().mode).toBe("expanded"));
+    expect(useIslandStore.getState().activeTab).toBe("home");
+    act(() => { void requestShell({ type: "collapse" }); });
+    act(() => mockOpenSettings());
+    expect(useIslandStore.getState().mode).toBe("expanded");
+    expect(useIslandStore.getState().view).toBe("settings");
+  });
+
   it("the gear opens the view inside the panel, the back button and a second click on the gear return", async () => {
     await mountIsland(FIELD_MODULES);
     await expandAndShow();
@@ -309,7 +323,7 @@ describe("settings view", () => {
     expect(useIslandStore.getState().mode).toBe("collapsed");
 
     act(() => mockSummon());
-    expect(useIslandStore.getState().mode).toBe("expanded");
+    await waitFor(() => expect(useIslandStore.getState().mode).toBe("expanded"));
 
     const input = await screen.findByLabelText("Поиск");
     act(() => input.focus());

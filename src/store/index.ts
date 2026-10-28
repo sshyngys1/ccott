@@ -12,6 +12,7 @@ export type PanelView = "tabs" | "settings";
 
 /** Values used until `settings_get` answers (equal to the Rust defaults). */
 export const DEFAULT_SETTINGS: Settings = {
+  ocrLanguage: "auto",
   language: "auto",
   theme: "auto",
   vibrancy: "none",
@@ -106,7 +107,8 @@ export const useIslandStore = create<IslandState>()((set) => ({
   setToast: (toast) => set({ toast }),
   setAvailableUpdate: (availableUpdate) => set({ availableUpdate }),
   markUpdateToastShown: (version) => set({ updateToastShownFor: version }),
-  setMode: (mode) => set((s) => (mode === "collapsed" && s.view !== "tabs" ? { mode, view: "tabs" } : { mode })),
+  // One update removes the panel and prepares Home; AnimatePresence keeps the exiting panel's children.
+  setMode: (mode) => set(mode === "collapsed" ? { mode, view: "tabs", activeTab: "home" } : { mode }),
   setActiveTab: (activeTab) => set({ activeTab }),
   setView: (view) => set({ view }),
   setKeyboardFocus: (keyboardFocus) => set({ keyboardFocus }),

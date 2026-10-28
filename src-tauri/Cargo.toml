@@ -1,6 +1,6 @@
 [package]
 name = "island-win"
-version = "0.2.0"
+version = "0.2.1"
 description = "Open-source Dynamic Island for Windows"
 authors = ["island-win contributors"]
 license = "MIT"
@@ -44,6 +44,7 @@ version = "0.62.2"
 features = [
   "Foundation",
   "Foundation_Collections",
+  "Globalization",
   "Graphics_Imaging",
   "Media_Control",
   "Media_Ocr",

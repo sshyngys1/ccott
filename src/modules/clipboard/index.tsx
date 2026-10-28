@@ -2,7 +2,17 @@ import { t } from "../../i18n";
 // Owner: F2 (Frontend-Modules). «Буфер»: clipboard history with search, pinning and paste.
 import { IconClipboard } from "../../design/icons";
 import type { IslandModule } from "../../shared/types";
-import { ClipboardTab } from "./ClipboardTab";
+import { deferredScreen } from "../../lib/deferredScreen";
 
-const clipboard: IslandModule = { id: "clipboard", get title() { return t("clipboardAlt"); }, icon: IconClipboard, Tab: ClipboardTab, order: 1 };
+export const clipboardScreen = deferredScreen(() =>
+  import("./ClipboardTab").then((module) => ({ default: module.ClipboardTab })),
+);
+
+const clipboard: IslandModule = {
+  id: "clipboard",
+  get title() { return t("clipboardAlt"); },
+  icon: IconClipboard,
+  Tab: clipboardScreen.Screen,
+  order: 1,
+};
 export default clipboard;

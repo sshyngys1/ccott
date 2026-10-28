@@ -1,5 +1,6 @@
 // Source of translation keys. User data never belongs in these dictionaries.
 export const ru = {
+  "loadingScreen": "Загрузка…",
   "dock.title": "Док",
   "dock.empty": "Перетащите сюда приложение или папку",
   "dock.add": "Добавить в док",
@@ -264,6 +265,10 @@ export const ru = {
   "invalidJsonLineColumn": "Неверный JSON: строка {p0}, символ {p1} — {p2}",
   "invalidJsonStructureIsTooComplex": "Неверный JSON: слишком сложная структура",
   "language.label": "Язык",
+  "ocrLanguage.label": "Язык распознавания текста",
+  "ocrLanguage.auto": "Как в Windows",
+  "ocrLanguage.hint": "Чтобы добавить язык: Параметры Windows → Время и язык → Язык и регион → Добавить язык. Установите компонент «Оптическое распознавание символов».",
+  "ocrLanguage.loadError": "Не удалось загрузить языки OCR. Откройте настройки заново, чтобы повторить попытку.",
   "language.auto": "Как в Windows",
   "language.ru": "Русский",
   "language.en": "English",

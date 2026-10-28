@@ -3,14 +3,18 @@ import { t } from "../../i18n";
 import { IconNote } from "../../design/icons";
 import { useIsTimerActive } from "../../lib/timer/store";
 import type { IslandModule } from "../../shared/types";
-import { NotesTab } from "./NotesTab";
+import { deferredScreen } from "../../lib/deferredScreen";
 import { TimerPill } from "./TimerPill";
+
+export const notesScreen = deferredScreen(() =>
+  import("./NotesTab").then((module) => ({ default: module.NotesTab })),
+);
 
 const notes: IslandModule = {
   id: "notes",
   get title() { return t("notes"); },
   icon: IconNote,
-  Tab: NotesTab,
+  Tab: notesScreen.Screen,
   // Above the media activity (10), spec §6.7.
   compact: { useIsActive: useIsTimerActive, priority: 20, View: TimerPill },
   order: 3,

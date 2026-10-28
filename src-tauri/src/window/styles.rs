@@ -1,4 +1,4 @@
-//! Win32 extended window styles: tool window (no Alt+Tab) + no-activate (never steals focus).
+//! Win32 styles: tool window (no Alt+Tab), no-activate and a stable layered composition surface.
 //! While the keyboard focus is active (`focus.rs`) the no-activate bit is deliberately dropped.
 //!
 //! The windowing layer (tao) rewrites the *whole* extended style from its own flag set whenever
@@ -17,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetWindowLongPtrW, HWND_TOPMOST, SPI_SETWORKAREA, STYLESTRUCT, SWP_FRAMECHANGED,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos,
     WM_ACTIVATE, WM_DISPLAYCHANGE, WM_SETTINGCHANGE, WM_SHOWWINDOW, WM_STYLECHANGING,
-    WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 /// Subclass id (arbitrary, unique per window procedure chain).
@@ -47,8 +47,11 @@ pub fn hwnd_of(window: &WebviewWindow) -> Result<HWND, String> {
 
 /// Pure: the extended style the island needs, derived from the current one. `WS_EX_NOACTIVATE` is
 /// forced on, except while `allow_activate` (keyboard focus).
+/// Keep `WS_EX_LAYERED` even when tao removes click-through: changing the composition surface on
+/// pointer entry stalls the first frames after idle. `WS_EX_TRANSPARENT` still follows tao's input.
 pub fn island_ex_style(current: u32, allow_activate: bool) -> u32 {
-    let style = (current | WS_EX_TOOLWINDOW.0 | WS_EX_TOPMOST.0) & !WS_EX_APPWINDOW.0;
+    let style =
+        (current | WS_EX_TOOLWINDOW.0 | WS_EX_TOPMOST.0 | WS_EX_LAYERED.0) & !WS_EX_APPWINDOW.0;
     if allow_activate {
         style & !WS_EX_NOACTIVATE.0
     } else {
@@ -144,6 +147,18 @@ unsafe extern "system" fn subclass_proc(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layered_surface_stays_on_while_click_through_alone_changes() {
+        use windows::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT;
+        let outside = island_ex_style(WS_EX_TRANSPARENT.0, false);
+        let inside = island_ex_style(0, false);
+        assert_ne!(outside & WS_EX_LAYERED.0, 0);
+        assert_ne!(inside & WS_EX_LAYERED.0, 0);
+        assert_ne!(outside & WS_EX_TRANSPARENT.0, 0);
+        assert_eq!(inside & WS_EX_TRANSPARENT.0, 0);
+        assert_ne!(island_ex_style(0, true) & WS_EX_LAYERED.0, 0);
+    }
 
     #[test]
     fn adds_tool_window_and_no_activate_and_keeps_others() {

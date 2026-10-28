@@ -19,6 +19,7 @@ const tap = { whileTap: { scale: pressScale }, transition: springs.press } as co
 
 interface Group {
   label: string;
+  qr?: boolean;
   items: { id: TransformId; label: string; title?: string; Icon?: (p: IconProps) => ReactNode }[];
 }
 
@@ -48,6 +49,7 @@ const GROUPS: Group[] = [
   },
   {
     get label() { return t("format"); },
+    qr: true,
     items: [
       { id: "jsonPretty", get label() { return t("formatJson"); }, Icon: IconBraces },
       { id: "jsonMin", get label() { return t("minifyJson"); } },
@@ -189,10 +191,21 @@ export function TextTab() {
                   <span className="ig-truncate">{label}</span>
                 </motion.button>
               ))}
+              {g.qr && (
+                <motion.button
+                  type="button"
+                  className="ig-glass-control ig-glass-control--sm tx-transform"
+                  {...tap}
+                  disabled={empty}
+                  onClick={onQr}
+                >
+                  <IconQr size={16} />
+                  {t("qrCode")}
+                </motion.button>
+              )}
             </div>
           </div>
         ))}
-        <button type="button" className="ig-glass-control ig-glass-control--sm tx-transform" disabled={empty} onClick={onQr}><IconQr size={16} />{t("qrCode")}</button>
       </section>
     </div>
   );

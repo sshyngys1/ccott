@@ -620,6 +620,9 @@ pub fn summon(app: &AppHandle) {
                 log::warn!("summon show/topmost failed: {e}");
             }
         }
+        if !already_expanded {
+            super::hover::prewarm_for_summon(&app_clone, &app_clone.state::<IslandState>());
+        }
         let _ = app_clone.emit(SUMMONED_EVENT, ());
     });
     if let Err(e) = result {

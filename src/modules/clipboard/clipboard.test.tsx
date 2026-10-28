@@ -3,9 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as ipc from "../../ipc";
 import { mockCopy, mockListenerCount, resetMock } from "../../ipc/mock";
 import { onShellRequest, type ShellRequest } from "../../shared/shellBus";
-import clipboard from "./index";
-
-const ClipboardTab = clipboard.Tab;
+import { ClipboardTab } from "./ClipboardTab";
 
 let requests: ShellRequest[] = [];
 let off: () => void;

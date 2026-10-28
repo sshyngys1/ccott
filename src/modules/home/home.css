@@ -177,7 +177,9 @@
   color: var(--ig-text-tertiary);
   margin-left: -2px;
 }
-.hm-menu {
+/* `.ig-glass` sets `position: relative`; the doubled class keeps the popover out of the volume card's grid
+   whatever order the stylesheets load in. */
+.ig-glass.hm-menu {
   position: absolute;
   right: var(--ig-space-5);
   bottom: calc(100% + var(--ig-space-2));
@@ -259,8 +261,30 @@
 .hm-dock-app img { width:var(--ig-space-6); height:var(--ig-space-6); object-fit:contain; pointer-events:none; }
 .hm-dock-entry > .hm-dock-remove { position:absolute; right:0; top:0; width:var(--ig-space-4); height:var(--ig-space-4); min-width:0; min-height:0; border-radius:var(--ig-radius-pill); opacity:0; padding:0; background:var(--ig-surface); }
 .hm-dock-entry:hover .hm-dock-remove,.hm-dock-entry:focus-within .hm-dock-remove {opacity:1;}
-.ig-glass-card.hm-dock-menu { position:absolute; z-index:4; display:flex; flex-direction:column; gap:var(--ig-space-1); padding:var(--ig-space-1); width:max-content; max-width:100%; border-radius:var(--ig-radius-md); }
-.hm-dock-menu-item { justify-content:flex-start; gap:var(--ig-space-2); }
+.ig-glass-card.hm-dock-menu {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  padding: var(--ig-space-1);
+  width: max-content;
+  max-width: 100%;
+  border-radius: var(--ig-radius-md);
+  background:
+    linear-gradient(var(--ig-surface-raised), var(--ig-surface-raised)),
+    var(--ig-surface);
+  backdrop-filter: blur(var(--ig-blur));
+  -webkit-backdrop-filter: blur(var(--ig-blur));
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    var(--ig-shadow);
+}
+.hm-dock-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--ig-space-2);
+}
 .hm-dock-menu-item span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hm-dock[data-dragging="true"] { outline:var(--ig-space-0-5) solid var(--ig-accent); background:var(--ig-accent-soft); }
 .hm-dock-drop-label { position:absolute; inset:0; display:grid; place-items:center; background:var(--ig-surface); border-radius:inherit; color:var(--ig-accent-text); pointer-events:none; }

@@ -27,7 +27,6 @@ import {
 import { t } from "../i18n";
 
 // ───────────────────────────── helpers ─────────────────────────────
-
 /** Gradient cover as a `data:` URL of a generated SVG. */
 export function makeCover(from: string, to: string, accent = "rgba(255,255,255,0.35)"): string {
   const svg =
@@ -43,8 +42,8 @@ export function makeCover(from: string, to: string, accent = "rgba(255,255,255,0
 const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value));
 
 // ───────────────────────────── event emitter ─────────────────────────────
-
 type Listener<E extends EventName> = (payload: Events[E]) => void;
+
 const listeners = new Map<EventName, Set<Listener<EventName>>>();
 
 export function mockListen<E extends EventName>(event: E, cb: Listener<E>): () => void {
@@ -86,7 +85,6 @@ export function registerHoverTarget(el: HTMLElement): () => void {
 }
 
 // ───────────────────────────── debug stats ─────────────────────────────
-
 export interface MockStats {
   shapeCalls: number;
   modeCalls: number;
@@ -99,7 +97,7 @@ export interface MockStats {
   /** Every `island_set_keyboard_focus` argument, in call order. */
   keyboardFocusCalls: boolean[];
   /** Last `clipboard_paste` request. */
-  lastPaste: { id: number; mode: "paste" | "copy" } | null;
+  lastPaste: { id: number; mode: "paste" | "copy"; } | null;
   /** Number of `updater_check` calls. */
   updaterChecks: number;
   /** Number of `updater_install` calls. */
@@ -120,7 +118,14 @@ export const mockStats: MockStats = {
 };
 
 /** Knobs for the keyboard-focus and hotkey mocks: R1 takes ~5–150 ms to hand the window the foreground, and may refuse. */
-export const mockConfig = { keyboardFocusDelayMs: 30, failKeyboardFocus: false, failHotkeyRegistration: false, captureOutcome:"success" as "success" | "cancel" | "error" | "empty", qrText:"https://example.com/ccott", dockOpenError:false };
+export const mockConfig = {
+  keyboardFocusDelayMs: 30,
+  failKeyboardFocus: false,
+  failHotkeyRegistration: false,
+  captureOutcome: "success" as "success" | "cancel" | "error" | "empty",
+  qrText: "https://example.com/ccott",
+  dockOpenError: false
+};
 
 /** Helpers for poking the app from the browser console / devtools: `__ISLAND_MOCK__.openSettings()`, … */
 export interface MockHelpers {
@@ -142,10 +147,10 @@ export interface MockHelpers {
 }
 
 // ───────────────────────────── mutable state ─────────────────────────────
-
 /** Sample data language: Russian in tests and in a Russian browser, English otherwise —
  *  so the browser mode and README screenshots read naturally in either language. */
 const SAMPLE_RU = import.meta.env.MODE === "test" || typeof navigator === "undefined" || /^ru/i.test(navigator.language);
+
 const sample = (ru: string, en: string): string => (SAMPLE_RU ? ru : en);
 
 interface Track {
@@ -182,7 +187,7 @@ const TRACKS: Track[] = [
 
 interface MockState {
   dock: DockItem[];
-  nextDockId:number;
+  nextDockId: number;
   trackIndex: number;
   media: MediaState;
   audio: AudioState;
@@ -226,7 +231,15 @@ function clip(
   pinned = false,
   preview = text,
 ): ClipItem {
-  return { id, kind, text, preview: preview.slice(0, kind === "image" ? undefined : 200), sourceApp, createdAt, pinned };
+  return {
+    id,
+    kind,
+    text,
+    preview: preview.slice(0, kind === "image" ? undefined : 200),
+    sourceApp,
+    createdAt,
+    pinned
+  };
 }
 
 function createState(): MockState {
@@ -234,12 +247,22 @@ function createState(): MockState {
   const min = 60_000;
   const devices: AudioDevice[] = [
     { id: "dev-speakers", name: sample("Динамики", "Speakers"), isDefault: true },
-    { id: "dev-headphones", name: sample("Наушники (Bluetooth)", "Headphones (Bluetooth)"), isDefault: false },
+    {
+      id: "dev-headphones",
+      name: sample("Наушники (Bluetooth)", "Headphones (Bluetooth)"),
+      isDefault: false
+    },
     { id: "dev-monitor", name: sample("Монитор (HDMI)", "Monitor (HDMI)"), isDefault: false },
   ];
   const clips: ClipItem[] = [
     clip(1, "link", "https://github.com/tauri-apps/tauri", "chrome.exe", now - 95 * min, true),
-    clip(2, "text", sample("Созвон с командой в 15:30, ссылка в календаре", "Team call at 3:30 PM, link in the calendar"), "Telegram.exe", now - 2 * min),
+    clip(
+      2,
+      "text",
+      sample("Созвон с командой в 15:30, ссылка в календаре", "Team call at 3:30 PM, link in the calendar"),
+      "Telegram.exe",
+      now - 2 * min
+    ),
     clip(3, "text", "npm run tauri dev", "WindowsTerminal.exe", now - 7 * min),
     clip(4, "link", "https://developer.mozilla.org/ru/docs/Web/CSS/backdrop-filter", "chrome.exe", now - 18 * min),
     clip(5, "text", sample("ул. Абая, 150, офис 12", "221B Baker Street, London"), "Telegram.exe", now - 41 * min),
@@ -247,7 +270,10 @@ function createState(): MockState {
     clip(
       7,
       "files",
-      sample("C:\\Users\\user\\Documents\\Отчёт.pdf\nC:\\Users\\user\\Documents\\Смета.xlsx", "C:\\Users\\user\\Documents\\Report.pdf\nC:\\Users\\user\\Documents\\Budget.xlsx"),
+      sample(
+        "C:\\Users\\user\\Documents\\Отчёт.pdf\nC:\\Users\\user\\Documents\\Смета.xlsx",
+        "C:\\Users\\user\\Documents\\Report.pdf\nC:\\Users\\user\\Documents\\Budget.xlsx"
+      ),
       "explorer.exe",
       now - 120 * min,
       false,
@@ -262,26 +288,45 @@ function createState(): MockState {
       id: 1,
       folder: "Заметка",
       title: sample("Идеи для острова", "Island ideas"),
-      body: sample("<p>Блик за курсором, <b>живые активности</b> в пилюле, перетаскивание файлов на полку.</p>", "<p>Cursor highlight, <b>live activities</b> in the pill, drag files onto a shelf.</p>"),
+      body: sample(
+        "<p>Блик за курсором, <b>живые активности</b> в пилюле, перетаскивание файлов на полку.</p>",
+        "<p>Cursor highlight, <b>live activities</b> in the pill, drag files onto a shelf.</p>"
+      ),
       updatedAt: now - 15 * min,
     },
     {
       id: 2,
       folder: sample("Работа", "Work"),
       title: sample("План на неделю", "Plan for the week"),
-      body: sample("<ul><li>Собрать каркас оболочки</li><li>Проверить acrylic на Windows 10</li><li>Написать тесты</li></ul>", "<ul><li>Build the shell</li><li>Check acrylic on Windows 10</li><li>Write tests</li></ul>"),
+      body: sample(
+        "<ul><li>Собрать каркас оболочки</li><li>Проверить acrylic на Windows 10</li><li>Написать тесты</li></ul>",
+        "<ul><li>Build the shell</li><li>Check acrylic on Windows 10</li><li>Write tests</li></ul>"
+      ),
       updatedAt: now - 3 * 60 * min,
     },
-    { id: 3, folder: "Заметка", title: sample("Список покупок", "Shopping list"), body: sample("<p>Молоко, кофе, USB-C кабель.</p>", "<p>Milk, coffee, USB-C cable.</p>"), updatedAt: now - 30 * 60 * min },
+    {
+      id: 3,
+      folder: "Заметка",
+      title: sample("Список покупок", "Shopping list"),
+      body: sample("<p>Молоко, кофе, USB-C кабель.</p>", "<p>Milk, coffee, USB-C cable.</p>"),
+      updatedAt: now - 30 * 60 * min
+    },
   ];
   return {
     trackIndex: 0,
-    dock:["Terminal", "Documents", "Projects", "Sketches", "Notes"].map((name,index)=>({id:`dock-${index+1}`,name,path:`C:\\CCOTT\\${name}${index===0?".lnk":""}`,kind:index===0?"app" as const:"folder" as const,icon:makeCover(["#315a76","#706244","#42685c","#695584","#80575f"][index],"#272a32")})),
-    nextDockId:6,
+    dock: ["Terminal", "Documents", "Projects", "Sketches", "Notes"].map((name, index) => ({
+      id: `dock-${index + 1}`,
+      name,
+      path: `C:\\CCOTT\\${name}${index === 0 ? ".lnk" : ""}`,
+      kind: index === 0 ? "app" as const : "folder" as const,
+      icon: makeCover(["#315a76", "#706244", "#42685c", "#695584", "#80575f"][index], "#272a32")
+    })),
+    nextDockId: 6,
     media: mediaFor(0, now, "playing", 73_000),
     audio: { volume: 64, muted: false, device: devices[0] },
     devices,
     settings: {
+      ocrLanguage: "auto",
       language: "auto",
       theme: "auto",
       vibrancy: "none",
@@ -330,7 +375,7 @@ export function resetMock(): void {
   mockConfig.failHotkeyRegistration = false;
   mockConfig.captureOutcome = "success";
   mockConfig.qrText = "https://example.com/ccott";
-  mockConfig.dockOpenError=false;
+  mockConfig.dockOpenError = false;
   clearTimeout(artworkTimer);
   artworkTimer = undefined;
   scheduleTrackEnd();
@@ -338,6 +383,7 @@ export function resetMock(): void {
 
 /** Real SMTC delivers the cover ~1.5 s after the track metadata. */
 export const ARTWORK_DELAY_MS = 1500;
+
 let artworkTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
@@ -359,6 +405,7 @@ function changeTrack(index: number): void {
 
 /** The real player moves on by itself when a track ends; so does the mock (while "playing"). */
 let trackEndTimer: ReturnType<typeof setTimeout> | undefined;
+
 function scheduleTrackEnd(): void {
   clearTimeout(trackEndTimer);
   trackEndTimer = undefined;
@@ -387,24 +434,55 @@ function sortClips(items: ClipItem[]): ClipItem[] {
 }
 
 // ───────────────────────────── command handlers ─────────────────────────────
-
 type Handlers = {
   [C in CommandName]: (args: CommandArgs<C>) => CommandResult<C> | Promise<CommandResult<C>>;
 };
 
 const handlers: Handlers = {
-  dock_list:()=>{mockEmit("dock://changed",state.dock);return state.dock;},
-  dock_add:({paths})=>{
-    const key=(p:string)=>p.replace(/\//g,"\\").replace(/\\+$/,"").toLowerCase();
-    const keys=new Set(state.dock.map(i=>key(i.path)));
-    const fresh=paths.filter(p=>{const k=key(p);if(keys.has(k))return false;keys.add(k);return true;});
-    if(state.dock.length+fresh.length>12)throw new Error(t("dock.limit"));
-    state.dock=[...state.dock,...fresh.map(path=>({id:`dock-${state.nextDockId++}`,path,name:path.split(/[\\/]/).filter(Boolean).slice(-1)[0]?.replace(/\.(exe|lnk|url)$/i,"")??path,kind:/\.(exe|lnk|url)$/i.test(path)?"app" as const:"folder" as const,icon:makeCover("#42685c","#272a32")}))];
-    mockEmit("dock://changed",state.dock);return state.dock;
+  dock_list: () => {
+    mockEmit("dock://changed", state.dock);
+    return state.dock;
   },
-  dock_remove:({id})=>{state.dock=state.dock.filter(i=>i.id!==id);mockEmit("dock://changed",state.dock);return state.dock;},
-  dock_reorder:({ids})=>{if(ids.length!==state.dock.length||new Set(ids).size!==ids.length||ids.some(id=>!state.dock.some(i=>i.id===id)))throw new Error(t("dock.order"));state.dock=ids.map(id=>state.dock.find(i=>i.id===id)!);mockEmit("dock://changed",state.dock);return state.dock;},
-  dock_open:({id})=>{if(mockConfig.dockOpenError||!state.dock.some(i=>i.id===id))throw new Error(t("dock.notFound"));},
+  dock_add: ({ paths }) => {
+    const key = (p: string) => p.replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+    const keys = new Set(state.dock.map(i => key(i.path)));
+    const fresh = paths.filter(p => {
+      const k = key(p);
+      if (keys.has(k)) return false;
+      keys.add(k);
+      return true;
+    });
+    if (state.dock.length + fresh.length > 12) throw new Error(t("dock.limit"));
+    state.dock = [...state.dock, ...fresh.map(path => ({
+      id: `dock-${state.nextDockId++}`,
+      path,
+      name: path.split(/[\\/]/).filter(Boolean).slice(-1)[0]?.replace(/\.(exe|lnk|url)$/i, "") ?? path,
+      kind: /\.(exe|lnk|url)$/i.test(path) ? "app" as const : "folder" as const,
+      icon: makeCover("#42685c", "#272a32")
+    }))];
+    mockEmit("dock://changed", state.dock);
+    return state.dock;
+  },
+  dock_remove: ({ id }) => {
+    state.dock = state.dock.filter(i => i.id !== id);
+    mockEmit("dock://changed", state.dock);
+    return state.dock;
+  },
+  dock_reorder: ({ ids }) => {
+    if (
+      ids.length !== state.dock.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some(id => !state.dock.some(item => item.id === id))
+    ) {
+      throw new Error(t("dock.order"));
+    }
+    state.dock = ids.map(id => state.dock.find(i => i.id === id)!);
+    mockEmit("dock://changed", state.dock);
+    return state.dock;
+  },
+  dock_open: ({ id }) => {
+    if (mockConfig.dockOpenError || !state.dock.some(i => i.id === id)) throw new Error(t("dock.notFound"));
+  },
   dock_start_drag: ({ id }) => {
     if (!state.dock.some((i) => i.id === id)) throw new Error(t("dock.notFound"));
   },
@@ -424,8 +502,22 @@ const handlers: Handlers = {
     error: "Native blur is unavailable in the browser mock",
   }),
   window_list_monitors: () => [
-    { id: "mon-1", name: sample("Основной монитор", "Main display"), width: 2560, height: 1440, scaleFactor: 1.25, isPrimary: true },
-    { id: "mon-2", name: sample("Второй монитор", "Second display"), width: 1920, height: 1080, scaleFactor: 1, isPrimary: false },
+    {
+      id: "mon-1",
+      name: sample("Основной монитор", "Main display"),
+      width: 2560,
+      height: 1440,
+      scaleFactor: 1.25,
+      isPrimary: true
+    },
+    {
+      id: "mon-2",
+      name: sample("Второй монитор", "Second display"),
+      width: 1920,
+      height: 1080,
+      scaleFactor: 1,
+      isPrimary: false
+    },
   ],
   // Like R1: the call returns once the window is (de)activated (takes a few ms), a refusal rejects.
   // Unlike the earlier stub it does NOT echo `island://focus-changed` — Rust only emits that when focus is lost by itself
@@ -436,7 +528,6 @@ const handlers: Handlers = {
     if (active && mockConfig.failKeyboardFocus) throw new Error("Cannot acquire keyboard focus (mock)");
     mockStats.keyboardFocus = active;
   },
-
   window_recent_fullscreen_apps: () => state.fullscreenApps,
   window_recent_maximized_apps: () => mockRecentMaximizedApps(),
   settings_get: () => state.settings,
@@ -469,7 +560,6 @@ const handlers: Handlers = {
   updater_install: () => {
     mockStats.updaterInstalls += 1;
   },
-
   media_get_state: () => state.media,
   media_action: ({ action }) => {
     const now = Date.now();
@@ -494,7 +584,6 @@ const handlers: Handlers = {
       positionSampledAt: Date.now(),
     });
   },
-
   audio_get_state: () => state.audio,
   audio_set_volume: ({ volume }) => {
     state.audio = { ...state.audio, volume: Math.max(0, Math.min(100, Math.round(volume))) };
@@ -511,7 +600,6 @@ const handlers: Handlers = {
     state.audio = { ...state.audio, device: { ...device, isDefault: true } };
     mockEmit("audio://changed", state.audio);
   },
-
   clipboard_list: ({ query, limit }) => {
     const q = query.trim().toLowerCase();
     const filtered = q
@@ -541,7 +629,6 @@ const handlers: Handlers = {
     state.clips = keepPinned ? state.clips.filter((c) => c.pinned) : [];
     mockEmit("clipboard://changed", null);
   },
-
   notes_list: () => [...state.notes].sort((a, b) => b.updatedAt - a.updatedAt),
   capture_start: ({ mode, action }) => {
     if (mockConfig.captureOutcome === "cancel") return null;
@@ -550,15 +637,30 @@ const handlers: Handlers = {
     const height = mode === "region" ? 360 : 1440;
     const textAction = action === "ocr" || action === "qr";
     const text = textAction ? mockConfig.captureOutcome === "empty" ? "" : action === "qr" ? mockConfig.qrText : "CCOTT OCR sample" : null;
-    if (!textAction || text) mockCopy({ kind:textAction ? "text" : "image", text:text ?? "", preview:textAction ? text ?? "" : makeCover("#202020", "#444444"), sourceApp:"island-win.exe" });
-    return { action, width, height, path:action === "save" ? "C:\\Users\\user\\Pictures\\Screenshots\\CCOTT\\CCOTT 2026-10-27 12-00-00.png" : null, text };
+    if (!textAction || text) mockCopy({
+      kind: textAction ? "text" : "image",
+      text: text ?? "",
+      preview: textAction ? text ?? "" : makeCover("#202020", "#444444"),
+      sourceApp: "island-win.exe"
+    });
+    return {
+      action,
+      width,
+      height,
+      path: action === "save" ? "C:\\Users\\user\\Pictures\\Screenshots\\CCOTT\\CCOTT 2026-10-27 12-00-00.png" : null,
+      text
+    };
   },
-  capture_open_folder: () => {},
+  capture_open_folder: () => { },
+  capture_ocr_languages: () => [
+    { tag: "en-US", name: "English (United States)" },
+    { tag: "ru", name: "Русский" },
+  ],
   capture_pick_color: () => {
     if (mockConfig.captureOutcome === "cancel") return null;
     if (mockConfig.captureOutcome === "error") throw new Error(t("color.error"));
-    mockCopy({kind:"text", text:"#336699", sourceApp:"island-win.exe"});
-    return {hex:"#336699",r:51,g:102,b:153};
+    mockCopy({ kind: "text", text: "#336699", sourceApp: "island-win.exe" });
+    return { hex: "#336699", r: 51, g: 102, b: 153 };
   },
   notes_save: ({ note }) => {
     const now = Date.now();
@@ -654,7 +756,7 @@ if (typeof window !== "undefined") {
     config: mockConfig,
   };
   // The stats object stays the one on `window` (older checks read `__ISLAND_MOCK__.shapeCalls` etc.), helpers are added to it.
-  (window as unknown as { __ISLAND_MOCK__?: MockStats & MockHelpers }).__ISLAND_MOCK__ = Object.assign(mockStats, helpers);
+  (window as unknown as { __ISLAND_MOCK__?: MockStats & MockHelpers; }).__ISLAND_MOCK__ = Object.assign(mockStats, helpers);
 }
 
 scheduleTrackEnd();

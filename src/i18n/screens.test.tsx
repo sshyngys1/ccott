@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { invoke } from "../ipc";
 import { mockCopy, mockEmit, mockListenerCount, resetMock } from "../ipc/mock";
 import { resetIslandStore, useIslandStore } from "../store";
@@ -7,6 +7,11 @@ import { Island } from "../shell/Island";
 import { resetNotesStore } from "../lib/notes/store";
 import { resetTextStore, useTextStore } from "../lib/text/store";
 import { t } from ".";
+import { backgroundScreens } from "../shell/preloadScreens";
+
+beforeAll(async () => {
+  await Promise.all(backgroundScreens.map(screen => screen.preload()));
+});
 
 beforeEach(() => { resetMock(); resetIslandStore(); resetNotesStore(); resetTextStore(); });
 afterEach(() => { cleanup(); resetIslandStore(); resetNotesStore(); resetTextStore(); });

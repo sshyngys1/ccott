@@ -1,6 +1,7 @@
 import type { ru } from "./ru";
 
 export const en = {
+  "loadingScreen": "Loading…",
   "dock.title": "Dock",
   "dock.empty": "Drop an app or folder here",
   "dock.add": "Add to dock",
@@ -222,7 +223,7 @@ export const en = {
   "whitespace": "Whitespace",
   "trimEdges": "Trim edges",
   "trimWhitespaceAtTheStartAndEndOfLines": "Trim whitespace at the start and end of lines",
-  "collapseWhitespace": "Collapse whitespace",
+  "collapseWhitespace": "Squeeze spaces",
   "reduceRepeatedSpacesAndBlankLinesToOne": "Reduce repeated spaces and blank lines to one",
   "format": "Format",
   "formatJson": "Format JSON",
@@ -265,6 +266,10 @@ export const en = {
   "invalidJsonLineColumn": "Invalid JSON: line {p0}, column {p1} — {p2}",
   "invalidJsonStructureIsTooComplex": "Invalid JSON: structure is too complex",
   "language.label": "Language",
+  "ocrLanguage.label": "Text recognition language",
+  "ocrLanguage.auto": "System",
+  "ocrLanguage.hint": "To add a language, open Windows Settings → Time & language → Language & region → Add a language, and install the Optical character recognition component.",
+  "ocrLanguage.loadError": "Couldn’t load OCR languages. Reopen Settings to try again.",
   "language.auto": "System",
   "language.ru": "Русский",
   "language.en": "English",

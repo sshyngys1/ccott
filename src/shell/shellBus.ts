@@ -53,19 +53,34 @@ export function handleSummoned(controls: HoverControls, releaseKeyboard: () => P
 }
 
 /** Subscribes once to the shell bus, `island://open-settings` and `island://summoned`. All arguments must be referentially stable. */
-export function useShellBus(controls: HoverControls, releaseKeyboard: () => Promise<void>, tabs: readonly IslandModule[]): void {
+export function useShellBus(controls: HoverControls, releaseKeyboard: () => Promise<void>, tabs: readonly IslandModule[], prepareExpand: () => Promise<void>): void {
   useEffect(() => {
     const deps: ShellBusDeps = {
       controls,
       releaseKeyboard,
       hasTab: (tab) => tabs.some((m) => m.id === tab),
     };
-    const offBus = onShellRequest((req) => handleShellRequest(req, deps));
+    let generation = 0;
+    let pendingSummon = false;
+    const cancelSummon = () => {
+      generation++;
+      pendingSummon = false;
+    };
+    const offBus = onShellRequest((req) => {
+      if (req.type !== "toast") cancelSummon();
+      return handleShellRequest(req, deps);
+    });
+    const offMode = useIslandStore.subscribe((state, previous) => {
+      if (state.mode !== previous.mode) cancelSummon();
+    });
 
     let disposed = false;
     let unlistenSettings: () => void = noop;
     let unlistenSummoned: () => void = noop;
-    listen("island://open-settings", () => openSettings(controls)).then(
+    listen("island://open-settings", () => {
+      cancelSummon();
+      openSettings(controls);
+    }).then(
       (u) => {
         if (disposed) u();
         else unlistenSettings = u;
@@ -73,7 +88,20 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
       noop,
     );
     listen("island://summoned", () => {
-      void handleSummoned(controls, releaseKeyboard);
+      if (pendingSummon) {
+        cancelSummon();
+        controls.collapseNow();
+      } else if (useIslandStore.getState().mode === "expanded") {
+        void handleSummoned(controls, releaseKeyboard);
+      } else {
+        pendingSummon = true;
+        const request = ++generation;
+        void prepareExpand().then(() => {
+          if (disposed || generation !== request) return;
+          pendingSummon = false;
+          controls.summon();
+        });
+      }
     }).then(
       (u) => {
         if (disposed) u();
@@ -83,9 +111,11 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
     );
     return () => {
       disposed = true;
+      cancelSummon();
       offBus();
+      offMode();
       unlistenSettings();
       unlistenSummoned();
     };
-  }, [controls, releaseKeyboard, tabs]);
+  }, [controls, releaseKeyboard, tabs, prepareExpand]);
 }

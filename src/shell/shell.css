@@ -3,6 +3,7 @@
 /* The one morphing element. Size/radius are animated by Motion; `top` is set inline. It is centered with auto margins
    (width is always explicit) instead of `translateX(-50%)`: a transform would make it a compositor layer. */
 .ig-island {
+  opacity: var(--ig-prewarm-alpha, 1);
   position: absolute;
   left: 0;
   right: 0;
@@ -18,6 +19,7 @@
   outline: var(--ig-outline-width) solid var(--ig-focus);
   outline-offset: var(--ig-outline-offset);
 }
+
 
 /* Content layers: pill content fills the island; panel content has the final panel size and is clipped by the island. */
 .ig-island-layer {

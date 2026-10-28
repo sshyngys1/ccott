@@ -3,7 +3,7 @@ import { useDockStore } from "../lib/dock/store";
 import { useDockDrop } from "./useDockDrop";
 // Owner: F1 (Frontend-Shell). One element morphs between the resting pill and the expanded panel (spec §15).
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useEffect, useMemo, useRef, type FocusEvent, type KeyboardEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { hoveredPill, readIslandGeometry, type BoxSize } from "../design/geometry";
 import { IconBack, IconCheck, IconCollapse, IconSettings } from "../design/icons";
 import { fades, layerScale, overshoot, pressScale, springs, tabSlide, viewSlide } from "../design/motion";
@@ -15,16 +15,25 @@ import { useIslandStore, type PillToast as PillToastState } from "../store";
 import { useHoverSync } from "../store/useHoverSync";
 import { formatDate, useClock } from "./clock";
 import { useActiveCompact } from "./compact";
-import { SettingsView } from "./settings/SettingsView";
+import { settingsScreen } from "./settings/deferred";
+import { useScreenPreload } from "./preloadScreens";
 import { useShapeSync } from "./shape";
 import { useShellBus } from "./shellBus";
 import { Tabs, tabId, tabPanelId } from "./Tabs";
 import { useKeyboardFocus } from "./useKeyboardFocus";
+import { usePrewarm } from "./usePrewarm";
 import { useModeSync, useSettingsSync, useThemeSync, useToastSync, useVibrancySync } from "./useShellSync";
 import "./shell.css";
 
 type PillState = "idle" | "activity" | "toast";
 type TransitionKind = "expand" | "collapse" | "pill";
+
+const SettingsView = settingsScreen.Screen;
+
+function ScreenFallback() {
+  const t = useT();
+  return <div className="ig-empty" role="status" data-screen-fallback="true">{t("loadingScreen")}</div>;
+}
 
 /** Pill content swap: `swap` = a change between pill states (quick crossfade), otherwise the panel hand-over timing. */
 const pillLayer = {
@@ -107,11 +116,13 @@ export function Island({ modules = registry }: IslandProps) {
   useThemeSync();
   useVibrancySync();
   useSettingsSync();
+  useScreenPreload();
   useToastSync();
   useModeSync(mode);
   const controls = useHoverSync();
   const keyboard = useKeyboardFocus(ref);
-  useShellBus(controls, keyboard.release, modules);
+  const prepareExpand = usePrewarm(ref);
+  useShellBus(controls, keyboard.release, modules, prepareExpand);
   useDockDrop(controls);
 
   // Hover source: Tauri → Rust cursor poller (no-op here); browser → mock pointerenter/pointerleave on this element.
@@ -289,7 +300,9 @@ export function Island({ modules = registry }: IslandProps) {
                         exit={bodyExit}
                         transition={{ ...springs.view, opacity: fades.pillSwap }}
                       >
-                        <SettingsView />
+                        <Suspense fallback={<ScreenFallback />}>
+                          <SettingsView />
+                        </Suspense>
                       </motion.div>
                     ) : (
                       ActiveTab && (
@@ -301,7 +314,9 @@ export function Island({ modules = registry }: IslandProps) {
                           exit={bodyExit}
                           transition={{ ...springs.tab, opacity: fades.pillSwap }}
                         >
-                          <ActiveTab />
+                          <Suspense fallback={<ScreenFallback />}>
+                            <ActiveTab />
+                          </Suspense>
                         </motion.div>
                       )
                     )}

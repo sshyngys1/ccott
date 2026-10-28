@@ -1,10 +1,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mockCopy, mockEmit, mockListenerCount, mockSetMedia, mockStats, resetMock } from "../ipc/mock";
 import { EMPTY_MEDIA } from "../lib/media/progress";
 import { useMediaStore } from "../lib/media/store";
 import { resetIslandStore, useIslandStore } from "../store";
 import { Island } from "./Island";
+import { backgroundScreens } from "./preloadScreens";
+
+// These interaction tests exercise the normal, preloaded UI. Cold loading is tested separately.
+beforeAll(async () => {
+  await Promise.all(backgroundScreens.map(screen => screen.preload()));
+});
 
 async function mountIsland() {
   const utils = render(<Island />);

@@ -17,7 +17,7 @@
 .tx-transforms {
   display: flex;
   flex-direction: column;
-  gap: var(--ig-space-2-5);
+  gap: var(--ig-space-1);
   min-height: 0;
 }
 .tx-group {
