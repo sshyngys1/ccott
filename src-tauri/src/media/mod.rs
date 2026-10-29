@@ -1,14 +1,15 @@
 //! Media control through SMTC (`GlobalSystemMediaTransportControlsSessionManager`).
 //! Owner: R2 (Rust-System).
 //!
-//! One dedicated MTA thread owns the session manager and the current session. WinRT event handlers
-//! only post a message to that thread; bursts are debounced (~100 ms) and `media://changed` is
-//! emitted only when something relevant changed (see [`state::state_changed`]).
+//! Separate MTA lanes for FIFO commands and slow metadata/artwork reads. No stream, properties or
+//! session interface crosses threads. Events invalidate in-flight reads before posting a refresh.
 
+mod apartment;
 mod artwork;
+mod delivery;
 mod state;
 
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -18,19 +19,13 @@ use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager as Manager_,
 };
 use windows::Storage::Streams::DataReader;
-use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 
 use crate::db::now_ms;
+use delivery::{Command, Delivery, PendingCommand, REPLY_TIMEOUT, Revision};
 use state::{MediaState, PlaybackStatus};
 
-/// Quiet period after the last event before the state is rebuilt.
-const DEBOUNCE: Duration = Duration::from_millis(100);
-/// A burst of events never delays the update longer than this.
-const MAX_DEBOUNCE: Duration = Duration::from_millis(300);
 /// Some apps (Spotify) update the thumbnail later than the title: re-read it once after a track change.
 const ARTWORK_RECHECK: Duration = Duration::from_millis(1500);
-/// How long a command waits for the media thread.
-const REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const WINRT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Bound the wait without moving apartment-bound WinRT stream interfaces off the SMTC thread.
@@ -39,9 +34,17 @@ fn wait_for_winrt<T>(
     timeout: Duration,
     mut poll: impl FnMut() -> windows::core::Result<Option<T>>,
     cancel: impl FnOnce() -> windows::core::Result<()>,
+    current: impl Fn() -> bool,
 ) -> windows::core::Result<T> {
     let start = Instant::now();
     loop {
+        if !current() {
+            let _ = cancel();
+            return Err(windows::core::Error::new(
+                windows::core::HRESULT(0x8007_04C7u32 as i32),
+                "media operation superseded",
+            ));
+        }
         if let Some(result) = poll()? {
             return Ok(result);
         }
@@ -57,12 +60,12 @@ fn wait_for_winrt<T>(
 }
 
 macro_rules! wait_winrt {
-    ($op:expr) => {{
+    ($op:expr, $current:expr) => {{
         let op = &$op;
         wait_for_winrt(WINRT_TIMEOUT, || {
             // AsyncStatus::Started = 0. Read the result only after completion/error/cancellation.
             if op.Status()?.0 == 0 { Ok(None) } else { op.GetResults().map(Some) }
-        }, || op.Cancel())
+        }, || op.Cancel(), $current)
     }};
 }
 
@@ -79,33 +82,51 @@ enum Msg {
     SessionChanged,
     /// Something in the current session changed.
     Refresh,
-    Query(Sender<MediaState>),
-    Action(MediaAction, Sender<Result<(), String>>),
-    Seek(i64, Sender<Result<(), String>>),
 }
 
 /// Managed state: channel to the media thread.
-pub struct MediaHandle(Sender<Msg>);
+pub struct MediaHandle {
+    commands: SyncSender<PendingCommand>,
+    delivery: Delivery,
+}
 
 impl MediaHandle {
-    fn request<T: Send + 'static>(&self, make: impl FnOnce(Sender<T>) -> Msg) -> Result<T, String> {
+    fn enqueue(&self, command: Command) -> Result<Receiver<Result<(), String>>, String> {
         let (tx, rx) = mpsc::channel();
-        self.0
-            .send(make(tx))
-            .map_err(|_| "media thread is not running")?;
-        rx.recv_timeout(REPLY_TIMEOUT)
-            .map_err(|_| "media thread did not answer".to_string())
+        self.commands
+            .try_send(PendingCommand {
+                command,
+                session: self.delivery.revision().session,
+                deadline: Instant::now() + REPLY_TIMEOUT,
+                reply: tx,
+            })
+            .map_err(|error| format!("cannot queue media command: {error}"))?;
+        Ok(rx)
     }
 }
 
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = mpsc::channel();
-    app.manage(MediaHandle(tx.clone()));
+    let (commands, command_rx) = mpsc::sync_channel(delivery::COMMAND_CAPACITY);
+    let delivery = Delivery::default();
+    app.manage(MediaHandle {
+        commands,
+        delivery: delivery.clone(),
+    });
+    let command_delivery = delivery.clone();
+    let command_refresh = tx.clone();
+    std::thread::Builder::new()
+        .name("media-commands".into())
+        .spawn(move || {
+            if let Err(error) = run_commands(command_rx, command_delivery, command_refresh) {
+                log::error!("media: command thread stopped: {error}");
+            }
+        })?;
     let handle = app.handle().clone();
     std::thread::Builder::new()
         .name("media-smtc".into())
         .spawn(move || {
-            if let Err(e) = run(handle, tx, rx) {
+            if let Err(e) = run(handle, tx, rx, delivery) {
                 log::error!("media: SMTC thread stopped: {e}");
             }
         })?;
@@ -125,81 +146,64 @@ struct Worker {
     tx: Sender<Msg>,
     manager: Manager_,
     session: Option<(Session, Tokens)>,
-    last_emitted: Option<MediaState>,
+    delivery: Delivery,
+    manager_token: i64,
     art: artwork::Cache,
     recheck_at: Option<Instant>,
 }
 
-fn run(app: AppHandle, tx: Sender<Msg>, rx: Receiver<Msg>) -> windows::core::Result<()> {
-    // SAFETY: initialises COM for this dedicated thread (MTA); called once at thread start.
-    unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok()? };
+fn run(
+    app: AppHandle,
+    tx: Sender<Msg>,
+    rx: Receiver<Msg>,
+    delivery: Delivery,
+) -> windows::core::Result<()> {
+    let _apartment = apartment::Apartment::enter()?;
     let op = Manager_::RequestAsync()?;
-    let manager = wait_winrt!(op)?;
+    let manager = wait_winrt!(op, || true)?;
+    let sender = tx.clone();
+    let events = delivery.clone();
+    let manager_token = manager.CurrentSessionChanged(&TypedEventHandler::new(move |_, _| {
+        events.invalidate(true);
+        let _ = sender.send(Msg::SessionChanged);
+        Ok(())
+    }))?;
     let mut w = Worker {
         app,
         tx: tx.clone(),
         manager: manager.clone(),
         session: None,
-        last_emitted: None,
+        delivery,
+        manager_token,
         art: artwork::Cache::default(),
         recheck_at: None,
     };
-    let sender = tx.clone();
-    manager.CurrentSessionChanged(&TypedEventHandler::new(move |_, _| {
-        let _ = sender.send(Msg::SessionChanged);
-        Ok(())
-    }))?;
     log::info!("media: SMTC session manager ready");
     w.attach_current();
     w.refresh(false);
 
-    let mut first_dirty: Option<Instant> = None;
-    let mut last_dirty = Instant::now();
     loop {
-        // Wake up for the debounce deadline or the artwork re-check, whichever is first.
-        let mut deadline = None::<Instant>;
-        if let Some(first) = first_dirty {
-            deadline = Some((last_dirty + DEBOUNCE).min(first + MAX_DEBOUNCE));
-        }
-        if let Some(at) = w.recheck_at {
-            deadline = Some(deadline.map_or(at, |d| d.min(at)));
-        }
-        let msg = match deadline {
+        let msg = match w.recheck_at {
             Some(d) => rx.recv_timeout(d.saturating_duration_since(Instant::now())),
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
         match msg {
             Ok(Msg::SessionChanged) => {
                 w.attach_current();
-                first_dirty.get_or_insert_with(Instant::now);
-                last_dirty = Instant::now();
+                w.refresh(false);
             }
             Ok(Msg::Refresh) => {
-                first_dirty.get_or_insert_with(Instant::now);
-                last_dirty = Instant::now();
-            }
-            Ok(Msg::Query(reply)) => {
-                first_dirty = None;
-                let _ = reply.send(w.refresh(false));
-            }
-            Ok(Msg::Action(action, reply)) => {
-                let _ = reply.send(w.action(action));
-            }
-            Ok(Msg::Seek(ms, reply)) => {
-                let _ = reply.send(w.seek(ms));
+                // Coalesce queued event bursts without adding a quiet-period delay.
+                while let Ok(message) = rx.try_recv() {
+                    if matches!(message, Msg::SessionChanged) {
+                        w.attach_current();
+                    }
+                }
+                w.refresh(false);
             }
             Err(RecvTimeoutError::Timeout) => {
-                let now = Instant::now();
-                let recheck_due = w.recheck_at.is_some_and(|at| now >= at);
-                let debounce_due = first_dirty
-                    .is_some_and(|f| now >= (last_dirty + DEBOUNCE).min(f + MAX_DEBOUNCE));
-                if recheck_due {
-                    w.recheck_at = None;
-                }
-                if recheck_due || debounce_due {
-                    first_dirty = None;
-                    w.refresh(recheck_due);
-                }
+                w.recheck_at = None;
+                w.refresh(true);
             }
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
@@ -216,26 +220,50 @@ impl Worker {
             let _ = old.RemovePlaybackInfoChanged(t.playback);
             let _ = old.RemoveTimelinePropertiesChanged(t.timeline);
         }
+        // Reset even when a new session exposes identical title/artist/source strings.
+        self.publish(self.delivery.revision(), MediaState::none(now_ms()));
         let Ok(session) = self.manager.GetCurrentSession() else {
             return; // no session
         };
         let subscribe = || -> windows::core::Result<Tokens> {
             let (a, b, c) = (self.tx.clone(), self.tx.clone(), self.tx.clone());
-            Ok(Tokens {
-                media: session.MediaPropertiesChanged(&TypedEventHandler::new(move |_, _| {
-                    let _ = a.send(Msg::Refresh);
-                    Ok(())
-                }))?,
-                playback: session.PlaybackInfoChanged(&TypedEventHandler::new(move |_, _| {
+            let events = self.delivery.clone();
+            let media = session.MediaPropertiesChanged(&TypedEventHandler::new(move |_, _| {
+                events.invalidate(false);
+                let _ = a.send(Msg::Refresh);
+                Ok(())
+            }))?;
+            let playback_events = self.delivery.clone();
+            let playback =
+                match session.PlaybackInfoChanged(&TypedEventHandler::new(move |_, _| {
+                    playback_events.invalidate_playback();
                     let _ = b.send(Msg::Refresh);
                     Ok(())
-                }))?,
-                timeline: session.TimelinePropertiesChanged(&TypedEventHandler::new(
-                    move |_, _| {
-                        let _ = c.send(Msg::Refresh);
-                        Ok(())
-                    },
-                ))?,
+                })) {
+                    Ok(token) => token,
+                    Err(error) => {
+                        let _ = session.RemoveMediaPropertiesChanged(media);
+                        return Err(error);
+                    }
+                };
+            let timeline_events = self.delivery.clone();
+            let timeline =
+                match session.TimelinePropertiesChanged(&TypedEventHandler::new(move |_, _| {
+                    timeline_events.invalidate_playback();
+                    let _ = c.send(Msg::Refresh);
+                    Ok(())
+                })) {
+                    Ok(token) => token,
+                    Err(error) => {
+                        let _ = session.RemoveMediaPropertiesChanged(media);
+                        let _ = session.RemovePlaybackInfoChanged(playback);
+                        return Err(error);
+                    }
+                };
+            Ok(Tokens {
+                media,
+                playback,
+                timeline,
             })
         };
         match subscribe() {
@@ -245,42 +273,45 @@ impl Worker {
     }
 
     /// Rebuilds the state and emits it if it changed. `force_art` re-reads the thumbnail.
-    fn refresh(&mut self, force_art: bool) -> MediaState {
-        let state = self.build_state(force_art);
-        let changed = self
-            .last_emitted
-            .as_ref()
-            .is_none_or(|old| state::state_changed(old, &state));
-        if changed {
-            self.last_emitted = Some(state.clone());
-            let _ = self.app.emit("media://changed", &state);
+    fn refresh(&mut self, force_art: bool) {
+        let current = self.manager.GetCurrentSession().ok();
+        if current.as_ref() != self.session.as_ref().map(|(session, _)| session) {
+            self.attach_current();
         }
-        state
-    }
-
-    fn build_state(&mut self, force_art: bool) -> MediaState {
-        let now = now_ms();
+        let revision = self.delivery.revision();
         let Some(session) = self.session.as_ref().map(|(s, _)| s.clone()) else {
-            return MediaState::none(now);
+            self.publish(revision, MediaState::none(now_ms()));
+            return;
         };
-        match self.read_session(&session, now, force_art) {
-            Ok(s) => s,
+        match self.read_session(&session, revision, force_art) {
+            Ok(()) => {}
             Err(e) => {
-                log::debug!("media: cannot read session: {e}");
-                MediaState::none(now)
+                // A timeout must not replace an otherwise usable session with an empty player.
+                if self.delivery.is_current(revision) {
+                    log::debug!("media: cannot read session: {e}");
+                }
             }
         }
+    }
+
+    fn publish(&self, revision: Revision, state: MediaState) -> bool {
+        self.delivery.publish(revision, state, |state| {
+            let _ = self.app.emit("media://changed", state);
+        })
     }
 
     fn read_session(
         &mut self,
         session: &Session,
-        now: i64,
+        revision: Revision,
         force_art: bool,
-    ) -> windows::core::Result<MediaState> {
+    ) -> windows::core::Result<()> {
         let source_app = session.SourceAppUserModelId()?.to_string();
         let op = session.TryGetMediaPropertiesAsync()?;
-        let props = wait_winrt!(op)?;
+        let props = wait_winrt!(op, || self.delivery.after_metadata(revision).is_some())?;
+        let Some(revision) = self.delivery.after_metadata(revision) else {
+            return Ok(());
+        };
         let title = props.Title()?.to_string();
         let artist = props.Artist()?.to_string();
         let album = props.AlbumTitle()?.to_string();
@@ -304,6 +335,7 @@ impl Worker {
             .LastUpdatedTime()
             .map_or(0, |t| state::universal_ticks_to_epoch_ms(t.UniversalTime));
         let duration_ms = state::ticks_to_ms(end - start).max(0);
+        let now = now_ms();
         let position_ms = state::current_position_ms(
             state::ticks_to_ms(pos - start),
             updated,
@@ -314,9 +346,9 @@ impl Worker {
         );
 
         let key = format!("{source_app}\u{1}{title}\u{1}{artist}\u{1}{album}");
-        let artwork = self.artwork_for(&key, &props, force_art);
-
-        Ok(MediaState {
+        let same_track = self.art.matches(&key);
+        let artwork = self.art.cached(&key);
+        let mut state = MediaState {
             has_session: true,
             source_app,
             title,
@@ -331,73 +363,57 @@ impl Worker {
             can_next: controls.IsNextEnabled().unwrap_or(false),
             can_previous: controls.IsPreviousEnabled().unwrap_or(false),
             can_seek: controls.IsPlaybackPositionEnabled().unwrap_or(false),
-        })
-    }
-
-    /// Artwork data URL for the track; decoded/encoded only when the track or the thumbnail changed.
-    fn artwork_for(
-        &mut self,
-        key: &str,
-        props: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties,
-        force: bool,
-    ) -> Option<String> {
-        let same_track = self.art.matches(key);
+        };
+        if self.manager.GetCurrentSession().ok().as_ref() != Some(session)
+            || !self.publish(revision, state.clone())
+        {
+            return Ok(());
+        }
         if !same_track {
             self.recheck_at = Some(Instant::now() + ARTWORK_RECHECK);
         }
-        self.art.resolve(key, force, || read_thumbnail(props))
-    }
-
-    fn action(&self, action: MediaAction) -> Result<(), String> {
-        let (session, _) = self.session.as_ref().ok_or("no media session")?;
-        let op = match action {
-            MediaAction::PlayPause => session.TryTogglePlayPauseAsync(),
-            MediaAction::Next => session.TrySkipNextAsync(),
-            MediaAction::Previous => session.TrySkipPreviousAsync(),
-        };
-        let op = op.map_err(|e| e.to_string())?;
-        let accepted = wait_winrt!(op).map_err(|e| e.to_string())?;
-        if accepted {
-            Ok(())
-        } else {
-            Err("the media app rejected the command".into())
+        let previous_cache = self.art.clone();
+        state.artwork = self.art.resolve(&key, force_art, || {
+            read_thumbnail(&props, || self.delivery.is_current(revision))
+        });
+        if !self.delivery.is_current(revision) {
+            self.art = previous_cache;
+            return Ok(());
         }
-    }
-
-    fn seek(&self, position_ms: i64) -> Result<(), String> {
-        let (session, _) = self.session.as_ref().ok_or("no media session")?;
-        // Positions are relative to the timeline start (almost always 0).
-        let start = session
-            .GetTimelineProperties()
-            .and_then(|t| t.StartTime())
-            .map_or(0, |t| t.Duration);
-        let ticks = start.saturating_add(state::ms_to_ticks(position_ms.max(0)));
-        let op = session
-            .TryChangePlaybackPositionAsync(ticks)
-            .map_err(|e| e.to_string())?;
-        let accepted = wait_winrt!(op).map_err(|e| e.to_string())?;
-        if accepted {
-            Ok(())
-        } else {
-            Err("the media app rejected the seek".into())
+        // Keep the timeline sample from before artwork I/O; the UI extrapolates it normally.
+        if self.manager.GetCurrentSession().ok().as_ref() == Some(session) {
+            self.publish(revision, state);
         }
+        Ok(())
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        if let Some((session, tokens)) = self.session.take() {
+            let _ = session.RemoveMediaPropertiesChanged(tokens.media);
+            let _ = session.RemovePlaybackInfoChanged(tokens.playback);
+            let _ = session.RemoveTimelinePropertiesChanged(tokens.timeline);
+        }
+        let _ = self.manager.RemoveCurrentSessionChanged(self.manager_token);
     }
 }
 
 /// Raw bytes of the session thumbnail, if there is one.
 fn read_thumbnail(
     props: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties,
+    current: impl Fn() -> bool,
 ) -> Option<Vec<u8>> {
     let thumb = props.Thumbnail().ok()?;
     let op = thumb.OpenReadAsync().ok()?;
-    let stream = wait_winrt!(op).ok()?;
+    let stream = wait_winrt!(op, &current).ok()?;
     let size = stream.Size().ok()?;
     if size == 0 || size > artwork::MAX_INPUT_BYTES as u64 {
         return None;
     }
     let reader = DataReader::CreateDataReader(&stream).ok()?;
     let op = reader.LoadAsync(size as u32).ok()?;
-    wait_winrt!(op).ok()?;
+    wait_winrt!(op, &current).ok()?;
     let mut buf = vec![0u8; size as usize];
     reader.ReadBytes(&mut buf).ok()?;
     Some(buf)
@@ -405,12 +421,71 @@ fn read_thumbnail(
 
 // ───────────────────────────── commands ─────────────────────────────
 
+fn run_commands(
+    rx: Receiver<PendingCommand>,
+    delivery: Delivery,
+    refresh: Sender<Msg>,
+) -> windows::core::Result<()> {
+    let _apartment = apartment::Apartment::enter()?;
+    let op = Manager_::RequestAsync()?;
+    let manager = wait_winrt!(op, || true)?;
+    delivery::command_loop(
+        rx,
+        &delivery,
+        |command, expected_session, deadline| {
+            // Resolve at delivery, never use the reader's potentially outdated session.
+            let session = manager
+                .GetCurrentSession()
+                .map_err(|_| "no media session")?;
+            let current =
+                || delivery.revision().session == expected_session && Instant::now() < deadline;
+            if !current() {
+                return Err("media session changed before command delivery".into());
+            }
+            let op = match command {
+                Command::Action(MediaAction::PlayPause) => session.TryTogglePlayPauseAsync(),
+                Command::Action(MediaAction::Next) => session.TrySkipNextAsync(),
+                Command::Action(MediaAction::Previous) => session.TrySkipPreviousAsync(),
+                Command::Seek(position_ms) => {
+                    // Position is relative to timeline start. Do not silently seek from 0 on error.
+                    let start = session
+                        .GetTimelineProperties()
+                        .and_then(|timeline| timeline.StartTime())
+                        .map_err(|error| error.to_string())?
+                        .Duration;
+                    let ticks = start.saturating_add(state::ms_to_ticks(position_ms.max(0)));
+                    session.TryChangePlaybackPositionAsync(ticks)
+                }
+            }
+            .map_err(|error| error.to_string())?;
+            let accepted = wait_winrt!(op, current).map_err(|error| error.to_string())?;
+            if manager.GetCurrentSession().ok().as_ref() != Some(&session) {
+                return Err("media session changed during command delivery".into());
+            }
+            Ok(accepted)
+        },
+        || {
+            // Wake a reader stuck on an old thumbnail even if the provider delays its events.
+            // This requests fresh facts; it never assumes that the command changed the track.
+            delivery.invalidate(false);
+            let _ = refresh.send(Msg::Refresh);
+        },
+    );
+    Ok(())
+}
+
+async fn receive_reply(rx: Receiver<Result<(), String>>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rx.recv_timeout(REPLY_TIMEOUT)
+            .map_err(|_| "media command thread did not answer".to_string())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 pub async fn media_get_state(handle: State<'_, MediaHandle>) -> Result<MediaState, String> {
-    let tx = handle.0.clone();
-    tauri::async_runtime::spawn_blocking(move || MediaHandle(tx).request(Msg::Query))
-        .await
-        .map_err(|e| e.to_string())?
+    Ok(handle.delivery.cached(now_ms()))
 }
 
 #[tauri::command]
@@ -418,22 +493,13 @@ pub async fn media_action(
     handle: State<'_, MediaHandle>,
     action: MediaAction,
 ) -> Result<(), String> {
-    let tx = handle.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        MediaHandle(tx).request(|r| Msg::Action(action, r))?
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    // Enqueue before yielding to the runtime: spawn_blocking scheduling cannot reorder commands.
+    receive_reply(handle.enqueue(Command::Action(action))?).await
 }
 
 #[tauri::command]
 pub async fn media_seek(handle: State<'_, MediaHandle>, position_ms: i64) -> Result<(), String> {
-    let tx = handle.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        MediaHandle(tx).request(|r| Msg::Seek(position_ms, r))?
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    receive_reply(handle.enqueue(Command::Seek(position_ms))?).await
 }
 
 #[cfg(test)]
@@ -446,6 +512,7 @@ mod tests {
             Duration::from_millis(20),
             || Ok(Some(42)),
             || panic!("completed operation must not be cancelled"),
+            || true,
         )
         .unwrap();
         assert_eq!(value, 42);
@@ -454,6 +521,7 @@ mod tests {
             Duration::from_millis(20),
             || Err(windows::core::Error::from_hresult(error)),
             || panic!("completed operation must not be cancelled"),
+            || true,
         );
         assert_eq!(result.unwrap_err().code(), error);
     }
@@ -469,6 +537,7 @@ mod tests {
                 cancelled = true;
                 Ok(())
             },
+            || true,
         );
         assert_eq!(
             result.unwrap_err().code(),
@@ -476,5 +545,24 @@ mod tests {
         );
         assert!(cancelled);
         assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn superseded_winrt_read_is_cancelled_without_polling_or_waiting() {
+        let mut cancelled = false;
+        let result = wait_for_winrt::<()>(
+            WINRT_TIMEOUT,
+            || panic!("stale operation must not read results"),
+            || {
+                cancelled = true;
+                Ok(())
+            },
+            || false,
+        );
+        assert!(cancelled);
+        assert_eq!(
+            result.unwrap_err().code(),
+            windows::core::HRESULT(0x8007_04C7u32 as i32)
+        );
     }
 }

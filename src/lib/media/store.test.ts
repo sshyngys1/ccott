@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockEmit, mockListenerCount, resetMock } from "../../ipc/mock";
+import * as ipc from "../../ipc";
 import type { MediaState } from "../../shared/types";
 import { PAUSE_GRACE_MS } from "./progress";
 import { initMedia, resetMediaStore, useIsMediaActive, useMediaStore } from "./store";
@@ -30,9 +31,59 @@ beforeEach(() => {
 afterEach(() => {
   resetMediaStore();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("media store", () => {
+  it("rolls back a rejected seek from the backend snapshot", async () => {
+    useMediaStore.getState().applyState(track({ positionMs: 1234 }));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(ipc, "invoke").mockImplementation(((command: string) => {
+      if (command === "media_seek") return Promise.reject(new Error("seek rejected"));
+      return Promise.resolve(track({ positionMs: 1234 }));
+    }) as typeof ipc.invoke);
+    await useMediaStore.getState().seek(50000);
+    expect(useMediaStore.getState().media.positionMs).toBe(1234);
+  });
+
+  it("delivers rapid next/previous immediately without guessing that a skip succeeded", async () => {
+    useMediaStore.getState().applyState(track());
+    const complete: Array<() => void> = [];
+    const spy = vi.spyOn(ipc, "invoke").mockImplementation((() => new Promise<void>(resolve => complete.push(resolve))) as typeof ipc.invoke);
+    const { next, previous } = useMediaStore.getState();
+    const requests = [next(), next(), previous()];
+    expect(spy.mock.calls).toEqual([
+      ["media_action", { action: "next" }],
+      ["media_action", { action: "next" }],
+      ["media_action", { action: "previous" }],
+    ]);
+    expect(useMediaStore.getState().media.title).toBe("A");
+    for (const resolve of complete) resolve();
+    await Promise.all(requests);
+  });
+
+  it("resyncs a rejected command but never overwrites a newer media event", async () => {
+    useMediaStore.getState().applyState(track());
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let finishLoad!: (state: MediaState) => void;
+    vi.spyOn(ipc, "invoke").mockImplementation(((command: string) => {
+      if (command === "media_action") return Promise.reject(new Error("SMTC rejected"));
+      return new Promise<MediaState>(resolve => { finishLoad = resolve; });
+    }) as typeof ipc.invoke);
+    const first = useMediaStore.getState().next();
+    await waitFor(() => expect(finishLoad).toBeTypeOf("function"));
+    finishLoad(track({ status: "paused" }));
+    await first;
+    expect(useMediaStore.getState().media.status).toBe("paused");
+    const second = useMediaStore.getState().previous();
+    await Promise.resolve();
+    useMediaStore.getState().applyState(track({ title: "Newer event" }));
+    finishLoad(track());
+    await second;
+    expect(useMediaStore.getState().media.title).toBe("Newer event");
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
   it("initMedia loads the state once and subscribes once", async () => {
     await Promise.all([initMedia(), initMedia()]);
     await initMedia();

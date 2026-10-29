@@ -166,10 +166,31 @@ const sync = createEventSync({
   apply: (state) => useAudioStore.getState().applyState(state),
 });
 
-export const initAudio = (): Promise<void> => sync.init();
+let audioConsumers = 0;
+let pinnedAudio = false;
+export const initAudio = (): Promise<void> => { pinnedAudio = true; return sync.init(); };
+
+/** Eq needs real mute/volume before Home mounts, with a releasable subscription. */
+export function retainAudio(): () => void {
+  audioConsumers++;
+  void sync.init();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    audioConsumers = Math.max(0, audioConsumers - 1);
+    if (!audioConsumers && !pinnedAudio) sync.reset();
+  };
+}
+if (import.meta.hot) import.meta.hot.dispose(() => {
+  sync.reset();
+  if (sendTimer !== null) window.clearTimeout(sendTimer);
+});
 
 /** Tests: drop the subscription, timers and state. */
 export function resetAudioStore(): void {
+  audioConsumers = 0;
+  pinnedAudio = false;
   sync.reset();
   if (sendTimer !== null) window.clearTimeout(sendTimer);
   sendTimer = null;

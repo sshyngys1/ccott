@@ -193,7 +193,7 @@ describe("SettingsView", () => {
 
   it("shows the current version and checks for updates manually when no release is available", async () => {
     render(<SettingsView />);
-    expect(screen.getByText("Версия 0.2.1")).toBeInTheDocument();
+    expect(screen.getByText("Версия 0.2.2")).toBeInTheDocument();
     const checkBtn = screen.getByRole("button", { name: "Проверить обновления" });
     fireEvent.click(checkBtn);
     await waitFor(() => expect(mockStats.updaterChecks).toBe(1));

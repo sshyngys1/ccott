@@ -37,7 +37,7 @@
   min-width: 0;
 }
 .hm-home:has(.hm-tools) .hm-player {
-  --ig-art-size: 96px;
+  --ig-art-size: calc(var(--ig-control-height-lg) + var(--ig-space-6));
   gap: 0;
   padding: var(--ig-space-3);
 }
@@ -93,11 +93,12 @@
 .hm-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--ig-space-2);
-  margin-top: auto;
+  flex: none;
 }
 .hm-home:has(.hm-tools) .hm-controls {
-  gap: 4px;
+  gap: var(--ig-space-1);
 }
 .hm-play {
   background-color: var(--ig-surface-selected);

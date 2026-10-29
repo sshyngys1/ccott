@@ -1,5 +1,7 @@
 // Owner: F1. Global UI state of the shell (Zustand).
 import { create } from "zustand";
+import { APP_VERSION } from "../ipc";
+import { getWhatsNewForVersion, shouldAutoShowWhatsNew } from "../lib/whatsNew/catalog";
 import { setLanguage } from "../i18n";
 import type { IslandMode, ModuleId, Settings, ThemeMode, UpdateInfo, VibrancyMode } from "../shared/types";
 import { DEFAULT_AUTO_HIDE_APPS } from "../shell/settings/hotkey";
@@ -8,7 +10,7 @@ import { DEFAULT_COLLAPSE_DELAY_MS, DEFAULT_EXPAND_DELAY_MS } from "./hover";
 export type ResolvedTheme = "light" | "dark";
 
 /** What the expanded panel shows: the module tabs or the settings view (spec §6.8). */
-export type PanelView = "tabs" | "settings";
+export type PanelView = "tabs" | "settings" | "whatsNew";
 
 /** Values used until `settings_get` answers (equal to the Rust defaults). */
 export const DEFAULT_SETTINGS: Settings = {
@@ -108,9 +110,21 @@ export const useIslandStore = create<IslandState>()((set) => ({
   setAvailableUpdate: (availableUpdate) => set({ availableUpdate }),
   markUpdateToastShown: (version) => set({ updateToastShownFor: version }),
   // One update removes the panel and prepares Home; AnimatePresence keeps the exiting panel's children.
-  setMode: (mode) => set(mode === "collapsed" ? { mode, view: "tabs", activeTab: "home" } : { mode }),
+  setMode: (mode) =>
+    set((s) => {
+      if (mode === "collapsed") {
+        return { mode, view: "tabs", activeTab: "home" };
+      }
+      if (s.mode === "collapsed" && s.view === "tabs" && shouldAutoShowWhatsNew(APP_VERSION)) {
+        return { mode, view: "whatsNew" };
+      }
+      return { mode };
+    }),
   setActiveTab: (activeTab) => set({ activeTab }),
-  setView: (view) => set({ view }),
+  setView: (view) => {
+    if (view === "whatsNew" && !getWhatsNewForVersion(APP_VERSION)) return;
+    set({ view });
+  },
   setKeyboardFocus: (keyboardFocus) => set({ keyboardFocus }),
   applySettings: (settings) => {
     setLanguage(settings.language ?? "auto");

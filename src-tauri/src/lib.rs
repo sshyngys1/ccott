@@ -15,9 +15,13 @@ mod db;
 mod dock;
 mod media;
 mod notes;
+mod system;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // R2: the run loop owns this anchor; managed workers retain only Weak references to it.
+    let worker_anchor = std::sync::Arc::new(std::sync::OnceLock::new());
+    let worker_app = std::sync::Arc::downgrade(&worker_anchor);
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -36,7 +40,17 @@ pub fn run() {
         .plugin(window::plugin())
         // ── plugins: R2 ──
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("system-shutdown")
+                .on_event(|app, event| {
+                    if matches!(event, tauri::RunEvent::Exit) {
+                        audio::shutdown(app);
+                        system::shutdown(app);
+                    }
+                })
+                .build(),
+        )
+        .setup(move |app| {
             // ── setup: R1 ──
             settings::setup(app)?; // before the window: it reads the monitor / fullscreen settings
             window::setup(app)?;
@@ -44,10 +58,14 @@ pub fn run() {
             tray::setup(app)?;
             updater::setup(app)?;
             // ── setup: R2 ──
+            if let Some(anchor) = worker_app.upgrade() {
+                let _ = anchor.set(app.handle().clone());
+            }
             db::setup(app)?;
-            audio::setup(app)?;
+            audio::setup(app, worker_app.clone())?;
             clipboard::setup(app)?;
             media::setup(app)?;
+            system::setup(app, worker_app.clone())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -79,6 +97,7 @@ pub fn run() {
             audio::audio_set_muted,
             audio::audio_list_devices,
             audio::audio_set_device,
+            audio::audio_visualizer_set_enabled,
             clipboard::clipboard_list,
             clipboard::clipboard_paste,
             clipboard::clipboard_pin,
@@ -90,7 +109,9 @@ pub fn run() {
             notes::notes_list,
             notes::notes_save,
             notes::notes_delete,
+            system::system_get_battery,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+    drop(worker_anchor);
 }

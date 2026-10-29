@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { IconTrash } from "../../design/icons";
 import { APP_VERSION, getAppVersion, invoke, invokeRecentMaximizedApps, listen } from "../../ipc";
 import type { FullscreenApp, LanguageMode, MonitorInfo, OcrLanguage, ThemeMode } from "../../shared/types";
+import { getWhatsNewForVersion } from "../../lib/whatsNew/catalog";
 import { useIslandStore } from "../../store";
 import { announceUpdate } from "../toast";
 import { Segmented, SliderRow } from "./controls";
@@ -332,13 +333,24 @@ export function SettingsView() {
               checkedUpToDate && !availableUpdate && <span className="ig-setting-row__desc">{t("youReUpToDate")}</span>
             )}
           </span>
-          <button
-            type="button"
-            className="ig-glass-control ig-glass-control--sm"
-            disabled={checking || installing}
-            onClick={() => void onCheckUpdates()}
-          >
-            {t("checkForUpdates")}</button>
+          <div style={{ display: "flex", gap: "var(--ig-space-1-5)", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              disabled={!getWhatsNewForVersion(appVersion)}
+              onClick={() => useIslandStore.getState().setView("whatsNew")}
+            >
+              {t("whatsNew.openFromSettings")}
+            </button>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              disabled={checking || installing}
+              onClick={() => void onCheckUpdates()}
+            >
+              {t("checkForUpdates")}
+            </button>
+          </div>
         </div>
         {availableUpdate && (
           <div className="ig-setting-row">

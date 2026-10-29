@@ -70,6 +70,7 @@
   --ig-weight-regular: 400;
   --ig-weight-medium: 500;
   --ig-weight-semibold: 600;
+  --ig-weight-bold: 700;
 
   /* Icons */
   --ig-icon-size: 20px;
@@ -338,4 +339,28 @@
   :root[data-theme="light"][data-vibrancy] {
     --ig-surface: rgb(238 239 244 / 1);
   }
+}
+
+/* Battery on the near-black idle pill in both themes. */
+:root {
+  --ig-battery-normal: #f4f5f8;
+  --ig-battery-ink: #15161b;
+  --ig-battery-charging: #43d17f;
+  --ig-battery-low: #f6c04e;
+  --ig-battery-critical: #ff6461;
+  --ig-battery-unknown: #b5b7bf;
+  --ig-battery-track: rgba(255, 255, 255, 0.14);
+  --ig-battery-border: rgba(255, 255, 255, 0.28);
+  --ig-battery-unfilled-text: #f4f5f8;
+}
+:root[data-theme="light"] {
+  --ig-battery-normal: #ffffff;
+  --ig-battery-ink: #15161b;
+  --ig-battery-charging: #43d17f;
+  --ig-battery-low: #f6c04e;
+  --ig-battery-critical: #ff6461;
+  --ig-battery-unknown: #b5b7bf;
+  --ig-battery-track: rgba(255, 255, 255, 0.14);
+  --ig-battery-border: rgba(255, 255, 255, 0.28);
+  --ig-battery-unfilled-text: #ffffff;
 }

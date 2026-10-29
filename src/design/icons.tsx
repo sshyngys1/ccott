@@ -385,3 +385,29 @@ export const IconClock = makeIcon(
     <path d="M10 6.25V10l2.5 1.75" />
   </>,
 );
+
+
+// ── v0.2.2: battery & power ──
+export const IconBattery = makeIcon(
+  "Battery",
+  <>
+    <rect x="2.5" y="6" width="13" height="8" rx="2" />
+    <path d="M17 8.5v3" />
+  </>,
+);
+export const IconBatteryCharging = makeIcon(
+  "BatteryCharging",
+  <>
+    <rect x="2.5" y="6" width="13" height="8" rx="2" />
+    <path d="M17 8.5v3" />
+    <path d="m9.5 7.5-2 3h2.5l-1 2.5" />
+  </>,
+);
+export const IconBatterySaver = makeIcon(
+  "BatterySaver",
+  <>
+    <rect x="2.5" y="6" width="13" height="8" rx="2" />
+    <path d="M17 8.5v3" />
+    <path d="M9 8.25v3.5M7.25 10h3.5" />
+  </>,
+);

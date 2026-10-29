@@ -23,6 +23,8 @@ import { Tabs, tabId, tabPanelId } from "./Tabs";
 import { useKeyboardFocus } from "./useKeyboardFocus";
 import { usePrewarm } from "./usePrewarm";
 import { useModeSync, useSettingsSync, useThemeSync, useToastSync, useVibrancySync } from "./useShellSync";
+import { BatteryIndicator } from "../lib/battery/BatteryIndicator";
+import { WhatsNewView } from "./WhatsNewView";
 import "./shell.css";
 
 type PillState = "idle" | "activity" | "toast";
@@ -50,6 +52,7 @@ function PillIdle() {
       <time className="ig-pill-time ig-num" aria-label={t("currentTime")}>
         {time}
       </time>
+      <BatteryIndicator variant="pill" />
     </div>
   );
 }
@@ -112,6 +115,7 @@ export function Island({ modules = registry }: IslandProps) {
   const expanded = mode === "expanded";
   const hover = !expanded && hoverInside;
   const settingsOpen = view === "settings";
+  const whatsNewOpen = view === "whatsNew";
 
   useThemeSync();
   useVibrancySync();
@@ -163,7 +167,7 @@ export function Island({ modules = registry }: IslandProps) {
       // (a second Escape would already go to the other window).
       keyboard.release();
       controls.collapseNow();
-    } else if (settingsOpen) setView("tabs");
+    } else if (settingsOpen || whatsNewOpen) setView("tabs");
     else controls.collapseNow();
   };
 
@@ -243,6 +247,28 @@ export function Island({ modules = registry }: IslandProps) {
                         </motion.button>
                         <h2 className="ig-view-title">{t("settings")}</h2>
                       </motion.div>
+                    ) : whatsNewOpen ? (
+                      <motion.div
+                        key="whats-new-head"
+                        className="ig-settings-head"
+                        initial={{ opacity: 0, x: viewSlide.enter }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: viewSlide.enter }}
+                        transition={{ ...springs.view, opacity: fades.pillSwap }}
+                      >
+                        <motion.button
+                          type="button"
+                          className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost"
+                          aria-label={t("back")}
+                          title={t("backEsc")}
+                          whileTap={{ scale: pressScale }}
+                          transition={springs.press}
+                          onClick={() => setView("tabs")}
+                        >
+                          <IconBack />
+                        </motion.button>
+                        <h2 className="ig-view-title">{t("whatsNew.title")}</h2>
+                      </motion.div>
                     ) : (
                       <motion.div
                         key="tabs-head"
@@ -256,6 +282,7 @@ export function Island({ modules = registry }: IslandProps) {
                     )}
                   </AnimatePresence>
                   <div className="ig-panel-head-right">
+                    <BatteryIndicator variant="head" />
                     <HeadClock />
                     <motion.button
                       type="button"
@@ -284,11 +311,11 @@ export function Island({ modules = registry }: IslandProps) {
                 </header>
                 <div
                   className="ig-panel-body"
-                  role={settingsOpen ? "region" : "tabpanel"}
-                  aria-label={settingsOpen ? t("settings") : undefined}
-                  id={!settingsOpen && activeModule ? tabPanelId(activeModule.id) : undefined}
-                  aria-labelledby={!settingsOpen && activeModule ? tabId(activeModule.id) : undefined}
-                  tabIndex={settingsOpen ? undefined : 0}
+                  role={settingsOpen || whatsNewOpen ? "region" : "tabpanel"}
+                  aria-label={settingsOpen ? t("settings") : whatsNewOpen ? t("whatsNew.title") : undefined}
+                  id={!settingsOpen && !whatsNewOpen && activeModule ? tabPanelId(activeModule.id) : undefined}
+                  aria-labelledby={!settingsOpen && !whatsNewOpen && activeModule ? tabId(activeModule.id) : undefined}
+                  tabIndex={settingsOpen || whatsNewOpen ? undefined : 0}
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {settingsOpen ? (
@@ -303,6 +330,17 @@ export function Island({ modules = registry }: IslandProps) {
                         <Suspense fallback={<ScreenFallback />}>
                           <SettingsView />
                         </Suspense>
+                      </motion.div>
+                    ) : whatsNewOpen ? (
+                      <motion.div
+                        key="whats-new"
+                        style={{ height: "100%" }}
+                        initial={bodyEnter}
+                        animate={{ opacity: 1, x: 0, y: 0 }}
+                        exit={bodyExit}
+                        transition={{ ...springs.view, opacity: fades.pillSwap }}
+                      >
+                        <WhatsNewView showTitle={false} />
                       </motion.div>
                     ) : (
                       ActiveTab && (

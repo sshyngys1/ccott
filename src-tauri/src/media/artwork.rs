@@ -14,7 +14,7 @@ pub const MAX_SIDE: u32 = 256;
 pub const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 
 /// Cache misses as well as hits: apps without artwork must not reopen the thumbnail on every tick.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Cache {
     key: Option<String>,
     hash: String,
@@ -22,6 +22,10 @@ pub struct Cache {
 }
 
 impl Cache {
+    pub fn cached(&self, key: &str) -> Option<String> {
+        self.matches(key).then(|| self.url.clone()).flatten()
+    }
+
     pub fn matches(&self, key: &str) -> bool {
         self.key.as_deref() == Some(key)
     }
@@ -93,6 +97,34 @@ pub fn to_data_url(bytes: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn different_tracks_can_share_the_same_album_artwork() {
+        for format in [ImageFormat::Png, ImageFormat::Jpeg] {
+            let mut cache = Cache::default();
+            let image = encode(DynamicImage::new_rgb8(8, 8), format);
+            let expected = to_data_url(&image).unwrap();
+            for key in ["track 1", "track 2", "track 3"] {
+                assert!(
+                    cache.cached(key).is_none(),
+                    "must not reuse another track's cache"
+                );
+                let mut reads = 0;
+                let artwork = cache.resolve(key, false, || {
+                    reads += 1;
+                    Some(image.clone())
+                });
+                assert_eq!(reads, 1, "each new track must read its provider");
+                assert_eq!(artwork.as_deref(), Some(expected.as_str()));
+                assert_eq!(cache.cached(key).as_deref(), Some(expected.as_str()));
+                assert_eq!(
+                    cache.resolve(key, true, || Some(image.clone())).as_deref(),
+                    Some(expected.as_str()),
+                    "forced recheck must also accept shared artwork"
+                );
+            }
+        }
+    }
 
     #[test]
     fn missing_artwork_is_cached_until_track_change_or_explicit_recheck() {

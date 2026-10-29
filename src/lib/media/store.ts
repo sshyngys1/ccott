@@ -52,25 +52,35 @@ export const useMediaStore = create<MediaStore>()((set, get) => ({
     if (!m.hasSession || !m.canSeek) return;
     const target = Math.max(0, Math.min(m.durationMs || positionMs, Math.round(positionMs)));
     set({ media: { ...m, positionMs: target, positionSampledAt: Date.now() } });
+    const requestedState = get().media;
     try {
       await invoke("media_seek", { positionMs: target });
     } catch (err) {
       console.warn("[island] media_seek failed", err);
-      void sync.init();
+      await correctRejectedCommand(requestedState);
     }
   },
 }));
 
 async function run(action: MediaAction): Promise<void> {
+  const requestedState = useMediaStore.getState().media;
   try {
     await invoke("media_action", { action });
   } catch (err) {
     console.warn(`[island] media_action(${action}) failed`, err);
-    try {
-      useMediaStore.getState().applyState(await invoke("media_get_state"));
-    } catch {
-      /* the next media://changed will fix it */
+    await correctRejectedCommand(requestedState);
+  }
+}
+
+async function correctRejectedCommand(requestedState: MediaState): Promise<void> {
+  try {
+    const corrected = await invoke("media_get_state");
+    // A delayed failure must not overwrite a newer event or another optimistic command.
+    if (useMediaStore.getState().media === requestedState) {
+      useMediaStore.getState().applyState(corrected);
     }
+  } catch {
+    /* the next media://changed will fix it */
   }
 }
 

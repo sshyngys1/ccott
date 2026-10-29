@@ -2,7 +2,9 @@
 // Used automatically by src/ipc/index.ts when `window.__TAURI_INTERNALS__` is absent (npm run dev in a browser, vitest).
 import type {
   AudioDevice,
+  AudioSpectrum,
   AudioState,
+  BatteryState,
   ClipItem,
   DockItem,
   CommandArgs,
@@ -195,6 +197,9 @@ interface MockState {
   settings: Settings;
   fullscreenApps: FullscreenApp[];
   maximizedApps: FullscreenApp[];
+  battery: BatteryState;
+  spectrum: AudioSpectrum;
+  visualizerEnabled: boolean;
   update: UpdateInfo | null;
   clips: ClipItem[];
   notes: Note[];
@@ -347,6 +352,20 @@ function createState(): MockState {
     maximizedApps: [
       { exe: "code.exe", title: "Visual Studio Code", lastSeen: now - 120_000 },
     ],
+    battery: {
+      hasBattery: false,
+      percent: null,
+      charging: null,
+      acConnected: true,
+      saver: false,
+      remainingSeconds: null,
+    } as BatteryState,
+    spectrum: {
+      available: false,
+      bands: [0, 0, 0, 0] as [number, number, number, number],
+      sampledAt: now,
+    } as AudioSpectrum,
+    visualizerEnabled: false,
     update: null,
     clips,
     notes,
@@ -600,6 +619,18 @@ const handlers: Handlers = {
     state.audio = { ...state.audio, device: { ...device, isDefault: true } };
     mockEmit("audio://changed", state.audio);
   },
+  audio_visualizer_set_enabled: ({ enabled }) => {
+    state.visualizerEnabled = enabled;
+    if (!enabled) {
+      state.spectrum = {
+        available: false,
+        bands: [0, 0, 0, 0],
+        sampledAt: Date.now(),
+      };
+      mockEmit("audio://spectrum", state.spectrum);
+    }
+  },
+  system_get_battery: () => state.battery,
   clipboard_list: ({ query, limit }) => {
     const q = query.trim().toLowerCase();
     const filtered = q
@@ -766,4 +797,19 @@ export async function mockInvoke<C extends CommandName>(cmd: C, args?: CommandAr
   if (!handler) throw new Error(`mock: unknown command ${String(cmd)}`);
   const result = await handler(clone((args ?? {}) as CommandArgs<C>));
   return clone(result);
+}
+
+
+export function mockSetBattery(patch: Partial<BatteryState>): void {
+  state.battery = { ...state.battery, ...patch };
+  mockEmit("system://battery", state.battery);
+}
+
+export function mockSetSpectrum(patch: Partial<AudioSpectrum>): void {
+  state.spectrum = {
+    ...state.spectrum,
+    ...patch,
+    sampledAt: patch.sampledAt ?? Date.now(),
+  };
+  mockEmit("audio://spectrum", state.spectrum);
 }

@@ -462,7 +462,7 @@ textarea.ig-glass-input {
   stroke-linejoin: round;
 }
 
-/* ───────────────────────── .ig-eq — compact equalizer (pill live activity). Animates ONLY with [data-playing]. ───── */
+/* ───────────────────────── .ig-eq — compact equalizer (pill live activity). Measured levels from WASAPI. ───── */
 .ig-eq {
   display: inline-flex;
   align-items: center;
@@ -477,30 +477,8 @@ textarea.ig-glass-input {
   border-radius: 2px;
   background: currentColor;
   transform-origin: 50% 50%;
-  transform: scaleY(0.3);
-}
-.ig-eq[data-playing="true"] > i {
-  animation: ig-eq-bar 900ms var(--ig-ease-in-out) infinite alternate;
-}
-.ig-eq[data-playing="true"] > i:nth-child(2) {
-  animation-duration: 640ms;
-  animation-delay: -200ms;
-}
-.ig-eq[data-playing="true"] > i:nth-child(3) {
-  animation-duration: 780ms;
-  animation-delay: -420ms;
-}
-.ig-eq[data-playing="true"] > i:nth-child(4) {
-  animation-duration: 560ms;
-  animation-delay: -120ms;
-}
-@keyframes ig-eq-bar {
-  0% {
-    transform: scaleY(0.25);
-  }
-  100% {
-    transform: scaleY(1);
-  }
+  transform: scaleY(0.2);
+  transition: transform 60ms linear;
 }
 
 /* ───────────────────────── Text helpers ───────────────────────── */
@@ -1389,9 +1367,8 @@ textarea.ig-glass-input {
 
 /* ───────────────────────── Reduced motion ───────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .ig-eq[data-playing="true"] > i {
-    animation: none;
-    transform: scaleY(0.6);
+  .ig-eq > i {
+    transition: none;
   }
   .ig-glass-control,
   .ig-glass-control:active,

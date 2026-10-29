@@ -153,6 +153,28 @@ export interface AudioState {
   device: AudioDevice | null;
 }
 
+/** v0.2.2: measured spectrum of the default Windows render endpoint, never microphone input. */
+export interface AudioSpectrum {
+  /** false when capture is inactive, unavailable or being reinitialised. */
+  available: boolean;
+  /** Four ascending frequency bands. Finite normalised amplitudes in 0..1; zero for silence. */
+  bands: [number, number, number, number];
+  /** Epoch ms. Consumers discard stale frames rather than looping old values. */
+  sampledAt: number;
+}
+
+/** v0.2.2: system power status. null means Windows could not determine the value. */
+export interface BatteryState {
+  hasBattery: boolean | null;
+  /** 0..100, including 0. null when absent or unknown. */
+  percent: number | null;
+  charging: boolean | null;
+  acConnected: boolean | null;
+  saver: boolean | null;
+  /** Estimated remaining seconds, null when unavailable. */
+  remainingSeconds: number | null;
+}
+
 // ───────────────────────────── Clipboard (wave 2, R2) ─────────────────────────────
 
 export type ClipKind = "text" | "link" | "image" | "files";
@@ -271,6 +293,9 @@ export interface Commands {
   audio_set_muted: [{ muted: boolean }, void];
   audio_list_devices: [Record<string, never>, AudioDevice[]];
   audio_set_device: [{ id: string }, void];
+  /** v0.2.2: idempotent demand signal. Capture also suspends while the native island is hidden. */
+  audio_visualizer_set_enabled: [{ enabled: boolean }, void];
+  system_get_battery: [Record<string, never>, BatteryState];
   // clipboard (R2, wave 2)
   clipboard_list: [{ query: string; limit: number }, ClipItem[]];
   clipboard_paste: [{ id: number; mode: PasteMode }, void];
@@ -323,6 +348,9 @@ export interface Events {
   "updater://available": UpdateInfo;
   "media://changed": MediaState;
   "audio://changed": AudioState;
+  /** v0.2.2: at most 20 Hz while the visible media indicator requests capture. */
+  "audio://spectrum": AudioSpectrum;
+  "system://battery": BatteryState;
   "clipboard://added": ClipItem;
   "clipboard://changed": null;
   /** R2: the dock list changed (any window/source). */

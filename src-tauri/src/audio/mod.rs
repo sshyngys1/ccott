@@ -4,8 +4,14 @@
 //! device and both notification callbacks (volume/mute and default-device change). Callbacks only post
 //! a message to that thread; commands talk to it through a channel, so no COM object crosses threads.
 
+mod capture;
+mod dsp;
 mod policy;
+mod visualizer;
 mod volume;
+
+#[allow(unused_imports)]
+pub use visualizer::{AudioSpectrum, VisualizerHandle};
 
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
@@ -74,9 +80,14 @@ impl AudioHandle {
     }
 }
 
-pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup(
+    app: &mut tauri::App,
+    worker_app: crate::system::worker::WorkerApp,
+) -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = mpsc::channel();
     app.manage(AudioHandle(tx.clone()));
+    let visualizer = visualizer::spawn_visualizer(worker_app)?;
+    app.manage(visualizer);
     let handle = app.handle().clone();
     std::thread::Builder::new()
         .name("audio-coreaudio".into())
@@ -397,6 +408,21 @@ pub async fn audio_set_device(handle: State<'_, AudioHandle>, id: String) -> Res
     ask(&handle, move |r| Msg::SetDevice(id, r)).await?
 }
 
+#[tauri::command]
+pub async fn audio_visualizer_set_enabled(
+    handle: State<'_, VisualizerHandle>,
+    enabled: bool,
+) -> Result<(), String> {
+    handle.set_enabled(enabled);
+    Ok(())
+}
+
+pub fn shutdown(app: &AppHandle) {
+    if let Some(handle) = app.try_state::<VisualizerHandle>() {
+        handle.shutdown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,5 +448,18 @@ mod tests {
         })
         .unwrap();
         assert!(none["device"].is_null());
+    }
+
+    #[test]
+    fn spectrum_serializes_camel_case() {
+        let spec = AudioSpectrum {
+            available: true,
+            bands: [0.5, 0.25, 0.75, 1.0],
+            sampled_at: 123456789,
+        };
+        let v = serde_json::to_value(&spec).unwrap();
+        assert_eq!(v["available"], true);
+        assert_eq!(v["sampledAt"], 123456789);
+        assert_eq!(v["bands"][0], 0.5);
     }
 }
