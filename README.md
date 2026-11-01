@@ -164,6 +164,11 @@ Plans may change based on feedback.
 
 Ideas and bug reports are welcome in [Issues](https://github.com/sshyngys1/ccott/issues).
 
+## Credits
+
+- [@sshyngys1](https://github.com/sshyngys1) — author and maintainer.
+- [@bekbolatniaz-max](https://github.com/bekbolatniaz-max) — animations and motion effects.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Releases are described in [docs/RELEASING.md](docs/RELEASING.md).
