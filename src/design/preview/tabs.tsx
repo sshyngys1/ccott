@@ -233,7 +233,7 @@ export function HomeTab({ variant, tools, dock }: { variant: Variant; tools: { t
       </section>
       <section className="ig-glass-card pv-dock" aria-label="Док">
         {dock.map(({ title, Icon }) => (
-          <motion.button key={title} className="ig-glass-control ig-glass-control--icon ig-glass-control--lg pv-dock-app" {...tap} title={title} aria-label={title}>
+          <motion.button key={title} className="ig-glass-control ig-glass-control--icon ig-glass-control--lg pv-dock-app" {...tap} title={title} aria-label={title} data-dock-id={title}>
             <Icon size={22} />
           </motion.button>
         ))}

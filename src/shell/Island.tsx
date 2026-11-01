@@ -3,7 +3,7 @@ import { useDockStore } from "../lib/dock/store";
 import { useDockDrop } from "./useDockDrop";
 // Owner: F1 (Frontend-Shell). One element morphs between the resting pill and the expanded panel (spec §15).
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { Suspense, useEffect, useMemo, useRef, type FocusEvent, type KeyboardEvent } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { hoveredPill, readIslandGeometry, type BoxSize } from "../design/geometry";
 import { IconBack, IconCheck, IconCollapse, IconSettings } from "../design/icons";
 import { fades, layerScale, overshoot, pressScale, springs, tabSlide, viewSlide } from "../design/motion";
@@ -25,6 +25,7 @@ import { usePrewarm } from "./usePrewarm";
 import { useModeSync, useSettingsSync, useThemeSync, useToastSync, useVibrancySync } from "./useShellSync";
 import { BatteryIndicator } from "../lib/battery/BatteryIndicator";
 import { WhatsNewView } from "./WhatsNewView";
+import { AttachWave } from "../design/fx/AttachWave";
 import "./shell.css";
 
 type PillState = "idle" | "activity" | "toast";
@@ -157,6 +158,19 @@ export function Island({ modules = registry }: IslandProps) {
   // Shape → Rust: a covering shape when a transition starts, the exact one when Motion reports it finished (no per-frame IPC).
   const settleShape = useShapeSync(ref, size, geo.top, overshoot(springs[kindRef.current]));
 
+  // Keep the definition stable across content renders. Motion passes this same object to its lifecycle callbacks,
+  // so a cancelled transition's late completion cannot restore expensive glass during a newer resize (even A→B→A).
+  const resizeTarget = useMemo(
+    () => ({ width: size.width, height: size.height, borderRadius: size.radius }),
+    [size.width, size.height, size.radius],
+  );
+  const resizeTargetRef = useRef(resizeTarget);
+  useLayoutEffect(() => { resizeTargetRef.current = resizeTarget; }, [resizeTarget]);
+  useEffect(() => {
+    const el = ref.current;
+    return () => { el?.removeAttribute("data-resizing"); };
+  }, []);
+
   const activeModule = modules.find((m) => m.id === activeTab) ?? modules[0];
   const ActiveTab = activeModule?.Tab;
 
@@ -206,13 +220,22 @@ export function Island({ modules = registry }: IslandProps) {
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         initial={false}
-        animate={{ width: size.width, height: size.height, borderRadius: size.radius }}
+        animate={resizeTarget}
         transition={springs[kindRef.current]}
-        onAnimationComplete={settleShape}
+        onAnimationStart={(definition) => {
+          // Runs before Motion starts writing size frames; reversing a resize keeps the cheap glass in place.
+          if (definition === resizeTargetRef.current) ref.current?.setAttribute("data-resizing", "true");
+        }}
+        onAnimationComplete={(definition) => {
+          if (definition !== resizeTargetRef.current) return;
+          ref.current?.removeAttribute("data-resizing");
+          settleShape();
+        }}
         // Centered in CSS (left/right 0 + auto margins), not with `x: -50%`: a transform promotes the island to its own
         // compositor layer, and resizing that layer made the GPU process block for 300–450 ms on the first frame.
         style={{ top: geo.top }}
       >
+        <AttachWave />
         <AnimatePresence initial={false} custom={kindRef.current === "pill"}>
           {expanded ? (
             <motion.div

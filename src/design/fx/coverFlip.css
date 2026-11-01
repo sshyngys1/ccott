@@ -1,0 +1,40 @@
+/* Owner: motion-fx. Artwork flip (CoverFlip.tsx). Only transform/opacity animate; will-change only while flipping. */
+
+/* Layout box of the artwork: same size as .ig-art, never changes during the flip (no reflow around it). */
+.fx-flip {
+  position: relative;
+  flex: none;
+  width: var(--ig-art-size);
+  height: var(--ig-art-size);
+}
+.fx-flip-lift,
+.fx-flip-face,
+.fx-flip-shadow {
+  position: absolute;
+  inset: 0;
+}
+.fx-flip-face {
+  backface-visibility: hidden;
+}
+.fx-flip[data-flipping="true"] .fx-flip-lift,
+.fx-flip[data-flipping="true"] .fx-flip-face {
+  will-change: transform;
+}
+/* Lift shadow: a separate layer whose opacity follows the hop (box-shadow itself never animates). */
+.fx-flip-shadow {
+  border-radius: var(--ig-radius-lg);
+  box-shadow: var(--ig-shadow-pill);
+}
+/* Artwork and the outgoing one during a cross-fade share one grid cell of the .ig-art face. */
+.fx-flip-art {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.fx-flip-art > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

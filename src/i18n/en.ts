@@ -325,5 +325,15 @@ export const en = {
   "whatsNew.v022.battery.title": "Laptop battery",
   "whatsNew.v022.battery.desc": "Live battery percentage and charging status now appear in the panel header and idle pill on portable devices.",
   "whatsNew.v022.changelog.title": "What's New screen",
-  "whatsNew.v022.changelog.desc": "A summary of recent improvements after each update, accessible anytime from Settings."
+  "whatsNew.v022.changelog.desc": "A summary of recent improvements after each update, accessible anytime from Settings.",
+  "whatsNew.v023.lighter.title": "Lighter on your PC",
+  "whatsNew.v023.lighter.desc": "At rest CCOTT now uses about 190–250 MB instead of ~300 MB, and while music plays it needs 2–4× less CPU.",
+  "whatsNew.v023.smoother.title": "Smoother expand",
+  "whatsNew.v023.smoother.desc": "While the island resizes its glass is drawn in a simpler way, so expanding and collapsing no longer stutter.",
+  "whatsNew.v023.cover.title": "Artwork flip",
+  "whatsNew.v023.cover.desc": "On a track change the artwork hops and flips to the new one. A player's short pause between tracks no longer shows “Nothing playing”, and a late cover now updates by itself.",
+  "whatsNew.v023.equalizer.title": "Livelier sound bars",
+  "whatsNew.v023.equalizer.desc": "The bars adapt to the volume: the bass hits with the beat, the other bars are calmer and no longer jitter.",
+  "whatsNew.v023.dock.title": "Dock wave",
+  "whatsNew.v023.dock.desc": "When you add a file or app to the dock, a wave of light runs across the island and the new icon pops in."
 } satisfies Record<keyof typeof ru, string>;

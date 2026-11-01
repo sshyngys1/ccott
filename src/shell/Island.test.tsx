@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mockCopy, mockEmit, mockListenerCount, mockSetMedia, mockStats, resetMock } from "../ipc/mock";
+import { DEFAULT_GEOMETRY, hoveredPill } from "../design/geometry";
 import { EMPTY_MEDIA } from "../lib/media/progress";
 import { useMediaStore } from "../lib/media/store";
 import { resetIslandStore, useIslandStore } from "../store";
@@ -67,6 +68,24 @@ describe("Island", () => {
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Заметки" }), { key: "ArrowRight" });
     expect(useIslandStore.getState().activeTab).toBe("home"); // wraps around
+  });
+
+  it("releases inactive clipboard images and subscriptions after exit and removes the panel on collapse", async () => {
+    mockCopy({ kind: "image", text: "", preview: "data:image/png;base64,AA==", sourceApp: "test.exe" });
+    const view = await mountIsland();
+    act(() => { useIslandStore.getState().setToast(null); useIslandStore.getState().setMode("expanded"); });
+    await screen.findByRole("tablist");
+    for (let cycle = 0; cycle < 3; cycle++) {
+      act(() => useIslandStore.getState().setActiveTab("clipboard"));
+      await waitFor(() => expect(view.container.querySelectorAll("img.ig-thumb")).toHaveLength(2));
+      expect(mockListenerCount("clipboard://changed")).toBe(1);
+      act(() => useIslandStore.getState().setActiveTab("home"));
+      await waitFor(() => expect(view.container.querySelectorAll("img.ig-thumb")).toHaveLength(0));
+      await waitFor(() => expect(mockListenerCount("clipboard://changed")).toBe(0));
+    }
+    act(() => useIslandStore.getState().setMode("collapsed"));
+    await waitFor(() => expect(view.container.querySelectorAll(".ig-island-layer--panel")).toHaveLength(0));
+    expect(view.container.querySelectorAll(".hm-player, .cb-root")).toHaveLength(0);
   });
 
   it("collapses again after the cursor leaves", async () => {
@@ -159,6 +178,67 @@ describe("Island", () => {
     await screen.findByRole("tablist");
     expect(island).not.toHaveClass("ig-glass--pill");
     expect(island).toHaveAttribute("data-hover", "false");
+  });
+
+  it("uses cheap glass from resize start until expand/collapse settles, without rearming for content renders", async () => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    expect(island).not.toHaveAttribute("data-resizing");
+    for (const mode of ["expanded", "collapsed"] as const) {
+      act(() => useIslandStore.getState().setMode(mode));
+      expect(island).toHaveAttribute("data-resizing", "true");
+      await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+      const size = mode === "expanded" ? DEFAULT_GEOMETRY.panel : DEFAULT_GEOMETRY.pill;
+      expect(island.style.width).toBe(`${size.width}px`);
+      expect(island.style.height).toBe(`${size.height}px`);
+      act(() => useIslandStore.getState().setView(mode === "expanded" ? "settings" : "tabs"));
+      expect(island).not.toHaveAttribute("data-resizing");
+    }
+  });
+
+  it("uses cheap glass for pill hover growth and shrink, then restores the resting material", async () => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    for (const inside of [true, false]) {
+      // Change hover alone, without the hover machine's delayed expansion.
+      act(() => useIslandStore.getState().setHoverInside(inside));
+      expect(island).toHaveAttribute("data-resizing", "true");
+      await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+      const size = inside ? hoveredPill(DEFAULT_GEOMETRY.pill, DEFAULT_GEOMETRY.pillHoverGrow) : DEFAULT_GEOMETRY.pill;
+      expect(island.style.width).toBe(`${size.width}px`);
+      expect(island.style.borderRadius).toBe(`${size.radius}px`);
+    }
+  });
+
+  it.each(["collapsed", "expanded"] as const)("clears cheap glass after interrupted transitions ending %s", async (end) => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    act(() => useIslandStore.getState().setMode("expanded"));
+    expect(island).toHaveAttribute("data-resizing", "true");
+    // Reverse a moving spring, including a return to the original target (A→B→A).
+    await new Promise(resolve => setTimeout(resolve, 80));
+    act(() => useIslandStore.getState().setMode("collapsed"));
+    expect(island).toHaveAttribute("data-resizing", "true");
+    if (end === "expanded") {
+      await new Promise(resolve => setTimeout(resolve, 40));
+      act(() => useIslandStore.getState().setMode("expanded"));
+      expect(island).toHaveAttribute("data-resizing", "true");
+    }
+    await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+    const size = end === "expanded" ? DEFAULT_GEOMETRY.panel : DEFAULT_GEOMETRY.pill;
+    expect(island.style.width).toBe(`${size.width}px`);
+    expect(island.style.height).toBe(`${size.height}px`);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect(island).not.toHaveAttribute("data-resizing");
+  });
+
+  it("removes the resize marker when an in-flight island is unmounted", async () => {
+    const view = await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    act(() => useIslandStore.getState().setMode("expanded"));
+    expect(island).toHaveAttribute("data-resizing", "true");
+    view.unmount();
+    expect(island).not.toHaveAttribute("data-resizing");
   });
 
   it("shows the «Скопировано» toast in the pill on clipboard://added and hides it later", async () => {

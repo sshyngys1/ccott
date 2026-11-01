@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaState } from "../../shared/types";
-import { EMPTY_MEDIA, PAUSE_GRACE_MS, extrapolatePosition, isMediaActive, progressFraction, sameTrack, sourceAppLabel } from "./progress";
+import { EMPTY_MEDIA, PAUSE_GRACE_MS, extrapolatePosition, isMediaActive, progressFraction, sameTrack, sourceAppLabel, trackIdentity } from "./progress";
 
 const base: MediaState = {
   ...EMPTY_MEDIA,
@@ -77,5 +77,13 @@ describe("misc", () => {
     expect(sameTrack(base, { ...base, positionMs: 5, artwork: "x" })).toBe(true);
     expect(sameTrack(base, { ...base, title: "Other" })).toBe(false);
     expect(sameTrack(EMPTY_MEDIA, EMPTY_MEDIA)).toBe(false);
+  });
+  it("seek identity does not retain artwork or the media state object", () => {
+    const media = { ...base, artwork: "data:image/png;base64,large-cover" };
+    const identity = trackIdentity(media);
+    expect(identity).not.toBe(media);
+    expect(identity).not.toHaveProperty("artwork");
+    expect(sameTrack(identity, media)).toBe(true);
+    expect(sameTrack(identity, { ...media, title: "Next" })).toBe(false);
   });
 });

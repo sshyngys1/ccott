@@ -7,7 +7,10 @@ import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "motion/react
 import "../tokens.css";
 import "../glass.css";
 import "./preview.css";
+import { create } from "zustand";
 import { GlassFilters } from "../GlassFilters";
+import { AttachWaveLayer } from "../fx/AttachWave";
+import { nextAttachSignal, type AttachSignal } from "../fx/wave";
 import { fades, layerScale, pressScale, springs, viewSlide } from "../motion";
 import { usePointerLight } from "../usePointerLight";
 import { hoveredPill, readIslandGeometry, type BoxSize, type IslandGeometry } from "../geometry";
@@ -72,6 +75,28 @@ const DOCK: { title: string; Icon: (p: IconProps) => ReactNode }[] = [
   { title: "Параметры", Icon: IconSettings },
 ];
 
+// fx §9b.2 demo: «Прикрепить» adds mock dock entries and raises the same signal the app's dock store does on a drop.
+const ATTACH_POOL: { title: string; Icon: (p: IconProps) => ReactNode }[] = [
+  { title: "Отчёт.pdf", Icon: IconText },
+  { title: "Фото", Icon: IconFolder },
+  { title: "Заметки.md", Icon: IconNote },
+  { title: "Скрипты", Icon: IconTerminal },
+];
+const usePreviewDock = create<{ dock: typeof DOCK; added: AttachSignal | null }>(() => ({ dock: DOCK, added: null }));
+
+function attachMock(titles: string[]) {
+  const { dock, added } = usePreviewDock.getState();
+  const fresh = titles.filter((t) => !dock.some((d) => d.title === t)).slice(0, 9 - dock.length);
+  const entries = fresh.map((t) => ATTACH_POOL.find((p) => p.title === t) ?? { title: t, Icon: IconFolder });
+  usePreviewDock.setState({ dock: [...dock, ...entries], added: nextAttachSignal(added, fresh) });
+}
+
+function nextAttachTitles(count: number): string[] {
+  const { dock } = usePreviewDock.getState();
+  const n = dock.length - DOCK.length;
+  return Array.from({ length: count }, (_, i) => (i + n < ATTACH_POOL.length ? ATTACH_POOL[i + n].title : `Файл ${i + n + 1}`));
+}
+
 const VARIANT_LABELS: Record<View, Record<Variant, string>> = {
   home: { default: "Играет", empty: "Нет медиа", alt: "Играет" },
   clipboard: { default: "Список", empty: "Пусто", alt: "Не найдено" },
@@ -102,9 +127,10 @@ function useClock() {
 // ───────────────────────────── Panel ─────────────────────────────
 
 function TabBody({ view, variant, focus }: { view: View; variant: Variant; focus: boolean }) {
+  const dock = usePreviewDock((s) => s.dock);
   switch (view) {
     case "home":
-      return <HomeTab variant={variant} tools={TOOLS} dock={DOCK} />;
+      return <HomeTab variant={variant} tools={TOOLS} dock={dock} />;
     case "clipboard":
       return <ClipboardTab variant={variant} focus={focus} />;
     case "text":
@@ -198,6 +224,7 @@ function pillSize(geo: IslandGeometry, state: PillState): BoxSize {
 function LiveIsland({ geo, pillState, expanded, setExpanded, clock, view, setView, variant, focus }: { geo: IslandGeometry; pillState: PillState; expanded: boolean; setExpanded: (v: boolean) => void; clock: { time: string; date: string }; view: View; setView: (v: View) => void; variant: Variant; focus: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   usePointerLight(ref);
+  const attached = usePreviewDock((s) => s.added);
   const [hover, setHover] = useState(false);
   const [kind, setKind] = useState<TransitionKind>("pill");
   const prevExpanded = useRef(expanded);
@@ -228,6 +255,7 @@ function LiveIsland({ geo, pillState, expanded, setExpanded, clock, view, setVie
       }}
       onClick={() => !expanded && setExpanded(true)}
     >
+      <AttachWaveLayer added={attached} />
       <AnimatePresence initial={false}>
         {expanded ? (
           <motion.div key="panel" className="pv-island-layer pv-island-layer--panel" style={{ width: geo.panel.width, height: geo.panel.height }} initial={{ opacity: 0, scale: layerScale.panelEnter }} animate={{ opacity: 1, scale: 1, transition: fades.panelIn }} exit={{ opacity: 0, scale: layerScale.panelExit, transition: fades.panelOut }}>
@@ -507,6 +535,26 @@ function Preview() {
               <motion.button className="ig-glass-control" whileTap={{ scale: pressScale }} transition={springs.press} onClick={() => setExpanded(false)} disabled={!expanded}>
                 Свернуть
               </motion.button>
+            </div>
+          </div>
+          <div className="pv-section-head pv-section-head--sub">
+            <span className="pv-caption">Волна при прикреплении (§9b.2): имитация броска в док.</span>
+            <div className="pv-row">
+              {([["Прикрепить файл", 1], ["Прикрепить 3", 3], ["Дубликат", 0]] as const).map(([label, count]) => (
+                <motion.button
+                  key={label}
+                  className="ig-glass-control"
+                  whileTap={{ scale: pressScale }}
+                  transition={springs.press}
+                  onClick={() => {
+                    setView("home");
+                    setExpanded(true);
+                    attachMock(count ? nextAttachTitles(count) : [usePreviewDock.getState().dock[0].title]);
+                  }}
+                >
+                  {label}
+                </motion.button>
+              ))}
             </div>
           </div>
           <div className="pv-section-head pv-section-head--sub">

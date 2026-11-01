@@ -4,13 +4,16 @@ import { dockAdd, dockList, dockOpen, dockRemove, dockReorder, dockStartDrag, pi
 import type { DockItem } from "../../shared/types";
 import { requestShell } from "../../shared/shellBus";
 import { createEventSync } from "../ipcSync";
+import { addedIds, nextAttachSignal, type AttachSignal } from "../../design/fx/wave";
 
 export const useDockStore = create<{
   items: DockItem[];
   dragging: boolean;
   interacting: boolean;
   outgoing: boolean;
-}>(() => ({ items: [], dragging: false, interacting: false, outgoing: false }));
+  /** fx: entries the last successful add put into the dock (drives the attach wave, src/design/fx/AttachWave.tsx). */
+  lastAdded: AttachSignal | null;
+}>(() => ({ items: [], dragging: false, interacting: false, outgoing: false, lastAdded: null }));
 
 const sync = createEventSync({ event: "dock://changed", load: dockList, apply: items => useDockStore.setState({ items }) });
 
@@ -18,24 +21,26 @@ export const initDock = () => sync.init();
 
 export function resetDockStore() {
   sync.reset();
-  useDockStore.setState({ items: [], dragging: false, interacting: false, outgoing: false });
+  useDockStore.setState({ items: [], dragging: false, interacting: false, outgoing: false, lastAdded: null });
 }
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? localizeMessage(error.message) : typeof error === "string" ? localizeMessage(error) : t("dock.error");
 }
 
-async function change(action: () => Promise<DockItem[]>) {
+async function change(action: () => Promise<DockItem[]>, signalAdded = false) {
+  const before = useDockStore.getState().items;
   try {
     const items = await action();
-    useDockStore.setState({ items });
+    const lastAdded = signalAdded ? nextAttachSignal(useDockStore.getState().lastAdded, addedIds(before, items)) : useDockStore.getState().lastAdded;
+    useDockStore.setState({ items, lastAdded });
   }
   catch (error) {
     await requestShell({ type: "toast", text: errorMessage(error) });
   }
 }
 
-export const addDockPaths = (paths: string[]) => paths.length ? change(() => dockAdd(paths)) : Promise.resolve();
+export const addDockPaths = (paths: string[]) => paths.length ? change(() => dockAdd(paths), true) : Promise.resolve();
 
 export const removeDockItem = (id: string) => change(() => dockRemove(id));
 

@@ -82,6 +82,9 @@ enum Msg {
     SessionChanged,
     /// Something in the current session changed.
     Refresh,
+    /// Media properties changed. Browsers often publish a new thumbnail in a later event with the same
+    /// title/artist, so this one re-reads the artwork (it is re-encoded only when its bytes differ).
+    Properties,
 }
 
 /// Managed state: channel to the media thread.
@@ -192,14 +195,17 @@ fn run(
                 w.attach_current();
                 w.refresh(false);
             }
-            Ok(Msg::Refresh) => {
+            Ok(first @ (Msg::Refresh | Msg::Properties)) => {
                 // Coalesce queued event bursts without adding a quiet-period delay.
+                let mut force_art = matches!(first, Msg::Properties);
                 while let Ok(message) = rx.try_recv() {
-                    if matches!(message, Msg::SessionChanged) {
-                        w.attach_current();
+                    match message {
+                        Msg::SessionChanged => w.attach_current(),
+                        Msg::Properties => force_art = true,
+                        Msg::Refresh => {}
                     }
                 }
-                w.refresh(false);
+                w.refresh(force_art);
             }
             Err(RecvTimeoutError::Timeout) => {
                 w.recheck_at = None;
@@ -230,7 +236,7 @@ impl Worker {
             let events = self.delivery.clone();
             let media = session.MediaPropertiesChanged(&TypedEventHandler::new(move |_, _| {
                 events.invalidate(false);
-                let _ = a.send(Msg::Refresh);
+                let _ = a.send(Msg::Properties);
                 Ok(())
             }))?;
             let playback_events = self.delivery.clone();

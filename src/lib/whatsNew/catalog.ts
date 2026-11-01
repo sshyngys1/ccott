@@ -36,6 +36,13 @@ export const WHATS_NEW_CATALOG: Record<string, WhatsNewItem[]> = {
       descKey: "whatsNew.v022.changelog.desc",
     },
   ],
+  "0.2.3": [
+    { id: "lighter", icon: "battery", titleKey: "whatsNew.v023.lighter.title", descKey: "whatsNew.v023.lighter.desc" },
+    { id: "smoother", icon: "changelog", titleKey: "whatsNew.v023.smoother.title", descKey: "whatsNew.v023.smoother.desc" },
+    { id: "cover", icon: "player", titleKey: "whatsNew.v023.cover.title", descKey: "whatsNew.v023.cover.desc" },
+    { id: "equalizer", icon: "spectrum", titleKey: "whatsNew.v023.equalizer.title", descKey: "whatsNew.v023.equalizer.desc" },
+    { id: "dock", icon: "changelog", titleKey: "whatsNew.v023.dock.title", descKey: "whatsNew.v023.dock.desc" },
+  ],
 };
 
 export const WHATS_NEW_STORAGE_KEY = "ccott:whats-new:last-acknowledged";

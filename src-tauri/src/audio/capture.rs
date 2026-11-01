@@ -1,5 +1,6 @@
 //! Bounded packet consumption and format validation, independent of WASAPI for fault injection.
 use super::dsp;
+use std::time::{Duration, Instant};
 
 pub const MAX_SAMPLES: usize = 2048;
 pub const MAX_PACKETS: usize = 8;
@@ -85,9 +86,17 @@ pub trait PacketReader {
 #[derive(Default)]
 pub struct Samples {
     ring: Vec<f32>,
+    agc: dsp::SpectrumAgc,
+    last_frame: Option<Instant>,
 }
 
 impl Samples {
+    fn reset(&mut self) {
+        self.ring.clear();
+        self.agc = dsp::SpectrumAgc::default();
+        self.last_frame = None;
+    }
+
     pub fn drain<R: PacketReader>(
         &mut self,
         reader: &mut R,
@@ -97,14 +106,14 @@ impl Samples {
         let mut frames = 0usize;
         for _ in 0..MAX_PACKETS {
             if !active() {
-                self.ring.clear();
+                self.reset();
                 return Ok(None);
             }
             // Errors are propagated, not confused with an empty capture queue.
             let next = match reader.next_size() {
                 Ok(next) => next,
                 Err(error) => {
-                    self.ring.clear();
+                    self.reset();
                     return Err(error);
                 }
             };
@@ -114,7 +123,7 @@ impl Samples {
             let packet = match reader.read() {
                 Ok(packet) => packet,
                 Err(error) => {
-                    self.ring.clear();
+                    self.reset();
                     return Err(error);
                 }
             };
@@ -123,7 +132,7 @@ impl Samples {
             }
             frames = frames.saturating_add(packet.frames);
             if packet.reset {
-                self.ring.clear();
+                self.reset();
             }
             let samples = &packet.samples[packet.samples.len().saturating_sub(MAX_SAMPLES)..];
             let excess = (self.ring.len() + samples.len()).saturating_sub(MAX_SAMPLES);
@@ -134,14 +143,22 @@ impl Samples {
             }
         }
         if !active() {
-            self.ring.clear();
+            self.reset();
             return Ok(None);
         }
         if frames == 0 {
             // No new PCM is not permission to reissue the previous music with a new timestamp.
-            self.ring.clear();
+            self.reset();
         }
-        Ok(Some(dsp::calculate_spectrum_bands(&self.ring, rate)))
+        let now = Instant::now();
+        let elapsed = self
+            .last_frame
+            .replace(now)
+            .map_or(Duration::from_millis(50), |last| now - last);
+        Ok(Some(self.agc.process(
+            dsp::calculate_spectrum_bands(&self.ring, rate),
+            elapsed,
+        )))
     }
 }
 
@@ -182,10 +199,89 @@ mod tests {
             })
         }
     }
+
+    struct SignalReader {
+        packet: Option<Packet>,
+    }
+
+    impl SignalReader {
+        fn sine(amplitude: f32, reset: bool) -> Self {
+            Self {
+                packet: Some(Packet {
+                    frames: dsp::FFT_SIZE,
+                    samples: (0..dsp::FFT_SIZE)
+                        .map(|i| {
+                            amplitude * (std::f32::consts::TAU * 100.0 * i as f32 / 48000.0).sin()
+                        })
+                        .collect(),
+                    reset,
+                }),
+            }
+        }
+    }
+
+    impl PacketReader for SignalReader {
+        type Error = ();
+
+        fn next_size(&mut self) -> Result<u32, Self::Error> {
+            Ok(self
+                .packet
+                .as_ref()
+                .map_or(0, |packet| packet.frames as u32))
+        }
+
+        fn read(&mut self) -> Result<Packet, Self::Error> {
+            self.packet.take().ok_or(())
+        }
+    }
+
+    fn signal(samples: &mut Samples, amplitude: f32, reset: bool) -> [f32; 4] {
+        samples
+            .drain(&mut SignalReader::sine(amplitude, reset), 48000, || true)
+            .unwrap()
+            .unwrap()
+    }
+
+    #[test]
+    fn packet_discontinuity_and_silence_reset_agc_with_pcm() {
+        let mut samples = Samples::default();
+        assert_eq!(signal(&mut samples, 0.8, false)[0], 1.0);
+        // A much quieter signal following a reset must not inherit the old loud reference.
+        assert_eq!(signal(&mut samples, 0.008, true)[0], 1.0);
+        assert_eq!(signal(&mut samples, 0.0, true), [0.0; 4]);
+        assert_eq!(signal(&mut samples, 0.008, false)[0], 1.0);
+        // A packet gap must clear both the previous PCM and the release envelope immediately.
+        assert_eq!(
+            samples.drain(&mut SignalReader { packet: None }, 48000, || true),
+            Ok(Some([0.0; 4]))
+        );
+        assert_eq!(signal(&mut samples, 0.008, false)[0], 1.0);
+        assert_eq!(
+            samples.drain(&mut SignalReader::sine(0.8, false), 48000, || false),
+            Ok(None)
+        );
+        assert_eq!(signal(&mut samples, 0.008, false)[0], 1.0);
+    }
+
+    #[test]
+    fn endpoint_session_replacement_starts_with_fresh_agc() {
+        let mut endpoint = EndpointTracker::default();
+        assert!(endpoint.update(Some("speakers")));
+        let mut samples = Samples::default();
+        signal(&mut samples, 0.8, false);
+        samples.last_frame = Some(Instant::now() - Duration::from_millis(500));
+        assert!(signal(&mut samples, 0.008, false)[0] < 0.1);
+        // LoopbackSession owns Samples; opening the changed endpoint constructs a fresh default.
+        assert!(endpoint.update(Some("headphones")));
+        samples = Samples::default();
+        assert_eq!(signal(&mut samples, 0.008, false)[0], 1.0);
+    }
+
     #[test]
     fn no_packets_clear_previous_pcm_and_errors_propagate() {
         let mut samples = Samples {
             ring: (0..1024).map(|i| (i as f32 / 10.0).sin()).collect(),
+            ..Default::default()
         };
         let mut reader = Reader {
             next: Ok(0),

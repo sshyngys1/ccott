@@ -33,7 +33,8 @@ it.each(["ru", "en"] as const)("places accessible transport controls above the t
     .toEqual([t("previousTrack"), t("pause"), t("nextTrack")]);
   expect(screen.getByText(title.trim())).toHaveClass("ig-truncate");
   expect(screen.getByText(title.trim())).toHaveAttribute("title", title);
-  act(() => useMediaStore.getState().applyState(EMPTY_MEDIA));
+  // A stop that outlasted the track-switch bridge (TRACK_GAP_MS).
+  act(() => useMediaStore.getState().applyState(EMPTY_MEDIA, false, true));
   for (const button of controls.querySelectorAll("button")) expect(button).toBeDisabled();
   expect(screen.getByRole("slider", { name: t("trackPosition") })).toBeDisabled();
 });

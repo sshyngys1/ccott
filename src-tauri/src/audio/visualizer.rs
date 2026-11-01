@@ -189,6 +189,7 @@ impl PacketReader for WasapiReader {
 struct LoopbackSession {
     audio_client: IAudioClient,
     reader: WasapiReader,
+    // PCM and per-band AGC share the session lifetime; endpoint changes cannot retain old peaks.
     samples: Samples,
 }
 impl Drop for LoopbackSession {

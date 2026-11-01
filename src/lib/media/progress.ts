@@ -48,7 +48,14 @@ export function sourceAppLabel(sourceApp: string): string {
   return sourceDisplayName(sourceApp);
 }
 
+export type TrackIdentity = Pick<MediaState, "hasSession" | "title" | "artist" | "album" | "sourceApp">;
+
+/** A seek gesture must not retain the old track's potentially large artwork. */
+export function trackIdentity({ hasSession, title, artist, album, sourceApp }: MediaState): TrackIdentity {
+  return { hasSession, title, artist, album, sourceApp };
+}
+
 /** Same track (so a late-arriving artwork / a position update does not need a new cover). */
-export function sameTrack(a: MediaState, b: MediaState): boolean {
+export function sameTrack<A extends TrackIdentity, B extends TrackIdentity>(a: A, b: B): boolean {
   return a.hasSession && b.hasSession && a.title === b.title && a.artist === b.artist && a.album === b.album && a.sourceApp === b.sourceApp;
 }

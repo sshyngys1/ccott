@@ -104,6 +104,10 @@
   background-color: var(--ig-surface-selected);
 }
 .hm-seek {
+  /* Isolate range/text repaints from the card and glass. Leave room for thumb shadow and focus ring. */
+  contain: layout paint;
+  padding-block: var(--ig-space-1);
+  margin-block: calc(var(--ig-space-1) * -1);
   display: flex;
   align-items: center;
   gap: var(--ig-space-3);

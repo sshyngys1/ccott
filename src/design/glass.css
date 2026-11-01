@@ -100,6 +100,39 @@
   --_rim: linear-gradient(180deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.06) 45%, rgb(255 255 255 / 0.16));
 }
 
+/* Only the island's resizing surface gets cheaper; nested glass and panel content keep their normal material.
+   Never interpolate its box-shadow: both the cheap shadow and the restored elevation switch once, at the endpoints. */
+.ig-island.ig-glass {
+  transition:
+    background-color var(--ig-dur-med) var(--ig-ease-out),
+    --ig-pointer-active var(--ig-dur-slow) var(--ig-ease-out);
+}
+.ig-island::before {
+  opacity: 1;
+  transition: opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-island::after {
+  transition: opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-island.ig-glass[data-resizing="true"] {
+  background-image: none;
+  box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-stroke), var(--ig-shadow-control);
+}
+.ig-island[data-resizing="true"]::before,
+.ig-island[data-resizing="true"]::after {
+  opacity: 0;
+  background: none;
+  mask: none;
+  mix-blend-mode: normal;
+  /* Hide immediately before resizing; fade back only once the size has settled. */
+  transition: none;
+}
+/* Native regions clip outer shadows. Keep that property even while using the cheap material. */
+:root[data-vibrancy="acrylic"] .ig-island.ig-glass[data-resizing="true"],
+:root[data-vibrancy="mica"] .ig-island.ig-glass[data-resizing="true"] {
+  box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-stroke);
+}
+
 /* ── Modifier: refraction of whatever is behind a SMALL element (≤ ~120×120). Chromium-only (backdrop-filter: url()). ── */
 .ig-glass--refract {
   backdrop-filter: url(#ig-refraction) saturate(1.4) brightness(1.06);
@@ -464,6 +497,8 @@ textarea.ig-glass-input {
 
 /* ───────────────────────── .ig-eq — compact equalizer (pill live activity). Measured levels from WASAPI. ───── */
 .ig-eq {
+  /* Bound damage to the tiny indicator; do not reserve four compositor layers with will-change. */
+  contain: layout paint;
   display: inline-flex;
   align-items: center;
   gap: 2.5px;
@@ -478,7 +513,13 @@ textarea.ig-glass-input {
   background: currentColor;
   transform-origin: 50% 50%;
   transform: scaleY(0.2);
-  transition: transform 60ms linear;
+  /* 35 ms smoothing per >=75 ms DOM sample: finite bursts, with >=40 ms between transitions. */
+  transition: transform var(--ig-eq-smooth) linear;
+}
+/* At fractional DPI (150 %) a bar sits on a half device pixel. Promoted only while it transitions, it
+   snapped to whole pixels and jumped sideways at every sample; four 3×14 layers keep one position. */
+.ig-eq[data-playing="true"] > i {
+  will-change: transform;
 }
 
 /* ───────────────────────── Text helpers ───────────────────────── */
@@ -1367,6 +1408,10 @@ textarea.ig-glass-input {
 
 /* ───────────────────────── Reduced motion ───────────────────────── */
 @media (prefers-reduced-motion: reduce) {
+  .ig-island::before,
+  .ig-island::after {
+    transition: none;
+  }
   .ig-eq > i {
     transition: none;
   }

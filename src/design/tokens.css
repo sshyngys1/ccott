@@ -84,6 +84,7 @@
 
   /* Motion (CSS side; springs for Motion live in motion.ts) */
   --ig-dur-instant: 60ms;
+  --ig-eq-smooth: 20ms;
   --ig-dur-fast: 100ms;
   --ig-dur-med: 160ms;
   --ig-dur-slow: 260ms;

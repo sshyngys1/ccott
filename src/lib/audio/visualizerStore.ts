@@ -1,8 +1,10 @@
-// A lifecycle-owned, lightweight spectrum store. Only Eq subscribes to 20 Hz bands.
-import { useSyncExternalStore, useEffect } from "react";
+// Lifecycle-owned spectrum delivery. Frames go directly to the bars, outside React.
+import { useEffect, type RefObject } from "react";
 import type { AudioSpectrum } from "../../shared/types";
 import { invoke, listen, type Unlisten } from "../../ipc";
 import { retainAudio, useAudioStore } from "./store";
+import { useDocumentVisible } from "../useDocumentVisible";
+import { SpectrumPainter } from "./spectrumPainter";
 
 export type SpectrumBands = [number, number, number, number];
 const SILENCE_BANDS: SpectrumBands = [0, 0, 0, 0];
@@ -11,7 +13,7 @@ const captureQueue: CaptureQueue = import.meta.hot?.data.captureQueue ?? { tail:
 
 export class VisualizerManager {
   private currentBands = SILENCE_BANDS;
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(reset: boolean) => void>();
   private consumers = new Set<number>();
   private nextConsumer = 0;
   private generation = 0;
@@ -96,17 +98,17 @@ export class VisualizerManager {
   private clear() {
     if (this.staleTimer !== null) clearTimeout(this.staleTimer);
     this.staleTimer = null;
-    this.updateBands(SILENCE_BANDS);
+    this.updateBands(SILENCE_BANDS, true);
   }
 
-  private updateBands(bands: SpectrumBands) {
-    if (this.currentBands.every((value, index) => value === bands[index])) return;
+  private updateBands(bands: SpectrumBands, reset = false) {
+    if (!reset && this.currentBands.every((value, index) => value === bands[index])) return;
     this.currentBands = bands;
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) listener(reset);
   }
 
   public getSnapshot = (): SpectrumBands => this.currentBands;
-  public subscribe = (listener: () => void): (() => void) => {
+  public subscribe = (listener: (reset: boolean) => void): (() => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   };
@@ -146,12 +148,27 @@ if (import.meta.hot) import.meta.hot.dispose(data => {
   data.captureQueue = captureQueue;
 });
 
-export function useSpectrumBands(playing: boolean): SpectrumBands {
+export function useSpectrumBars(target: RefObject<HTMLElement | null>, playing: boolean): void {
   const audible = useAudioStore(state => state.ready && !state.audio.muted && state.audio.volume > 0);
-  const bands = useSyncExternalStore(visualizerManager.subscribe, visualizerManager.getSnapshot, () => SILENCE_BANDS);
+  const visible = useDocumentVisible();
   useEffect(() => retainAudio(), []);
   useEffect(() => {
-    if (playing && audible) return visualizerManager.registerConsumer();
-  }, [playing, audible]);
-  return playing && audible ? bands : SILENCE_BANDS;
+    const bars = target.current?.querySelectorAll<HTMLElement>(":scope > i");
+    if (!bars) return;
+    const painter = new SpectrumPainter(bars);
+    painter.reset();
+    if (!playing || !audible || !visible) return;
+    const unsubscribe = visualizerManager.subscribe(reset => {
+      if (reset) painter.reset();
+      else painter.update(visualizerManager.getSnapshot());
+    });
+    const release = visualizerManager.registerConsumer();
+    const initial = visualizerManager.getSnapshot();
+    if (initial !== SILENCE_BANDS) painter.update(initial);
+    return () => {
+      unsubscribe();
+      release();
+      painter.reset();
+    };
+  }, [target, playing, audible, visible]);
 }

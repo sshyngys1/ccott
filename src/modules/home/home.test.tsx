@@ -107,6 +107,8 @@ describe("Home tab: player", () => {
     render(<HomeTab />);
     await waitFor(() => expect(mockListenerCount("media://changed")).toBe(1));
     act(() => mockEmit("media://changed", EMPTY_MEDIA));
+    // The mock's sample track → empty is bridged as a possible track switch; the stop shows after TRACK_GAP_MS.
+    act(() => useMediaStore.getState().applyState(EMPTY_MEDIA, false, true));
     expect(screen.getByText("Ничего не играет")).toBeInTheDocument();
     expect(screen.getByText("Запустите любой плеер")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Воспроизвести" })).toBeDisabled();

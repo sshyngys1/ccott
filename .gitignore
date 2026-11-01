@@ -43,3 +43,6 @@ dist-ssr
 
 # Machine-specific chat automation (not part of the application)
 /tools/agent-bridge/
+
+# Task-owned browser profiles, traces and performance measurements
+/.perf/

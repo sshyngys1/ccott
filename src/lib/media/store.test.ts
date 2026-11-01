@@ -4,7 +4,7 @@ import { mockEmit, mockListenerCount, resetMock } from "../../ipc/mock";
 import * as ipc from "../../ipc";
 import type { MediaState } from "../../shared/types";
 import { PAUSE_GRACE_MS } from "./progress";
-import { initMedia, resetMediaStore, useIsMediaActive, useMediaStore } from "./store";
+import { TRACK_GAP_MS, initMedia, resetMediaStore, useIsMediaActive, useMediaStore } from "./store";
 
 const track = (over: Partial<MediaState> = {}): MediaState => ({
   hasSession: true,
@@ -108,6 +108,33 @@ describe("media store", () => {
     expect(useMediaStore.getState().media.artwork).toBeNull();
     applyState(track({ title: "Другой", artwork: "data:image/png;base64,BBB" }));
     expect(useMediaStore.getState().media.artwork).toBe("data:image/png;base64,BBB");
+  });
+
+  it("bridges a short 'no track' gap during a track switch, then shows the next track", () => {
+    vi.useFakeTimers();
+    const { applyState } = useMediaStore.getState();
+    applyState(track());
+    applyState({ ...track(), hasSession: false, title: "", artist: "" });
+    applyState(track({ title: "", artist: "", artwork: null }));
+    expect(useMediaStore.getState().media.title).toBe("A");
+    vi.advanceTimersByTime(TRACK_GAP_MS - 1);
+    applyState(track({ title: "Next", artwork: null }));
+    expect(useMediaStore.getState().media.title).toBe("Next");
+    vi.advanceTimersByTime(TRACK_GAP_MS * 2);
+    expect(useMediaStore.getState().media.title).toBe("Next");
+  });
+
+  it("shows a real stop once the gap outlasts the bridge; the first snapshot is never held", () => {
+    vi.useFakeTimers();
+    const { applyState } = useMediaStore.getState();
+    applyState(track());
+    applyState({ ...track(), hasSession: false, title: "", artist: "" });
+    vi.advanceTimersByTime(TRACK_GAP_MS);
+    expect(useMediaStore.getState().media.hasSession).toBe(false);
+    resetMediaStore();
+    applyState(track());
+    applyState({ ...track(), hasSession: false }, true);
+    expect(useMediaStore.getState().media.hasSession).toBe(false);
   });
 
   it("remembers when the pause started; a paused snapshot at load does not count", () => {

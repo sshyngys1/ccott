@@ -77,6 +77,44 @@ export const listItem = {
   exit: { opacity: 0, height: 0, transition: { duration: 0.12, ease: easings.in } },
 } as const;
 
+/**
+ * fx: artwork flip on track change (src/design/fx/CoverFlip.tsx, spec §9b.1). One continuous move: the cover hops toward
+ * the viewer and turns 360° around X; the new track shows on the back face and is on the front again at 360°.
+ * The turn is a tween (180° at ≈ 45 % of the time); the hop is a keyframe track peaking at `lift.peak`.
+ */
+export const coverFlip = {
+  duration: 0.68,
+  /** Rotation curve of a fresh flip: slow take-off, so the turn happens "in the air". */
+  ease: [0.5, 0, 0.3, 1],
+  /** A flip retargeted mid-air (another track change) keeps moving instead of starting from rest. */
+  retargetEase: easings.out,
+  perspective: 720,
+  lift: { y: -12, scale: 1.12, peak: 0.4 },
+  /** Reduced motion and a late artwork for the same track: plain cross-fade. */
+  fade: { duration: 0.14, ease: easings.out },
+} as const;
+
+/**
+ * fx: ring of light over the whole island when the dock gets a new item (src/design/fx/AttachWave.tsx, spec §9b.2).
+ * The ring starts at the new dock entry and grows (scale) past the farthest island corner while it fades (opacity).
+ */
+export const attachWave = {
+  duration: 0.8,
+  ease: easings.out,
+  /** Ring band at full size, px; its soft edges come from the radial-gradient, not from `filter`. */
+  band: 64,
+  peakOpacity: 0.35,
+  /** Opacity keyframe times for [0, peak, 0]: bright early, fading toward the edges. */
+  opacityTimes: [0, 0.2, 1],
+  startScale: 0.04,
+  /** The wave waits until the island is at least this fraction of the panel width (drop → expandNow). */
+  readyWidth: 0.92,
+  /** The new dock icon pops in: scale keyframes; ~ the overshoot of a ζ ≈ 0.45 spring, which no preset has. */
+  pop: { scale: [0.6, 1.08, 1], times: [0, 0.6, 1], duration: 0.36, ease: easings.out },
+  /** Reduced motion: no wave, the new icon cross-fades in. */
+  highlight: { duration: 0.15, ease: easings.out },
+} as const;
+
 /** Scale under the pointer for controls (use with springs.press). */
 export const pressScale = 0.96;
 

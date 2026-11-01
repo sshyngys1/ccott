@@ -4,26 +4,51 @@ import { create } from "zustand";
 import { invoke } from "../../ipc";
 import type { MediaAction, MediaState } from "../../shared/types";
 import { createEventSync } from "../ipcSync";
+import { useDocumentVisible } from "../useDocumentVisible";
 import { EMPTY_MEDIA, PAUSE_GRACE_MS, extrapolatePosition, isMediaActive, sameTrack } from "./progress";
 
 export interface MediaStore {
   media: MediaState;
   /** Epoch ms when the current pause started (null while playing / unknown). Drives the 30 s grace in the pill. */
   pausedSince: number | null;
-  /** Merge a state coming from Rust. `fromLoad` = the very first snapshot (a session that is already paused does not flash in the pill). */
-  applyState: (next: MediaState, fromLoad?: boolean) => void;
+  /** Merge a state coming from Rust. `fromLoad` = the very first snapshot (a session that is already paused does not flash in the pill).
+   *  `gapExpired` (internal) = a held "no track" state is applied after {@link TRACK_GAP_MS}. */
+  applyState: (next: MediaState, fromLoad?: boolean, gapExpired?: boolean) => void;
   playPause: () => Promise<void>;
   next: () => Promise<void>;
   previous: () => Promise<void>;
   seek: (positionMs: number) => Promise<void>;
 }
 
+/** A player reports "no track" for a moment while it switches tracks (SMTC: the session or the title vanishes, then
+ *  the next track appears). The previous track stays on screen this long, so the artwork flips from the old cover to
+ *  the new one instead of blinking through "nothing playing". A real stop is shown once the gap outlasts it. */
+export const TRACK_GAP_MS = 2000;
+let gapTimer: ReturnType<typeof setTimeout> | null = null;
+
+const hasTrack = (m: MediaState) => m.hasSession && (m.title !== "" || m.artist !== "");
+
+function clearGap() {
+  if (gapTimer !== null) clearTimeout(gapTimer);
+  gapTimer = null;
+}
+
 export const useMediaStore = create<MediaStore>()((set, get) => ({
   media: EMPTY_MEDIA,
   pausedSince: null,
 
-  applyState: (incoming, fromLoad = false) => {
+  applyState: (incoming, fromLoad = false, gapExpired = false) => {
     const prev = get().media;
+    if (!fromLoad && !gapExpired && hasTrack(prev) && !hasTrack(incoming)) {
+      // Hold the previous track; the latest empty state wins only if no track arrives in time.
+      clearGap();
+      gapTimer = setTimeout(() => {
+        gapTimer = null;
+        get().applyState(incoming, false, true);
+      }, TRACK_GAP_MS);
+      return;
+    }
+    clearGap();
     let next = incoming;
     // The artwork arrives ~1.5 s after the track metadata: keep the previous cover for the same track meanwhile.
     if (next.artwork === null && prev.artwork !== null && sameTrack(prev, next)) next = { ...next, artwork: prev.artwork };
@@ -96,6 +121,7 @@ export const initMedia = (): Promise<void> => sync.init();
 /** Tests: drop the subscription and the state. */
 export function resetMediaStore(): void {
   sync.reset();
+  clearGap();
   useMediaStore.setState({ media: EMPTY_MEDIA, pausedSince: null });
 }
 
@@ -111,12 +137,14 @@ export function useMedia(): MediaState {
 export function useMediaPosition(intervalMs = 250): number {
   const media = useMediaStore((s) => s.media);
   const [now, setNow] = useState(() => Date.now());
+  const visible = useDocumentVisible();
   useEffect(() => {
+    if (!visible) return;
     setNow(Date.now());
     if (media.status !== "playing") return;
     const id = window.setInterval(() => setNow(Date.now()), intervalMs);
     return () => window.clearInterval(id);
-  }, [media, intervalMs]);
+  }, [media, intervalMs, visible]);
   return extrapolatePosition(media, now);
 }
 

@@ -1,0 +1,17 @@
+/* Owner: motion-fx. Attach wave (AttachWave.tsx). The element exists only while it animates (transform + opacity). */
+
+/* A soft ring: transparent inside, accent in the middle of the band, transparent at the outer edge. The band's soft
+   edges are gradient stops, not `filter`. Drawn before the content layers → over the island background, under controls. */
+.fx-wave {
+  position: absolute;
+  z-index: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background: radial-gradient(
+    closest-side,
+    transparent calc(100% - var(--fx-wave-band)),
+    var(--ig-accent) calc(100% - var(--fx-wave-band) / 2),
+    transparent 100%
+  );
+}
