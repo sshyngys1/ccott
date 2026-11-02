@@ -33,17 +33,21 @@ it("adds a chosen folder with the system dialog wrapper", async () => {
     expect(picker).toHaveBeenCalledWith(true);
     expect(useDockStore.getState().interacting).toBe(false);
 });
-it("an OS drop on the collapsed pill expands Home, highlights and adds without duplicates", async () => {
+it("an OS drop on expanded Home highlights the dock and adds without duplicates", async () => {
     const controls = { expandNow: vi.fn(() => useIslandStore.getState().setMode("expanded")), collapseNow: vi.fn(), summon: vi.fn() };
     function Host() { useDockDrop(controls); return <Dock />; }
-    useIslandStore.getState().setActiveTab("text");
+    useIslandStore.getState().setActiveTab("home");
+    useIslandStore.getState().setMode("expanded");
     render(<Host />);
     await screen.findByRole("button", { name: "Terminal" });
-    act(() => window.dispatchEvent(new CustomEvent("ccott:dock-drop", { detail: { type: "enter", paths: ["C:\\Test.lnk"] } })));
+    const dock = screen.getByRole("region", { name: "Док" });
+    vi.spyOn(dock, "getBoundingClientRect").mockReturnValue({ left: 10, right: 200, top: 100, bottom: 160 } as DOMRect);
+    const position = { x: 50 * window.devicePixelRatio, y: 120 * window.devicePixelRatio };
+    act(() => window.dispatchEvent(new CustomEvent("ccott:dock-drop", { detail: { type: "enter", paths: ["C:\\Test.lnk"], position } })));
     expect(useIslandStore.getState().mode).toBe("expanded");
     expect(useIslandStore.getState().activeTab).toBe("home");
     expect(screen.getByRole("region", { name: "Док" })).toHaveAttribute("data-dragging", "true");
-    await act(async () => { window.dispatchEvent(new CustomEvent("ccott:dock-drop", { detail: { type: "drop", paths: ["C:\\Test.lnk", "c:\\TEST.lnk"] } })); });
+    await act(async () => { window.dispatchEvent(new CustomEvent("ccott:dock-drop", { detail: { type: "drop", paths: ["C:\\Test.lnk", "c:\\TEST.lnk"], position } })); });
     await screen.findByRole("button", { name: "Test" });
     expect(useDockStore.getState().items).toHaveLength(6);
     expect(screen.getByRole("region", { name: "Док" })).toHaveAttribute("data-dragging", "false");

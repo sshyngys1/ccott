@@ -1,0 +1,9 @@
+.ig-timer-digits { display: inline-flex; }
+.ig-timer-digit { position: relative; display: inline-block; overflow: hidden; }
+.ig-timer-digit-ink { display: block; }
+.ig-timer-finish, .cb-paste-flash {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: var(--ig-success); opacity: 0;
+  animation: ig-polish-flash var(--ig-dur-slow) var(--ig-ease-out) both;
+}
+@keyframes ig-polish-flash { 0%, 100% { opacity: 0; } 35% { opacity: 0.35; } }

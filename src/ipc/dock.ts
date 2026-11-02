@@ -24,6 +24,7 @@ export async function pickDockPaths(directory: boolean): Promise<string[]> {
 export type DockDrop = {
   type: "enter" | "over" | "leave" | "drop";
   paths?: string[];
+  position?: { x: number; y: number };
 };
 
 /** Native OLE drops retain full filesystem paths. HTML5 DnD is intentionally not used on Windows. */
@@ -37,8 +38,9 @@ export async function listenDockDrop(cb: (event: DockDrop) => void): Promise<Unl
       for (const type of ["enter", "over", "leave", "drop"] as const) {
         unlisten.push(await listen<{
           paths?: string[];
+          position?: { x: number; y: number };
         }>(`tauri://drag-${type}`, event => {
-          cb({ type, paths: event.payload?.paths });
+          cb({ type, paths: event.payload?.paths, ...(event.payload?.position ? { position: event.payload.position } : {}) });
         }));
       }
     }

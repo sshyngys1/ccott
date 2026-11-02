@@ -15,7 +15,7 @@
 //! would only cut the CSS shadow/glow that spills outside the shape and cost a DWM recomposition on
 //! every shape update for nothing.
 
-use tauri::WebviewWindow;
+use tauri::{Manager, WebviewWindow};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, DeleteObject, HGDIOBJ, SetWindowRgn};
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
@@ -44,6 +44,9 @@ fn native_blur_allowed() -> bool {
 
 /// `window_set_vibrancy` entry point: honors [`NATIVE_BLUR_ENABLED`].
 pub fn apply(window: &WebviewWindow, state: &IslandState, mode: VibrancyMode) -> VibrancyResult {
+    if crate::settings::current(window.app_handle()).lite_mode {
+        return apply_forced(window, state, mode);
+    }
     if mode != VibrancyMode::None && !native_blur_allowed() {
         return apply_forced(window, state, VibrancyMode::None).with_request(mode, UNCLIPPABLE_MSG);
     }
@@ -58,13 +61,18 @@ impl VibrancyResult {
     }
 }
 
-/// Apply `mode` regardless of [`NATIVE_BLUR_ENABLED`] (debug experiments). Never panics; on
+/// Apply `mode` regardless of [`NATIVE_BLUR_ENABLED`] (debug experiments), but honor lite mode. On
 /// failure returns `applied: none` plus the error text.
 pub fn apply_forced(
     window: &WebviewWindow,
     state: &IslandState,
     mode: VibrancyMode,
 ) -> VibrancyResult {
+    let requested = mode;
+    let mode = effective_mode(
+        mode,
+        crate::settings::current(window.app_handle()).lite_mode,
+    );
     let previous = *state.vibrancy.lock().unwrap_or_else(|e| e.into_inner());
 
     let outcome = apply_backdrop(window, previous, mode);
@@ -79,9 +87,17 @@ pub fn apply_forced(
     *state.vibrancy.lock().unwrap_or_else(|e| e.into_inner()) = applied;
     sync_region(window, state);
     VibrancyResult {
-        requested: mode,
+        requested,
         applied,
         error,
+    }
+}
+
+fn effective_mode(requested: VibrancyMode, lite_mode: bool) -> VibrancyMode {
+    if lite_mode {
+        VibrancyMode::None
+    } else {
+        requested
     }
 }
 
@@ -95,6 +111,10 @@ fn apply_backdrop(
         // Drop whatever was applied before (accent policy and/or DWM system backdrop).
         accent_disable(hwnd);
         let _ = window_vibrancy::clear_acrylic(window);
+        if previous == VibrancyMode::Mica {
+            // Early Windows 11 uses a separate Mica attribute, not SYSTEMBACKDROP_TYPE.
+            let _ = window_vibrancy::clear_mica(window);
+        }
     }
     match mode {
         VibrancyMode::Acrylic => match acrylic_impl() {
@@ -257,6 +277,23 @@ fn set_region(hwnd: HWND, rect: Option<RegionRect>) {
                     let _ = DeleteObject(HGDIOBJ(rgn.0));
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lite_mode_suppresses_all_backdrops_and_restores_the_preference() {
+        for requested in [
+            VibrancyMode::None,
+            VibrancyMode::Acrylic,
+            VibrancyMode::Mica,
+        ] {
+            assert_eq!(effective_mode(requested, true), VibrancyMode::None);
+            assert_eq!(effective_mode(requested, false), requested);
         }
     }
 }

@@ -59,4 +59,197 @@ export const TIMER_PRESETS = [1, 3, 5, 10, 25] as const;
 export const MONITORS = [
   { id: "primary", name: "Основной · 2560×1600" },
   { id: "\\\\.\\DISPLAY2", name: "DELL U2720Q · 3840×2160" },
-] as const;
+];
+
+// ═════════════════════════════════ Command Bar Mock Data (v0.3) ═════════════════════════════════
+
+export type CmdKind = "app" | "file" | "calc" | "convert" | "command";
+
+export interface MockCmdItem {
+  id: string;
+  kind: CmdKind;
+  title: string;
+  meta: string;
+  actionHint?: string;
+  secondaryAction?: string;
+  value?: string;
+  formula?: string;
+  submeta?: string;
+  group: "apps" | "files" | "calc" | "convert" | "commands" | "recent";
+}
+
+export const MOCK_CMD_ITEMS: MockCmdItem[] = [
+  // Apps
+  {
+    id: "app-1",
+    kind: "app",
+    group: "apps",
+    title: "Telegram",
+    meta: "Telegram Desktop · Мессенджер",
+    actionHint: "Открыть",
+    secondaryAction: "От имени администратора",
+  },
+  {
+    id: "app-2",
+    kind: "app",
+    group: "apps",
+    title: "Visual Studio Code",
+    meta: "Code.exe · Редактор кода",
+    actionHint: "Открыть",
+    secondaryAction: "В терминале",
+  },
+  {
+    id: "app-3",
+    kind: "app",
+    group: "apps",
+    title: "YouTube Music",
+    meta: "th-ch/youtube-music · Музыкальный плеер",
+    actionHint: "Открыть",
+  },
+  {
+    id: "app-4",
+    kind: "app",
+    group: "apps",
+    title: "Google Chrome",
+    meta: "Chrome.exe · Браузер",
+    actionHint: "Открыть",
+    secondaryAction: "Новое окно инкогнито",
+  },
+  {
+    id: "app-5",
+    kind: "app",
+    group: "apps",
+    title: "Терминал Windows",
+    meta: "WindowsTerminal.exe · PowerShell 7",
+    actionHint: "Открыть",
+    secondaryAction: "От имени администратора",
+  },
+
+  // Files
+  {
+    id: "file-1",
+    kind: "file",
+    group: "files",
+    title: "design-spec.md",
+    meta: "Documents\\Projects\\design-spec.md · 28 КБ",
+    actionHint: "Открыть",
+    secondaryAction: "Показать в папке",
+  },
+  {
+    id: "file-2",
+    kind: "file",
+    group: "files",
+    title: "quarterly-report-2026.xlsx",
+    meta: "C:\\Users\\User\\Documents\\Work · 240 КБ",
+    actionHint: "Открыть в Excel",
+    secondaryAction: "Показать в папке",
+  },
+  {
+    id: "file-3",
+    kind: "file",
+    group: "files",
+    title: "architecture-v03.png",
+    meta: "C:\\Users\\User\\Pictures\\Screenshots · 1.2 МБ",
+    actionHint: "Просмотр",
+    secondaryAction: "Копировать файл",
+  },
+
+  // Commands
+  {
+    id: "cmd-timer-10",
+    kind: "command",
+    group: "commands",
+    title: "Таймер 10 мин",
+    meta: "Запустить быстрый таймер в пилюле острова",
+    actionHint: "Запустить",
+  },
+  {
+    id: "cmd-timer-25",
+    kind: "command",
+    group: "commands",
+    title: "Таймер Помодоро (25 мин)",
+    meta: "Фокус-сессия 25 минут с уведомлением в конце",
+    actionHint: "Запустить",
+  },
+  {
+    id: "cmd-clear-clips",
+    kind: "command",
+    group: "commands",
+    title: "Очистить историю буфера",
+    meta: "Удалить все незакреплённые записи буфера обмена",
+    actionHint: "Выполнить",
+  },
+  {
+    id: "cmd-screenshot-region",
+    kind: "command",
+    group: "commands",
+    title: "Сделать снимок области",
+    meta: "Выбрать область экрана и сохранить в буфер",
+    actionHint: "Запустить",
+  },
+];
+
+export interface MockHeroAnswer {
+  kind: "calc" | "convert";
+  value: string;
+  formula: string;
+  meta: string;
+  isOffline?: boolean;
+}
+
+export const MOCK_HERO_ANSWERS: Record<string, MockHeroAnswer> = {
+  calc: {
+    kind: "calc",
+    value: "= 87",
+    formula: "12 × 7 + 3",
+    meta: "Калькулятор · Точный результат",
+  },
+  percent: {
+    kind: "calc",
+    value: "= 360",
+    formula: "15% от 2 400 = 0.15 × 2400",
+    meta: "Калькулятор · Проценты",
+  },
+  currency: {
+    kind: "convert",
+    value: "= 49 500 ₸",
+    formula: "100 USD = 49 500 KZT",
+    meta: "1 USD = 495.00 KZT · Онлайн (ЦБ) · Обновлено 2 мин назад",
+  },
+  currencyOffline: {
+    kind: "convert",
+    value: "= 63 540 ₸",
+    formula: "100 GBP = 63 540 KZT",
+    meta: "1 GBP = 635.40 KZT · Офлайн-кэш от 01.11.2026 (2 ч назад)",
+    isOffline: true,
+  },
+  currencyLoading: {
+    kind: "convert",
+    value: "≈ 108.50 $",
+    formula: "100 EUR → USD",
+    meta: "Загрузка актуального курса ЕЦБ...",
+  },
+  units: {
+    kind: "convert",
+    value: "= 3.107 мили",
+    formula: "5 км = 3.10686 мили",
+    meta: "1 км = 0.621371 мили · Метрическая система",
+  },
+};
+
+export interface MockCmdHint {
+  query: string;
+  label: string;
+  desc: string;
+  kind: "calc" | "percent" | "convert" | "ruler" | "timer" | "file";
+}
+
+export const MOCK_CMD_HINTS: MockCmdHint[] = [
+  { query: "12*7+3", label: "12*7+3", desc: "Мгновенный калькулятор", kind: "calc" },
+  { query: "15% от 2400", label: "15% от 2400", desc: "Расчёт процентов", kind: "percent" },
+  { query: "100 usd в kzt", label: "100 usd в kzt", desc: "Конвертер валют по курсу", kind: "convert" },
+  { query: "5 км в мили", label: "5 км в мили", desc: "Перевод единиц длины", kind: "ruler" },
+  { query: "таймер 10 мин", label: "таймер 10 мин", desc: "Быстрый запуск таймера", kind: "timer" },
+  { query: "design-spec", label: "design-spec", desc: "Быстрый поиск файла", kind: "file" },
+];
+

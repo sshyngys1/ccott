@@ -23,6 +23,12 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/** URL query of the browser mock (`?cmd=1&cmdQuery=…` deep links); null in Tauri and tests. */
+export function mockUrlParams(): URLSearchParams | null {
+  if (typeof window === "undefined" || isTauri() || import.meta.env.MODE === "test") return null;
+  return new URLSearchParams(window.location.search);
+}
+
 export async function getAppVersion(): Promise<string> {
   if (isTauri()) {
     const { getVersion } = await import("@tauri-apps/api/app");

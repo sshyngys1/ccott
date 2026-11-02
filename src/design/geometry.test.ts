@@ -37,7 +37,13 @@ describe("tokens.css ↔ DEFAULT_GEOMETRY", () => {
     expect(token("--ig-pill-hover-grow")).toBe(DEFAULT_GEOMETRY.pillHoverGrow);
     expect(token("--ig-panel-width")).toBe(DEFAULT_GEOMETRY.panel.width);
     expect(token("--ig-panel-height")).toBe(DEFAULT_GEOMETRY.panel.height);
+    expect(token("--ig-panel-height-tall")).toBe(DEFAULT_GEOMETRY.panelTall.height);
+    expect(DEFAULT_GEOMETRY.panelTall.height - DEFAULT_GEOMETRY.panel.height).toBe(token("--ig-quick-tile-row-height") + token("--ig-space-2"));
+    expect(token("--ig-quick-tile-row-step")).toBe(token("--ig-quick-tile-row-height") + token("--ig-space-2"));
     expect(token("--ig-radius-panel")).toBe(DEFAULT_GEOMETRY.panel.radius);
+    expect(token("--ig-cmd-width")).toBe(DEFAULT_GEOMETRY.cmd.width);
+    expect(token("--ig-cmd-height")).toBe(DEFAULT_GEOMETRY.cmd.height);
+    expect(token("--ig-cmd-radius")).toBe(DEFAULT_GEOMETRY.cmd.radius);
   });
 
   it("pill radius is half its height (true capsule)", () => {
@@ -45,12 +51,25 @@ describe("tokens.css ↔ DEFAULT_GEOMETRY", () => {
   });
 
   it("panel + outer shadow fit into the 800×520 window", () => {
-    const { panel, top } = DEFAULT_GEOMETRY;
-    // --ig-shadow worst layer: 0 28px 56px -20px → reaches 36px sideways, 28+36 = 64px down, 36−28 = 8px up.
-    const side = (ISLAND_WINDOW.width - panel.width) / 2;
+    const { panel, panelTall, top } = DEFAULT_GEOMETRY;
+    // Both themes: 0 12px 24px -6px → 18px sideways, 30px down, 6px up.
+    // Assert the actual shadow declarations as well, so a token change cannot silently invalidate the budget.
+    const shadows = [...css.matchAll(/--ig-shadow:\s*([^;]+);/g)].map((m) => m[1].trim());
+    for (const shadow of shadows.filter((s) => s !== "none")) {
+      expect(shadow).toMatch(/0 1px 2px rgb\([^)]+\),\s*0 12px 24px -6px rgb\([^)]+\)$/);
+    }
+    for (const box of [panel, panelTall]) {
+      expect((ISLAND_WINDOW.width - box.width) / 2).toBeGreaterThanOrEqual(18);
+      expect(top + box.height + 30).toBeLessThanOrEqual(ISLAND_WINDOW.height);
+    }
+    expect(top).toBeGreaterThanOrEqual(6);
+  });
+
+  it("command bar + outer shadow fit into the 800×520 window", () => {
+    const { cmd, top } = DEFAULT_GEOMETRY;
+    const side = (ISLAND_WINDOW.width - cmd.width) / 2;
     expect(side).toBeGreaterThanOrEqual(36);
-    expect(top + panel.height + 64).toBeLessThanOrEqual(ISLAND_WINDOW.height);
-    expect(top).toBeGreaterThanOrEqual(8);
+    expect(top + cmd.height + 64).toBeLessThanOrEqual(ISLAND_WINDOW.height);
   });
 
   it("all pill variants fit the window", () => {

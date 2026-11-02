@@ -6,16 +6,50 @@
 
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tauri::plugin::TauriPlugin;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub const DEFAULT_SUMMON_HOTKEY: &str = "Ctrl+Alt+I";
+pub const DEFAULT_COMMAND_HOTKEY: &str = "Ctrl+Alt+Space";
+pub const COMMAND_HOTKEY_FALLBACKS: &[&str] =
+    &["Ctrl+Shift+Space", "Alt+Shift+Space", "Ctrl+Alt+K"];
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HotkeyRegState {
+    Ok,
+    Busy,
+    #[default]
+    Off,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeyStatus {
+    summon: HotkeyRegState,
+    command: HotkeyRegState,
+    command_fallback_from: Option<String>,
+}
+
+#[derive(Default)]
+struct Registered {
+    summon: Option<Shortcut>,
+    command: Option<Shortcut>,
+    configured_summon: String,
+    configured_command: String,
+    status: HotkeyStatus,
+}
 
 #[derive(Default)]
 pub struct HotkeyState {
-    registered: Mutex<Option<Shortcut>>,
+    registered: Mutex<Registered>,
+    // Event handlers must not wait on the registration lock: register/unregister round-trip
+    // through the main thread. Zero means disabled; id + 1 represents every possible u32 ID.
+    command_id: AtomicU64,
+    summon_id: AtomicU64,
     escape: Mutex<EscapeShortcutState>,
 }
 
@@ -156,7 +190,13 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             if event.state == ShortcutState::Pressed {
                 if *shortcut == escape_shortcut() {
                     crate::window::collapse_summoned_for_runtime(app);
-                } else {
+                } else if app.try_state::<HotkeyState>().is_some_and(|state| {
+                    state.command_id.load(Ordering::Acquire) == u64::from(shortcut.id()) + 1
+                }) {
+                    crate::window::open_command_for_runtime(app);
+                } else if app.try_state::<HotkeyState>().is_some_and(|state| {
+                    state.summon_id.load(Ordering::Acquire) == u64::from(shortcut.id()) + 1
+                }) {
                     crate::window::summon_for_runtime(app);
                 }
             }
@@ -204,77 +244,228 @@ pub fn on_exit(app: &AppHandle) {
     esc.on_exit(&mut backend);
 }
 
-/// Registers the initial `summonHotkey` from `SettingsState`. Must run after `settings::setup` and
-/// `window::setup`. If the default or stored shortcut is already taken by another process at
-/// startup, logs a warning and starts without a registered shortcut instead of aborting startup.
+/// Registers both startup shortcuts independently after settings/window setup. Only the default
+/// command shortcut can fall back; busy custom shortcuts remain configured and report `busy`.
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(HotkeyState::default());
-    let wanted = crate::settings::current(app.handle()).summon_hotkey;
-    if let Err(e) = apply(app.handle(), &wanted) {
-        log::warn!("hotkeys: cannot register startup shortcut {wanted:?}: {e}");
+    let settings = crate::settings::current(app.handle());
+    let state = app.state::<HotkeyState>();
+    let mut current = state.registered.lock().unwrap_or_else(|e| e.into_inner());
+    let mut backend = TauriShortcutBackend { app: app.handle() };
+    register_startup(
+        &mut backend,
+        &mut current,
+        &settings.summon_hotkey,
+        &settings.command_hotkey,
+    );
+    sync_ids(&state, &current);
+    let command = current.configured_command.clone();
+    let status = current.status.clone();
+    drop(current);
+    if status.command_fallback_from.is_some()
+        && let Err(error) = crate::settings::save_startup_command(app.handle(), &command)
+    {
+        log::error!("hotkeys: fallback is active only for this session: {error}");
     }
+    let _ = app.emit("hotkeys://status", status);
     Ok(())
 }
 
-/// Applies a new `summonHotkey` value (or `""` to disable). On invalid syntax or registration
-/// failure (shortcut occupied by another app), keeps the previous shortcut registered and returns
-/// a human-readable Russian error message for the UI.
-pub fn apply(app: &AppHandle, wanted: &str) -> Result<String, String> {
+fn registration_status(configured: &str, registered: Option<Shortcut>) -> HotkeyRegState {
+    if configured.is_empty() {
+        HotkeyRegState::Off
+    } else if registered.is_some() {
+        HotkeyRegState::Ok
+    } else {
+        HotkeyRegState::Busy
+    }
+}
+
+/// Startup is deliberately independent: a busy summon cannot block command registration.
+fn register_startup<B: ShortcutBackend>(
+    backend: &mut B,
+    current: &mut Registered,
+    summon: &str,
+    command: &str,
+) {
+    if let Err(error) = switch_pair(backend, current, summon, "") {
+        log::warn!("hotkeys: startup summon: {error}");
+    }
+    let active_summon = if current.summon.is_some() { summon } else { "" };
+    if let Err(error) = switch_pair(backend, current, active_summon, command) {
+        log::warn!("hotkeys: startup command: {error}");
+        if command == DEFAULT_COMMAND_HOTKEY {
+            for candidate in COMMAND_HOTKEY_FALLBACKS {
+                if switch_pair(backend, current, active_summon, candidate).is_ok() {
+                    current.status.command_fallback_from = Some(command.into());
+                    current.configured_command = (*candidate).into();
+                    break;
+                }
+            }
+        }
+    }
+    current.configured_summon = summon.into();
+    if current.status.command_fallback_from.is_none() {
+        current.configured_command = command.into();
+    }
+    current.status.summon = registration_status(summon, current.summon);
+    current.status.command = registration_status(command, current.command);
+}
+
+#[tauri::command]
+// Keep this off the main thread: registration holds the mutex while round-tripping to that thread.
+pub async fn hotkeys_status(state: tauri::State<'_, HotkeyState>) -> Result<HotkeyStatus, String> {
+    Ok(state
+        .registered
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .status
+        .clone())
+}
+
+pub fn emit_status(app: &AppHandle) {
+    let state = app.state::<HotkeyState>();
+    let status = state
+        .registered
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .status
+        .clone();
+    let _ = app.emit("hotkeys://status", status);
+}
+
+/// Applies both shortcuts atomically. Register additions before removing old shortcuts,
+/// so a conflict preserves the previous pair and settings patch can be rejected before saving.
+pub fn apply_pair(
+    app: &AppHandle,
+    summon: &str,
+    command: &str,
+) -> Result<(String, String), String> {
     let state = app.state::<HotkeyState>();
     let mut current = state.registered.lock().unwrap_or_else(|e| e.into_inner());
     let mut backend = TauriShortcutBackend { app };
-    let result = switch_shortcut(&mut backend, &mut current, wanted);
-    if let Ok(ref canonical) = result {
-        log::debug!("hotkeys: summonHotkey = {canonical:?}");
-    }
-    result
+    let result = apply_configured_pair(&mut backend, &mut current, summon, command)?;
+    sync_ids(&state, &current);
+    Ok(result)
 }
 
-/// Pure transition: validates `wanted`, unregisters the old shortcut if different, registers the
-/// new one, and rolls back to the old one if registration fails.
-pub fn switch_shortcut<B: ShortcutBackend>(
+fn sync_ids(state: &HotkeyState, current: &Registered) {
+    state.command_id.store(
+        current.command.map_or(0, |s| u64::from(s.id()) + 1),
+        Ordering::Release,
+    );
+    state.summon_id.store(
+        current.summon.map_or(0, |s| u64::from(s.id()) + 1),
+        Ordering::Release,
+    );
+}
+
+/// An unchanged busy setting remains busy; it must not veto changing the other shortcut.
+/// `switch_pair` still registers all actual additions atomically before removing anything.
+fn apply_configured_pair<B: ShortcutBackend>(
+    backend: &mut B,
+    current: &mut Registered,
+    summon: &str,
+    command: &str,
+) -> Result<(String, String), String> {
+    let summon = parse_hotkey(summon)?;
+    let command = parse_hotkey(command)?;
+    if summon.shortcut.is_some() && summon.shortcut == command.shortcut {
+        return Err("Command and summon shortcuts must be different.".into());
+    }
+    let keep_summon_busy =
+        current.summon.is_none() && summon.canonical == current.configured_summon;
+    let keep_command_busy =
+        current.command.is_none() && command.canonical == current.configured_command;
+    switch_pair(
+        backend,
+        current,
+        if keep_summon_busy {
+            ""
+        } else {
+            &summon.canonical
+        },
+        if keep_command_busy {
+            ""
+        } else {
+            &command.canonical
+        },
+    )?;
+    if command.canonical != current.configured_command {
+        current.status.command_fallback_from = None;
+    }
+    current.status.summon = registration_status(&summon.canonical, current.summon);
+    current.status.command = registration_status(&command.canonical, current.command);
+    current.configured_summon = summon.canonical.clone();
+    current.configured_command = command.canonical.clone();
+    Ok((summon.canonical, command.canonical))
+}
+
+fn switch_pair<B: ShortcutBackend>(
+    backend: &mut B,
+    current: &mut Registered,
+    summon: &str,
+    command: &str,
+) -> Result<(String, String), String> {
+    let summon = parse_hotkey(summon)?;
+    let command = parse_hotkey(command)?;
+    if summon.shortcut.is_some() && summon.shortcut == command.shortcut {
+        return Err("Command and summon shortcuts must be different.".into());
+    }
+    let old: Vec<_> = [current.summon, current.command]
+        .into_iter()
+        .flatten()
+        .collect();
+    let new: Vec<_> = [summon.shortcut, command.shortcut]
+        .into_iter()
+        .flatten()
+        .collect();
+    let mut added = Vec::new();
+    for shortcut in new.iter().filter(|s| !old.contains(s)) {
+        if backend.register(*shortcut).is_err() {
+            for added in added {
+                let _ = backend.unregister(added);
+            }
+            return Err(format!(
+                "Сочетание клавиш «{}» уже занято другим приложением или системой",
+                format_shortcut(shortcut.mods, shortcut.key)
+            ));
+        }
+        added.push(*shortcut);
+    }
+    let mut removed = Vec::new();
+    for shortcut in old.iter().filter(|s| !new.contains(s)) {
+        if let Err(error) = backend.unregister(*shortcut) {
+            for removed in removed {
+                let _ = backend.register(removed);
+            }
+            for added in added {
+                let _ = backend.unregister(added);
+            }
+            return Err(format!("Could not update global shortcuts: {error}"));
+        }
+        removed.push(*shortcut);
+    }
+    current.summon = summon.shortcut;
+    current.command = command.shortcut;
+    Ok((summon.canonical, command.canonical))
+}
+
+// Compatibility helper for the single-shortcut transition tests; exercises the production pair logic.
+#[cfg(test)]
+fn switch_shortcut<B: ShortcutBackend>(
     backend: &mut B,
     current: &mut Option<Shortcut>,
     wanted: &str,
 ) -> Result<String, String> {
-    let parsed = parse_hotkey(wanted)?;
-    if *current == parsed.shortcut {
-        return Ok(parsed.canonical);
-    }
-
-    let previous = *current;
-    if let Some(old_sc) = previous {
-        if let Err(e) = backend.unregister(old_sc) {
-            log::warn!("hotkeys: failed to unregister previous shortcut {old_sc}: {e}");
-        }
-        *current = None;
-    }
-
-    if let Some(new_sc) = parsed.shortcut {
-        if let Err(err) = backend.register(new_sc) {
-            log::warn!(
-                "hotkeys: cannot register {}: {err}; restoring previous shortcut",
-                parsed.canonical
-            );
-            if let Some(old_sc) = previous {
-                match backend.register(old_sc) {
-                    Ok(()) => *current = Some(old_sc),
-                    Err(restore_err) => {
-                        log::error!(
-                            "hotkeys: failed to restore previous shortcut {old_sc}: {restore_err}"
-                        );
-                    }
-                }
-            }
-            return Err(format!(
-                "Сочетание клавиш «{}» уже занято другим приложением или системой",
-                parsed.canonical
-            ));
-        }
-        *current = Some(new_sc);
-    }
-
-    Ok(parsed.canonical)
+    let mut pair = Registered {
+        summon: *current,
+        command: None,
+        ..Registered::default()
+    };
+    let result = switch_pair(backend, &mut pair, wanted, "");
+    *current = pair.summon;
+    result.map(|(summon, _)| summon)
 }
 
 /// Parses and validates an accelerator string (`""` = disabled). Requires at least one modifier
@@ -434,6 +625,239 @@ mod tests {
             self.registered.remove(&shortcut);
             Ok(())
         }
+    }
+
+    fn occupied(shortcuts: &[&str]) -> FakeBackend {
+        FakeBackend {
+            occupied_externally: shortcuts
+                .iter()
+                .map(|s| parse_hotkey(s).unwrap().shortcut.unwrap())
+                .collect(),
+            ..FakeBackend::default()
+        }
+    }
+
+    #[test]
+    fn startup_default_uses_first_free_fallback_in_order() {
+        for (busy, expected) in [
+            (vec![DEFAULT_COMMAND_HOTKEY], COMMAND_HOTKEY_FALLBACKS[0]),
+            (
+                vec![DEFAULT_COMMAND_HOTKEY, COMMAND_HOTKEY_FALLBACKS[0]],
+                COMMAND_HOTKEY_FALLBACKS[1],
+            ),
+            (
+                vec![
+                    DEFAULT_COMMAND_HOTKEY,
+                    COMMAND_HOTKEY_FALLBACKS[0],
+                    COMMAND_HOTKEY_FALLBACKS[1],
+                ],
+                COMMAND_HOTKEY_FALLBACKS[2],
+            ),
+        ] {
+            let mut backend = occupied(&busy);
+            let mut current = Registered::default();
+            register_startup(
+                &mut backend,
+                &mut current,
+                DEFAULT_SUMMON_HOTKEY,
+                DEFAULT_COMMAND_HOTKEY,
+            );
+            assert_eq!(current.configured_command, expected);
+            assert_eq!(current.command, parse_hotkey(expected).unwrap().shortcut);
+            assert_eq!(current.status.command, HotkeyRegState::Ok);
+            assert_eq!(
+                current.status.command_fallback_from.as_deref(),
+                Some(DEFAULT_COMMAND_HOTKEY)
+            );
+            assert_eq!(backend.registered.len(), 2);
+        }
+    }
+
+    #[test]
+    fn startup_all_busy_preserves_default_and_reports_busy() {
+        let mut busy = vec![DEFAULT_COMMAND_HOTKEY];
+        busy.extend_from_slice(COMMAND_HOTKEY_FALLBACKS);
+        let mut backend = occupied(&busy);
+        let mut current = Registered::default();
+        register_startup(
+            &mut backend,
+            &mut current,
+            DEFAULT_SUMMON_HOTKEY,
+            DEFAULT_COMMAND_HOTKEY,
+        );
+        assert_eq!(current.configured_command, DEFAULT_COMMAND_HOTKEY);
+        assert_eq!(current.status.command, HotkeyRegState::Busy);
+        assert_eq!(current.status.summon, HotkeyRegState::Ok);
+        assert_eq!(current.status.command_fallback_from, None);
+        assert_eq!(backend.registered.len(), 1);
+    }
+
+    #[test]
+    fn startup_custom_busy_is_never_replaced() {
+        let mut backend = occupied(&["Ctrl+Shift+X"]);
+        let mut current = Registered::default();
+        register_startup(&mut backend, &mut current, "", "Ctrl+Shift+X");
+        assert_eq!(current.configured_command, "Ctrl+Shift+X");
+        assert_eq!(current.status.command, HotkeyRegState::Busy);
+        assert_eq!(current.status.summon, HotkeyRegState::Off);
+        assert_eq!(current.status.command_fallback_from, None);
+        assert!(backend.registered.is_empty());
+    }
+
+    #[test]
+    fn startup_busy_summon_does_not_block_command_or_steal_a_fallback() {
+        let mut backend = occupied(&[DEFAULT_SUMMON_HOTKEY]);
+        let mut current = Registered::default();
+        register_startup(
+            &mut backend,
+            &mut current,
+            DEFAULT_SUMMON_HOTKEY,
+            DEFAULT_COMMAND_HOTKEY,
+        );
+        assert_eq!(current.status.summon, HotkeyRegState::Busy);
+        assert_eq!(current.status.command, HotkeyRegState::Ok);
+        assert_eq!(current.configured_summon, DEFAULT_SUMMON_HOTKEY);
+
+        let mut backend = occupied(&[DEFAULT_COMMAND_HOTKEY]);
+        let mut current = Registered::default();
+        register_startup(
+            &mut backend,
+            &mut current,
+            COMMAND_HOTKEY_FALLBACKS[0],
+            DEFAULT_COMMAND_HOTKEY,
+        );
+        assert_eq!(current.configured_command, COMMAND_HOTKEY_FALLBACKS[1]);
+    }
+
+    #[test]
+    fn settings_hotkey_transition_retains_busy_other_and_rejects_atomically() {
+        for busy_command in [false, true] {
+            let mut settings = crate::settings::Settings::default();
+            if busy_command {
+                settings.command_hotkey = "Ctrl+Shift+X".into();
+            }
+            let busy = if busy_command {
+                settings.command_hotkey.clone()
+            } else {
+                settings.summon_hotkey.clone()
+            };
+            let mut backend = occupied(&[&busy, "Ctrl+Alt+Z"]);
+            let mut current = Registered::default();
+            register_startup(
+                &mut backend,
+                &mut current,
+                &settings.summon_hotkey,
+                &settings.command_hotkey,
+            );
+            let patch = if busy_command {
+                serde_json::json!({"summonHotkey": "Ctrl+Alt+K"})
+            } else {
+                serde_json::json!({"commandHotkey": "Ctrl+Alt+K"})
+            };
+            assert!(settings.merge_json(&patch).is_empty());
+            apply_configured_pair(
+                &mut backend,
+                &mut current,
+                &settings.summon_hotkey,
+                &settings.command_hotkey,
+            )
+            .unwrap();
+            let status = current.status.clone();
+            assert_eq!(
+                status.command,
+                if busy_command {
+                    HotkeyRegState::Busy
+                } else {
+                    HotkeyRegState::Ok
+                }
+            );
+            assert_eq!(
+                status.summon,
+                if busy_command {
+                    HotkeyRegState::Ok
+                } else {
+                    HotkeyRegState::Busy
+                }
+            );
+            let registered = backend.registered.clone();
+            assert!(
+                apply_configured_pair(&mut backend, &mut current, "Ctrl+Alt+Z", "Ctrl+Shift+K")
+                    .is_err()
+            );
+            assert_eq!(current.status, status);
+            assert_eq!(backend.registered, registered);
+            apply_configured_pair(&mut backend, &mut current, "", "").unwrap();
+            assert_eq!(current.status, HotkeyStatus::default());
+        }
+    }
+
+    #[test]
+    fn fallback_marker_survives_summon_change_and_clears_on_command_change() {
+        let mut backend = occupied(&[DEFAULT_COMMAND_HOTKEY]);
+        let mut current = Registered::default();
+        register_startup(
+            &mut backend,
+            &mut current,
+            DEFAULT_SUMMON_HOTKEY,
+            DEFAULT_COMMAND_HOTKEY,
+        );
+        let command = current.configured_command.clone();
+        apply_configured_pair(&mut backend, &mut current, "Ctrl+Alt+K", &command).unwrap();
+        assert_eq!(
+            serde_json::to_value(&current.status).unwrap(),
+            serde_json::json!({
+                "summon": "ok", "command": "ok", "commandFallbackFrom": DEFAULT_COMMAND_HOTKEY
+            })
+        );
+        apply_configured_pair(&mut backend, &mut current, "Ctrl+Alt+K", "Ctrl+Shift+X").unwrap();
+        assert_eq!(current.status.command_fallback_from, None);
+        let status = current.status.clone();
+        assert!(
+            apply_configured_pair(
+                &mut backend,
+                &mut current,
+                "Ctrl+Alt+K",
+                DEFAULT_COMMAND_HOTKEY
+            )
+            .is_err()
+        );
+        assert!(apply_configured_pair(&mut backend, &mut current, "Ctrl+Alt+K", "Space").is_err());
+        assert_eq!(current.status, status);
+    }
+
+    #[test]
+    fn command_and_summon_pair_is_atomic_on_conflict_and_can_swap() {
+        let mut backend = FakeBackend::default();
+        let mut current = Registered::default();
+        switch_pair(
+            &mut backend,
+            &mut current,
+            DEFAULT_SUMMON_HOTKEY,
+            DEFAULT_COMMAND_HOTKEY,
+        )
+        .unwrap();
+        let original = (current.summon, current.command);
+        let busy = parse_hotkey("Ctrl+Shift+X").unwrap().shortcut.unwrap();
+        backend.occupied_externally.insert(busy);
+        assert!(switch_pair(&mut backend, &mut current, "Ctrl+Alt+K", "Ctrl+Shift+X").is_err());
+        assert_eq!((current.summon, current.command), original);
+        assert_eq!(backend.registered.len(), 2);
+        assert!(backend.registered.contains(&original.0.unwrap()));
+        assert!(backend.registered.contains(&original.1.unwrap()));
+        assert!(switch_pair(&mut backend, &mut current, "Ctrl+Alt+I", "ctrl+alt+i").is_err());
+        assert!(switch_pair(&mut backend, &mut current, DEFAULT_SUMMON_HOTKEY, "Space").is_err());
+        assert_eq!((current.summon, current.command), original);
+        switch_pair(
+            &mut backend,
+            &mut current,
+            DEFAULT_COMMAND_HOTKEY,
+            DEFAULT_SUMMON_HOTKEY,
+        )
+        .unwrap();
+        assert_eq!((current.summon, current.command), (original.1, original.0));
+        switch_pair(&mut backend, &mut current, DEFAULT_COMMAND_HOTKEY, "").unwrap();
+        assert!(current.command.is_none());
+        assert_eq!(backend.registered.len(), 1);
     }
 
     #[test]

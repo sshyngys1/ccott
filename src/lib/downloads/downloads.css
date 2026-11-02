@@ -1,0 +1,18 @@
+.ig-downloads-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: var(--ig-leading-tight);
+}
+.ig-downloads-copy b { font-size: var(--ig-text-xs); font-weight: var(--ig-weight-medium); }
+.ig-downloads-copy > span { font-size: var(--ig-text-xs); color: var(--ig-text-secondary); }
+.ig-downloads-percent { flex: none; font-size: var(--ig-text-xs); color: var(--ig-text-secondary); }
+
+.ig-downloads-pill { position: relative; overflow: hidden; }
+.ig-downloads-progress { position: absolute; inset: auto 0 0; height: var(--ig-space-0-5); background: var(--ig-battery-track); overflow: hidden; }
+.ig-downloads-progress-fill { display: block; height: 100%; background: var(--ig-accent-on-strong); }
+.ig-downloads-progress-fill--unknown { animation: ig-downloads-shimmer var(--ig-dur-slow) var(--ig-ease-in-out) infinite alternate; }
+@keyframes ig-downloads-shimmer { from { transform: translateX(-70%); } to { transform: translateX(70%); } }
+:root[data-lite="true"] .ig-downloads-progress-fill--unknown { animation: none; opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) { .ig-downloads-progress-fill--unknown { animation: none; opacity: 0.6; } }

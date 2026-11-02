@@ -3,6 +3,7 @@ import type { FullscreenApp } from "../../shared/types";
 // Owner: F1. Pure helpers for the summon-hotkey recorder and the fullscreen allowlist in Settings.
 
 export const DEFAULT_SUMMON_HOTKEY = "Ctrl+Alt+I";
+export const DEFAULT_COMMAND_HOTKEY = "Ctrl+Alt+Space";
 
 export const DEFAULT_AUTO_HIDE_APPS: readonly string[] = [
   "chrome.exe",

@@ -1,14 +1,20 @@
+import { DownloadsPill } from "../lib/downloads/DownloadsPill";
+import { DOWNLOADS_PRIORITY, useDownloadsActive } from "../lib/downloads/store";
 import { t, useT, localizeMessage } from "../i18n";
 import { useDockStore } from "../lib/dock/store";
+import { needsTallPanel } from "../lib/tiles/layout";
 import { useDockDrop } from "./useDockDrop";
+import { useShelfCount, useShelfStore } from "../modules/shelf/store";
+import { IconShelf } from "../modules/shelf/IconShelf";
+import { requestShell } from "../shared/shellBus";
 // Owner: F1 (Frontend-Shell). One element morphs between the resting pill and the expanded panel (spec §15).
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, type FocusEvent, type KeyboardEvent } from "react";
 import { hoveredPill, readIslandGeometry, type BoxSize } from "../design/geometry";
-import { IconBack, IconCheck, IconCollapse, IconSettings } from "../design/icons";
-import { fades, layerScale, overshoot, pressScale, springs, tabSlide, viewSlide } from "../design/motion";
+import { IconBack, IconCheck, IconCollapse, IconSettings, IconFile, IconFolder } from "../design/icons";
+import { durations, easings, fades, overshoot, pressScale, springs, tabSlide, viewSlide } from "../design/motion";
 import { usePointerLight } from "../design/usePointerLight";
-import { registerHoverTarget } from "../ipc";
+import { mockUrlParams, registerHoverTarget } from "../ipc";
 import { modules as registry } from "../modules/registry";
 import type { IslandModule } from "../shared/types";
 import { useIslandStore, type PillToast as PillToastState } from "../store";
@@ -22,14 +28,17 @@ import { useShellBus } from "./shellBus";
 import { Tabs, tabId, tabPanelId } from "./Tabs";
 import { useKeyboardFocus } from "./useKeyboardFocus";
 import { usePrewarm } from "./usePrewarm";
-import { useModeSync, useSettingsSync, useThemeSync, useToastSync, useVibrancySync } from "./useShellSync";
+import { useLiteSync, useModeSync, useSettingsSync, useThemeSync, useToastSync, useVibrancySync } from "./useShellSync";
 import { BatteryIndicator } from "../lib/battery/BatteryIndicator";
 import { WhatsNewView } from "./WhatsNewView";
+import { CommandBar, calcCmdBarHeight } from "./cmd/CommandBar";
+import { evaluateLocalFeatures } from "../lib/cmd/ranking";
+import { useState } from "react";
 import { AttachWave } from "../design/fx/AttachWave";
 import "./shell.css";
 
 type PillState = "idle" | "activity" | "toast";
-type TransitionKind = "expand" | "collapse" | "pill";
+type TransitionKind = "expand" | "collapse" | "pill" | "cmdExpand" | "cmdCollapse" | "cmdResize";
 
 const SettingsView = settingsScreen.Screen;
 
@@ -48,29 +57,45 @@ const pillLayer = {
 function PillIdle() {
   useT();
   const time = useClock();
+  const count = useShelfStore(s => s.items.length);
   return (
     <div className="ig-pill-row ig-pill-row--idle">
       <time className="ig-pill-time ig-num" aria-label={t("currentTime")}>
         {time}
       </time>
+      {count > 0 && <button type="button" className="ig-shelf-badge" aria-label={t("shelf.count", { count })}
+        onClick={() => { void requestShell({ type: "openTab", tab: "shelf" }); }}><IconShelf size={16} /><span className="ig-num">{count}</span></button>}
       <BatteryIndicator variant="pill" />
     </div>
   );
 }
 
-export function PillToast({ label, preview, previewKey, onClick, actionLabel, color }: Pick<PillToastState, "label" | "preview" | "previewKey" | "onClick" | "actionLabel" | "color">) {
+export function PillToast({ label, preview, previewKey, onClick, actionLabel, color, actions, shortcut, title, detail, onShown }: Omit<PillToastState, "id">) {
   useT();
-  const wholeAction = onClick && !actionLabel;
+  useEffect(() => { onShown?.(); }, [onShown]);
+  const wholeAction = onClick && !actionLabel && !actions?.length;
   const Tag = wholeAction ? "button" : "div";
   return (
-    <div className="ig-pill-feedback" role="status">
+    <div className={`ig-pill-feedback${shortcut ? " ig-pill-feedback--shortcut" : ""}`} role="status" title={title ? localizeMessage(title) : localizeMessage(label)}>
     <Tag className={wholeAction ? "ig-pill-row ig-pill-action" : "ig-pill-row"} onClick={wholeAction ? onClick : undefined} title={wholeAction ? t("capture.openFolder") : undefined}>
-      {color && /^#[\da-f]{6}$/i.test(color) ? <span className="ig-pill-color" style={{backgroundColor:color}} aria-hidden="true" /> : <span className="ig-pill-badge" aria-hidden="true">
+      {!shortcut && (color && /^#[\da-f]{6}$/i.test(color) ? <span className="ig-pill-color" style={{backgroundColor:color}} aria-hidden="true" /> : <span className="ig-pill-badge" aria-hidden="true">
         <IconCheck size={14} />
-      </span>}
-      <span className={preview ? "ig-pill-label" : "ig-pill-label ig-pill-label--solo ig-truncate"}>{localizeMessage(label)}</span>
+      </span>)}
+      {shortcut ? <span className="ig-pill-hotkey-message">
+        <span className="ig-pill-hotkey-line">
+          <span className="ig-pill-label ig-pill-label--solo ig-truncate">{localizeMessage(label)}</span>
+          <span className="ig-pill-shortcut">{shortcut}</span>
+        </span>
+        {detail && <span className="ig-pill-hotkey-detail">{localizeMessage(detail)}</span>}
+      </span> : <span className={preview ? "ig-pill-label" : "ig-pill-label ig-pill-label--solo ig-truncate"}>{localizeMessage(label)}</span>}
       {preview && <span className="ig-pill-preview ig-truncate">{previewKey ? t(previewKey) : preview}</span>}
       {onClick && actionLabel && <button type="button" className="ig-glass-control ig-glass-control--sm" onClick={onClick}>{localizeMessage(actionLabel)}</button>}
+      {actions?.map((action) => <button key={action.icon} type="button"
+        className={`ig-glass-control ig-glass-control--sm${action.icon === "settings" ? "" : " ig-glass-control--icon"}`}
+        title={localizeMessage(action.label)} aria-label={localizeMessage(action.label)}
+        onClick={action.onClick}>
+        {action.icon === "settings" ? localizeMessage(action.label) : action.icon === "folder" ? <IconFolder size={14} /> : <IconFile size={14} />}
+      </button>)}
     </Tag>
     </div>
   );
@@ -104,6 +129,7 @@ interface IslandProps {
 export function Island({ modules = registry }: IslandProps) {
   useT();
   const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
   const mode = useIslandStore((s) => s.mode);
   const hoverInside = useIslandStore((s) => s.hoverInside);
   const activeTab = useIslandStore((s) => s.activeTab);
@@ -113,12 +139,29 @@ export function Island({ modules = registry }: IslandProps) {
   const toast = useIslandStore((s) => s.toast);
   const theme = useIslandStore((s) => s.theme);
   const vibrancy = useIslandStore((s) => s.vibrancy);
+  const quickTiles = useIslandStore((s) => s.settings.quickTiles);
+  const tall = useMemo(() => needsTallPanel(quickTiles), [quickTiles]);
   const expanded = mode === "expanded";
   const hover = !expanded && hoverInside;
   const settingsOpen = view === "settings";
   const whatsNewOpen = view === "whatsNew";
+  const cmdOpen = expanded && view === "cmd";
+  const [cmdHeight, setCmdHeight] = useState(() => {
+    // Browser mock deep link `?cmdQuery=…` opens with the matching height.
+    const q = mockUrlParams()?.get("cmdQuery");
+    if (!q) return 368;
+    const local = evaluateLocalFeatures(q);
+    return calcCmdBarHeight({
+      query: q,
+      itemsCount: local.commands.length,
+      groupsCount: local.commands.length > 0 ? 1 : 0,
+      hasHero: Boolean(local.math || local.units || local.currencyQuery),
+      hasBanner: false,
+    });
+  });
 
   useThemeSync();
+  useLiteSync();
   useVibrancySync();
   useSettingsSync();
   useScreenPreload();
@@ -139,21 +182,42 @@ export function Island({ modules = registry }: IslandProps) {
   const geo = useMemo(() => readIslandGeometry(), [theme, vibrancy]);
 
   const compact = useActiveCompact(modules);
-  const CompactView = compact?.compact?.View;
-  const pillState: PillState = toast ? "toast" : CompactView ? "activity" : "idle";
-  const pillBase: BoxSize = pillState === "toast" ? geo.pillToast : pillState === "activity" ? geo.pillActivity : geo.pill;
-  const size: BoxSize = expanded ? geo.panel : hover ? hoveredPill(pillBase, geo.pillHoverGrow) : pillBase;
+  useShelfCount();
+  const shelfDrop = useShelfStore(s => s.dropTarget === "pill");
+  const downloadsActive = useDownloadsActive();
+  const downloadsEnabled = useIslandStore((s) => s.settings.downloadsMonitor);
+  const showDownloads = downloadsEnabled && downloadsActive && (compact?.compact?.priority ?? -Infinity) < DOWNLOADS_PRIORITY;
+  const CompactView = showDownloads ? DownloadsPill : compact?.compact?.View;
+  const pillState: PillState = shelfDrop ? "idle" : toast ? "toast" : CompactView ? "activity" : "idle";
+  const toastSize = toast?.shortcut
+    ? { ...geo.pillToast, width: Math.min(geo.panel.width, geo.pillToast.width + geo.pill.width) }
+    : geo.pillToast;
+  const pillBase: BoxSize = pillState === "toast" ? toastSize : pillState === "activity" ? geo.pillActivity : geo.pill;
+  const panelSize = tall ? geo.panelTall : geo.panel;
+  const cmdSize: BoxSize = {
+    width: geo.cmd.width,
+    height: cmdHeight,
+    radius: geo.cmd.radius,
+  };
+  const size: BoxSize = cmdOpen
+    ? cmdSize
+    : expanded
+    ? panelSize
+    : hover
+    ? hoveredPill(pillBase, geo.pillHoverGrow)
+    : pillBase;
   // One crossfade layer per distinct pill content: a different activity module is a different layer.
-  const pillKey = pillState === "activity" && compact ? `pill-activity-${compact.id}` : `pill-${pillState}`;
+  const pillKey = pillState === "activity" ? `pill-activity-${showDownloads ? "downloads" : compact?.id}` : pillState === "toast" ? `pill-toast-${toast?.id}` : `pill-${pillState}`;
 
   // Which spring drives this change: expand / collapse when the mode flips, "pill" for hover growth and activity changes.
   // Derived during render (idempotent under StrictMode) so the very first frame already uses the right spring.
   const kindRef = useRef<TransitionKind>("pill");
-  const prevRef = useRef({ mode, hover, pillKey });
+  const prevRef = useRef({ mode, hover, pillKey, panelSize });
   const prev = prevRef.current;
   if (prev.mode !== mode) kindRef.current = expanded ? "expand" : "collapse";
+  else if (expanded && prev.panelSize !== panelSize) kindRef.current = "expand";
   else if (prev.hover !== hover || prev.pillKey !== pillKey) kindRef.current = "pill";
-  prevRef.current = { mode, hover, pillKey };
+  prevRef.current = { mode, hover, pillKey, panelSize };
 
   // Shape → Rust: a covering shape when a transition starts, the exact one when Motion reports it finished (no per-frame IPC).
   const settleShape = useShapeSync(ref, size, geo.top, overshoot(springs[kindRef.current]));
@@ -192,14 +256,16 @@ export function Island({ modules = registry }: IslandProps) {
     controls.expandNow();
   };
 
-  // Focus leaving it for the outside collapses it again — unless the cursor is
-  // still over the island (then the hover machine owns the collapse, so the two never fight).
+  // Tab focus leaving the island collapses it unless hover owns the collapse. Only cmd waits for explicit actions
+  // or native focus-changed, since its DOM blur can be a WebView2 focus hand-off.
   const onBlur = (e: FocusEvent<HTMLDivElement>) => {
     const dock=useDockStore.getState();
     if(dock.dragging||dock.interacting)return;
     const next = e.relatedTarget;
     if (next instanceof Node && e.currentTarget.contains(next)) return;
-    if (useIslandStore.getState().hoverInside) return;
+    const state = useIslandStore.getState();
+    if (state.view === "cmd") return;
+    if (state.hoverInside) return;
     controls.collapseNow();
   };
 
@@ -212,7 +278,9 @@ export function Island({ modules = registry }: IslandProps) {
         ref={ref}
         className={expanded ? "ig-glass ig-island" : "ig-glass ig-glass--pill ig-island"}
         data-mode={mode}
+        data-tall={tall}
         data-hover={hover}
+        data-shelf-drop={shelfDrop}
         role="region"
         aria-label="Dynamic Island"
         tabIndex={0}
@@ -238,12 +306,29 @@ export function Island({ modules = registry }: IslandProps) {
         <AttachWave />
         <AnimatePresence initial={false} custom={kindRef.current === "pill"}>
           {expanded ? (
-            <motion.div
-              key="panel"
+            cmdOpen ? (
+              <motion.div
+                key="cmd"
+                className="ig-island-layer ig-island-layer--cmd"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: fades.panelIn }}
+                exit={{ opacity: 0, transition: fades.panelOut }}
+              >
+                <CommandBar
+                  onClose={() => {
+                    void keyboard.release();
+                    controls.collapseNow();
+                  }}
+                  onHeightChange={setCmdHeight}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="panel"
               className="ig-island-layer ig-island-layer--panel"
-              initial={{ opacity: 0, scale: layerScale.panelEnter }}
-              animate={{ opacity: 1, scale: 1, transition: fades.panelIn }}
-              exit={{ opacity: 0, scale: layerScale.panelExit, transition: fades.panelOut }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: fades.panelIn }}
+              exit={{ opacity: 0, transition: fades.panelOut }}
             >
               <div className="ig-panel">
                 <header className="ig-panel-head">
@@ -385,17 +470,22 @@ export function Island({ modules = registry }: IslandProps) {
                 </div>
               </div>
             </motion.div>
-          ) : (
+          )
+        ) : (
             <motion.div
               key={pillKey}
               className="ig-island-layer"
               custom={kindRef.current === "pill"}
-              variants={pillLayer}
+              variants={pillState === "toast" ? {
+                initial: { opacity: 0, y: reduce ? 0 : viewSlide.enter },
+                enter: { opacity: 1, y: 0, transition: { duration: durations.med, ease: easings.out } },
+                exit: { opacity: 0, y: reduce ? 0 : -viewSlide.enter, transition: { duration: durations.med, ease: easings.out } },
+              } : pillLayer}
               initial="initial"
               animate="enter"
               exit="exit"
             >
-              {pillState === "toast" && toast ? (
+              {shelfDrop ? <div className="ig-pill-row ig-shelf-drop" role="status"><IconShelf size={16} /><span>{t("shelf.drop")}</span></div> : pillState === "toast" && toast ? (
                 <PillToast {...toast} />
               ) : CompactView ? (
                 <CompactView />

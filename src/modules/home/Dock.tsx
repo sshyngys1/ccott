@@ -1,3 +1,6 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { durations, easings, listItem, springs } from "../../design/motion";
+import { useIslandStore } from "../../store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t, useT } from "../../i18n";
 import { IconClose, IconFile, IconFolder, IconPlus, IconTrash } from "../../design/icons";
@@ -15,6 +18,11 @@ import {
 
 export function Dock() {
   useT();
+  const reduce = useReducedMotion();
+  const liteMode = useIslandStore(s => s.settings.liteMode);
+  const mode = useIslandStore(s => s.mode);
+  const animateLayout = mode === "expanded" && !liteMode && !reduce;
+  const [launching, setLaunching] = useState<string | null>(null);
   const { items, dragging } = useDockStore();
   const [menu, setMenu] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -61,14 +69,23 @@ export function Dock() {
     }}
   >
     {!items.length && <span className="hm-dock-hint">{t("dock.empty")}</span>}
-    {items.map((item, index) => <div
+    <AnimatePresence initial={false} mode="popLayout">
+    {items.map((item, index) => <motion.div
+      layout={animateLayout ? "position" : false}
+      layoutDependency={items}
+      initial={false}
+      exit={{ opacity: 0 }}
+      transition={{ layout: springs.list, duration: durations.med, ease: easings.out }}
       className="hm-dock-entry"
       data-dock-id={item.id}
       data-reordering={moving === item.id}
       data-drop-target={targetId === item.id && moving !== item.id}
       key={item.id}
     >
-      <button
+      <motion.button
+        animate={{ y: !reduce && launching === item.id ? listItem.initial.y : 0, opacity: reduce && launching === item.id ? 0.6 : 1 }}
+        transition={reduce ? { duration: durations.med, ease: easings.out } : springs.press}
+        onAnimationComplete={() => { if (launching === item.id) setLaunching(null); }}
         type="button"
         className="ig-glass-control ig-glass-control--icon ig-glass-control--lg hm-dock-app"
         title={item.name}
@@ -78,6 +95,7 @@ export function Dock() {
             suppressClick.current = false;
             return;
           }
+          setLaunching(item.id);
           void openDockItem(item.id);
         }}
         onContextMenu={event => {
@@ -144,7 +162,7 @@ export function Dock() {
           alt=""
           draggable={false}
         /> : <IconFile />}
-      </button>
+      </motion.button>
       <button
         type="button"
         className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost hm-dock-remove"
@@ -157,7 +175,8 @@ export function Dock() {
       >
         <IconClose size={12} />
       </button>
-    </div>)}
+    </motion.div>)}
+    </AnimatePresence>
     <div className="hm-dock-entry hm-dock-add-wrap">
       <button
         type="button"

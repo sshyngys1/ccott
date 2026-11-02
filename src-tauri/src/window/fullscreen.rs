@@ -630,6 +630,54 @@ pub fn summon(app: &AppHandle) {
     }
 }
 
+/// Reveal with the same fullscreen override/topmost/prewarm path as summon, then acquire
+/// native keyboard focus. Do not emit island://summoned or register a temporary global Esc.
+pub fn open_command(app: &AppHandle) {
+    let state = app.state::<IslandState>();
+    if state.capture_active.load(Ordering::Acquire) {
+        return;
+    }
+    state.summoned.store(true, Ordering::Release);
+    state.fullscreen_hidden.store(false, Ordering::Release);
+    if let Some(thread) = state
+        .hover_thread
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+    {
+        thread.unpark();
+    }
+    let Some(window) = app.get_webview_window("island") else {
+        return;
+    };
+    let app = app.clone();
+    let w = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        if w.show()
+            .map_err(|e| e.to_string())
+            .and_then(|()| super::styles::hwnd_of(&w))
+            .and_then(super::styles::ensure_topmost)
+            .is_err()
+        {
+            log::warn!("command bar show/topmost failed");
+            return;
+        }
+        let state = app.state::<IslandState>();
+        let collapsed = *state.mode.read().unwrap_or_else(|e| e.into_inner())
+            == super::types::IslandMode::Collapsed;
+        if collapsed {
+            super::hover::prewarm_for_summon(&app, &state);
+        }
+        let request = super::focus::request(true);
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = super::focus::set_active(&app, request) {
+                log::warn!("command keyboard focus failed: {error}");
+            }
+            let _ = app.emit("cmd://open", ());
+        });
+    });
+}
+
 /// Called when temporary global `Escape` is pressed while the island is summoned and unfocused.
 pub fn collapse_summoned(app: &AppHandle) {
     let state = app.state::<IslandState>();

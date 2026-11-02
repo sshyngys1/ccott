@@ -250,6 +250,19 @@ pub fn set_hide_in_fullscreen(app: &AppHandle, enabled: bool) {
     fullscreen::set_enabled(app, enabled);
 }
 
+/// Settings changed: apply the latest backdrop preference on the window thread, even without UI.
+pub fn sync_vibrancy(app: &AppHandle) {
+    let handle = app.clone();
+    if let Err(e) = app.run_on_main_thread(move || {
+        if let Some(window) = handle.get_webview_window("island") {
+            let settings = crate::settings::current(&handle);
+            vibrancy::apply(&window, &handle.state::<IslandState>(), settings.vibrancy);
+        }
+    }) {
+        log::warn!("syncing island vibrancy failed: {e}");
+    }
+}
+
 /// `Settings::fullscreenAllowlist` changed: re-evaluate the current foreground window immediately.
 pub fn set_fullscreen_allowlist(app: &AppHandle) {
     fullscreen::recheck(app);
@@ -264,6 +277,13 @@ pub fn set_auto_hide_apps(app: &AppHandle) {
 pub fn summon_for_runtime<R: Runtime>(_app: &AppHandle<R>) {
     if let Some(app) = APP.get() {
         fullscreen::summon(app);
+    }
+}
+
+/// Command bar has its own event: the frontend handles repeat presses and Esc while focused.
+pub fn open_command_for_runtime<R: Runtime>(_app: &AppHandle<R>) {
+    if let Some(app) = APP.get() {
+        fullscreen::open_command(app);
     }
 }
 

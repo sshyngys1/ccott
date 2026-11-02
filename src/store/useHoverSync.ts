@@ -24,7 +24,9 @@ export function useHoverSync(): HoverControls {
     });
     const syncHold = () => {
       const dock = useDockStore.getState();
-      machine.setHold(useIslandStore.getState().keyboardFocus || dock.dragging || dock.interacting);
+      const island = useIslandStore.getState();
+      // The command bar opens by hotkey with the cursor elsewhere: hold it until Esc/hotkey/explicit collapse.
+      machine.setHold(island.keyboardFocus || island.view === "cmd" || dock.dragging || dock.interacting);
     };
     syncHold();
     machineRef.current = machine;
@@ -33,7 +35,7 @@ export function useHoverSync(): HoverControls {
         machine.setDelays(s.hoverExpandDelayMs, s.hoverCollapseDelayMs);
       }
       // Typing in a field (keyboard focus) keeps the island open even when the cursor leaves.
-      if (s.keyboardFocus !== prev.keyboardFocus)
+      if (s.keyboardFocus !== prev.keyboardFocus || s.view !== prev.view)
         syncHold();
     });
     const offDock = useDockStore.subscribe(syncHold);

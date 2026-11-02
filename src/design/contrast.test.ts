@@ -63,6 +63,16 @@ describe.each(combos)("tokens %s × %s keep text readable on the worst backdrop"
   const surface = color(t["--ig-surface"]);
   const raised = color(t["--ig-surface-raised"]);
 
+  it("native select options have an opaque surface and text contrast ≥ 4.5:1", () => {
+    const glass = readFileSync(new URL("./glass.css", import.meta.url), "utf8");
+    const options = glass.match(/\.ig-select > select > option\s*\{([^}]+)\}/)?.[1];
+    expect(options).toContain("background-color: var(--ig-lite-surface)");
+    expect(options).toContain("color: var(--ig-text)");
+    const background = color(t["--ig-lite-surface"]);
+    expect(background[3]).toBe(1);
+    expect(stackContrast(color(t["--ig-text"]), [background], backdrop)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it.each([
     ["--ig-text", 4.5],
     ["--ig-text-secondary", 4.5],
@@ -141,5 +151,29 @@ describe("collapsed pill (both themes)", () => {
     expect(stackContrast(text, [strong], [255, 255, 255])).toBeGreaterThanOrEqual(7);
     // .ig-glass--pill maps secondary to 70 % of on-strong
     expect(stackContrast([text[0], text[1], text[2], 0.7], [strong], [255, 255, 255])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe.each(["dark", "light"] as const)("lite mode in %s theme", (theme) => {
+  const t = resolve(theme, "none");
+  it("uses opaque plates and keeps text contrast at least as high as fallback glass", () => {
+    for (const [flat, original] of [
+      ["--ig-lite-surface", "--ig-surface"],
+      ["--ig-lite-raised", "--ig-surface-raised"],
+      ["--ig-lite-hover", "--ig-surface-hover"],
+      ["--ig-lite-pressed", "--ig-surface-pressed"],
+      ["--ig-lite-sunken", "--ig-surface-sunken"],
+      ["--ig-lite-selected", "--ig-surface-selected"],
+    ]) {
+      const plate = color(t[flat]);
+      expect(plate[3]).toBe(1);
+      for (const name of ["--ig-text", "--ig-text-secondary", "--ig-text-tertiary"]) {
+        const text = color(t[name]);
+        const baseline = original === "--ig-surface" ? [color(t[original])] : [color(t["--ig-surface"]), color(t[original])];
+        expect(stackContrast(text, [plate], WORST[theme].none)).toBeGreaterThanOrEqual(
+          stackContrast(text, baseline, WORST[theme].none),
+        );
+      }
+    }
   });
 });

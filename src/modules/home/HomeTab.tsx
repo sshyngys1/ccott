@@ -1,49 +1,364 @@
-import { t, useT, type TranslationKey } from "../../i18n";
-import { motion } from "motion/react";
-import type { ReactNode } from "react";
-import { IconPipette, IconQr, IconRegion, IconScanText, IconScreen, type IconProps } from "../../design/icons";
-import { pressScale, springs } from "../../design/motion";
-import { runCapture, runPickColor, useCaptureStore } from "../../lib/capture/store";
-import type { CaptureAction, CaptureMode } from "../../shared/types";
-import "../../lib/ui.css";
-import "./home.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { t, useT } from "../../i18n";
+import {
+  IconCheck,
+  IconClose,
+  IconPlus,
+  IconReset,
+  IconSettings,
+  IconSwap,
+} from "../../design/icons";
+import { durations, easings, pressScale, springs } from "../../design/motion";
+import { useCaptureStore } from "../../lib/capture/store";
+import {
+  addTile,
+  canExpandTo2x1,
+  countCells,
+  getHiddenTiles,
+  normalizeLayout,
+  needsTallPanel,
+  removeTile,
+  reorderTiles,
+  toggleTileSize,
+} from "../../lib/tiles/layout";
+import { getTileDefinition } from "../../lib/tiles/registry";
+import { useTilesEditStore } from "../../lib/tiles/store";
+import { patchSettings } from "../../shell/settings/patchSettings";
+import { DEFAULT_QUICK_TILES, QUICK_TILE_CELLS, QUICK_TILE_ROW_CELLS_3 } from "../../shared/types";
+import { useIslandStore } from "../../store";
+import { Dock } from "./Dock";
+import { DockMenu } from "./DockMenu";
 import { PlayerCard } from "./PlayerCard";
 import { VolumeCard } from "./VolumeCard";
-import { Dock } from "./Dock";
+import "../../lib/ui.css";
+import "./home.css";
 
-interface Tool {
-  id: string; title: TranslationKey; available: boolean;
-  Icon?: (props: IconProps) => ReactNode; mode?: CaptureMode; action?: CaptureAction;
-}
-const TOOLS: readonly Tool[] = [
-  { id:"region", title:"region", available:true, Icon:IconRegion, mode:"region", action:"copy" },
-  { id:"screen", title:"fullScreen", available:true, Icon:IconScreen, mode:"screen", action:"copy" },
-  { id:"ocr", title:"textFromScreen", available:true, Icon:IconScanText, mode:"region", action:"ocr" },
-  { id:"qr", title:"qrCode", available:true, Icon:IconQr, mode:"region", action:"qr" },
-  { id:"color", title:"colorPicker", available:true, Icon:IconPipette },
-  { id:"text", title:"plainText", available:false },
-  { id:"record", title:"screenRecording", available:false },
-  { id:"command", title:"command", available:false },
-  { id:"more", title:"more", available:false },
-];
-const tap = { whileTap:{ scale:pressScale }, transition:springs.press } as const;
+const tap = { whileTap: { scale: pressScale }, transition: springs.press } as const;
 
 export function HomeTab() {
   useT();
+  const rawTiles = useIslandStore((s) => s.settings.quickTiles);
+  const tiles = useMemo(() => normalizeLayout(rawTiles), [rawTiles]);
   const busy = useCaptureStore((s) => s.busy);
+  const { editing, setEditing } = useTilesEditStore();
+  const mode = useIslandStore((s) => s.mode);
+  const liteMode = useIslandStore((s) => s.settings.liteMode);
+  const withTools = editing || tiles.length > 0;
+  const reduce = useReducedMotion();
+  const animateLayout = mode === "expanded" && !liteMode && !reduce;
+
+  const [menu, setMenu] = useState<"context" | "add" | null>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [targetId, setTargetId] = useState<string | null>(null);
+  const root = useRef<HTMLElement>(null);
+  const homeRoot = useRef<HTMLDivElement>(null);
+  const gesture = useRef<{
+    id: string;
+    target: string;
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClick = useRef(false);
+
+  // Exit edit mode on island collapse
+  useEffect(() => {
+    if (mode === "collapsed") {
+      setEditing(false);
+      setMenu(null);
+    }
+  }, [mode, setEditing]);
+
+  // Handle Escape key
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (menu) {
+          setMenu(null);
+          return;
+        }
+        if (editing) {
+          event.preventDefault();
+          event.stopPropagation();
+          setEditing(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [editing, menu, setEditing]);
+
+  const finishDrag = (cancel = false) => {
+    const drag = gesture.current;
+    if (!drag) return;
+    gesture.current = null;
+    setMovingId(null);
+    setTargetId(null);
+    if (drag.moved) {
+      suppressClick.current = true;
+      if (!cancel && drag.id !== drag.target) {
+        const next = reorderTiles(tiles, drag.id, drag.target);
+        void patchSettings({ quickTiles: next });
+      }
+    }
+  };
+
+  const hiddenTiles = useMemo(() => getHiddenTiles(tiles), [tiles]);
+  const cells = countCells(tiles);
+  const canAdd = cells < QUICK_TILE_CELLS && hiddenTiles.length > 0;
+  // At six cells the panel remains ordinary. Keep + in the footer until adding cell seven.
+  const addInFooter = cells === QUICK_TILE_ROW_CELLS_3;
+
+  const tileMotion = {
+    initial: { opacity: 0, y: reduce ? 0 : 2 },
+    animate: { opacity: 1, y: reduce ? 0 : editing ? -2 : 0 },
+    exit: { opacity: 0 },
+    transition: { layout: springs.list, duration: durations.med, ease: easings.out },
+  };
+
   return (
-    <div className="hm-home hm-home--with-tools">
+    <div ref={homeRoot} className={`hm-home${withTools ? " hm-home--with-tools" : ""}`} data-tall={needsTallPanel(tiles)}>
       <h2 className="mod-sr-only">{t("home")}</h2>
-      <div className="hm-left"><PlayerCard /><VolumeCard /></div>
-      <section className="hm-tools" aria-label={t("quickTools")}>
-        {TOOLS.filter((tool) => tool.available).map(({ id, title, Icon, mode, action }) => (
-          <motion.button key={id} type="button" className="ig-glass-control ig-glass-control--tile" {...tap}
-            title={action === "copy" ? t("capture.copyHint") : t(title)} disabled={busy}
-            onClick={(event) => { if (id === "color") void runPickColor(); else if (mode && action) void runCapture(mode, action === "copy" && event.shiftKey ? "save" : action); }}>
-            {Icon && <Icon />}<span>{t(title)}</span>
-          </motion.button>
-        ))}
-      </section>
+      <div
+        className="hm-left"
+        onContextMenu={(event) => {
+          if (withTools) return;
+          event.preventDefault();
+          setAnchor(event.currentTarget);
+          setMenu("context");
+        }}
+      >
+        <PlayerCard />
+        <VolumeCard />
+      </div>
+      {withTools && <section
+        ref={root}
+        className="hm-tools-wrap"
+        aria-label={t("quickTools")}
+        onContextMenu={(event) => {
+          if (editing) return;
+          event.preventDefault();
+          setAnchor(event.currentTarget);
+          setMenu("context");
+        }}
+      >
+        <div className="hm-tools" data-rows={cells > QUICK_TILE_ROW_CELLS_3 ? 4 : 3}>
+          <AnimatePresence mode="popLayout" initial={false}>
+          {/* Keep hit-test cells stable during drag; only the committed order moves on pointerup. */}
+          {tiles.map((slot) => {
+              const def = getTileDefinition(slot.id);
+              if (!def) return null;
+              const Icon = def.icon;
+              const title = t(def.titleKey);
+              const hint = def.hintKey ? t(def.hintKey) : title;
+              const canExpand = canExpandTo2x1(tiles, slot.id);
+
+              if (editing) {
+                return (
+                  <motion.div
+                    key={slot.id}
+                    {...tileMotion}
+                    layout={animateLayout ? "position" : false}
+                    layoutDependency={tiles}
+                    data-editing="true"
+                    data-tile-id={slot.id}
+                    data-size={slot.size}
+                    data-reordering={movingId === slot.id}
+                    data-drop-target={targetId === slot.id && movingId !== slot.id}
+                    className="hm-tile-entry"
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      gesture.current = {
+                        id: slot.id,
+                        target: slot.id,
+                        x: event.clientX,
+                        y: event.clientY,
+                        moved: false,
+                      };
+                      suppressClick.current = false;
+                      event.currentTarget.setPointerCapture?.(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = gesture.current;
+                      if (!drag) return;
+                      if (
+                        Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6 &&
+                        !drag.moved
+                      ) {
+                        return;
+                      }
+                      drag.moved = true;
+                      setMovingId(drag.id);
+                      const targetEl = document
+                        .elementFromPoint?.(event.clientX, event.clientY)
+                        ?.closest<HTMLElement>("[data-tile-id]");
+                      if (targetEl && root.current?.contains(targetEl)) {
+                        const newTarget = targetEl.dataset.tileId ?? drag.id;
+                        drag.target = newTarget;
+                        setTargetId(newTarget);
+                      }
+                    }}
+                    onPointerUp={() => finishDrag()}
+                    onPointerCancel={() => finishDrag(true)}
+                  >
+                    <div className="ig-glass-control ig-glass-control--tile hm-tile">
+                      <Icon />
+                      <span>{title}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost hm-tile-remove"
+                      title={t("tiles.removeNamed", { name: title })}
+                      aria-label={t("tiles.removeNamed", { name: title })}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void patchSettings({ quickTiles: removeTile(tiles, slot.id) });
+                      }}
+                    >
+                      <IconClose size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ig-glass-control hm-tile-size"
+                      title={slot.size === "1x1" ? t("tiles.expand") : t("tiles.shrink")}
+                      aria-label={slot.size === "1x1" ? t("tiles.expand") : t("tiles.shrink")}
+                      disabled={slot.size === "1x1" && !canExpand}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void patchSettings({ quickTiles: toggleTileSize(tiles, slot.id) });
+                      }}
+                    >
+                      <IconSwap size={10} />
+                      <span>{slot.size === "1x1" ? "2×1" : "1×1"}</span>
+                    </button>
+                  </motion.div>
+                );
+              }
+
+              return (
+                <motion.button
+                  key={slot.id}
+                  {...tileMotion}
+                  type="button"
+                  data-size={slot.size}
+                  className="ig-glass-control ig-glass-control--tile hm-tile"
+                  {...tap}
+                  title={hint}
+                  disabled={busy}
+                  onClick={(event) => {
+                    if (suppressClick.current) {
+                      suppressClick.current = false;
+                      return;
+                    }
+                    void def.action(event);
+                  }}
+                >
+                  <Icon />
+                  <span>{title}</span>
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
+
+          {editing && canAdd && !addInFooter && (
+            <div className="hm-tile-entry hm-tile-entry--add">
+              <button
+                type="button"
+                className="ig-glass-control ig-glass-control--tile hm-tile hm-tile-add"
+                title={t("tiles.add")}
+                aria-label={t("tiles.add")}
+                aria-haspopup="menu"
+                aria-expanded={menu === "add"}
+                onClick={(e) => {
+                  setAnchor(e.currentTarget);
+                  setMenu(menu === "add" ? null : "add");
+                }}
+              >
+                <IconPlus size={20} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {editing && (
+          <div className="hm-tools-footer">
+            {canAdd && addInFooter && (
+              <button
+                type="button"
+                className="ig-glass-control ig-glass-control--sm"
+                aria-label={t("tiles.add")}
+                title={t("tiles.add")}
+                aria-haspopup="menu"
+                aria-expanded={menu === "add"}
+                onClick={(e) => {
+                  setAnchor(e.currentTarget);
+                  setMenu(menu === "add" ? null : "add");
+                }}
+              >
+                <IconPlus size={16} />
+              </button>
+            )}
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm ig-glass-control--ghost"
+              onClick={() =>
+                void patchSettings({ quickTiles: DEFAULT_QUICK_TILES.map((t) => ({ ...t })) })
+              }
+            >
+              <IconReset size={14} />
+              <span>{t("reset")}</span>
+            </button>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm ig-glass-control--accent"
+              onClick={() => setEditing(false)}
+            >
+              <IconCheck size={14} />
+              <span>{t("done")}</span>
+            </button>
+          </div>
+        )}
+      </section>}
+
+      {menu && anchor && homeRoot.current && (
+        <DockMenu
+          anchor={anchor}
+          container={homeRoot.current}
+          close={closeMenu}
+          items={
+            menu === "context"
+              ? [
+                  {
+                    id: "customize",
+                    label: t("tiles.customizeAction"),
+                    icon: <IconSettings size={16} />,
+                    select: () => {
+                      setEditing(true);
+                    },
+                  },
+                ]
+              : hiddenTiles.map((hiddenId) => {
+                  const def = getTileDefinition(hiddenId)!;
+                  const Icon = def.icon;
+                  return {
+                    id: hiddenId,
+                    label: t(def.titleKey),
+                    icon: <Icon size={16} />,
+                    select: () => {
+                      void patchSettings({ quickTiles: addTile(tiles, hiddenId) });
+                    },
+                  };
+                })
+          }
+        />
+      )}
+
       <Dock />
     </div>
   );

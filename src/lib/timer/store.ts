@@ -16,6 +16,8 @@ export interface TimerStore {
   reset: () => void;
   selectPreset: (minutes: number) => void;
   addMinute: () => void;
+  /** Starts a timer for a specific duration in milliseconds (e.g. from command bar). */
+  startDuration: (ms: number) => void;
   /** Hides the «done» activity in the pill; the tab still shows the finished state. */
   dismissDone: () => void;
 }
@@ -71,6 +73,12 @@ export const useTimerStore = create<TimerStore>()((_set, get) => ({
   addMinute: () => {
     primeAudio();
     commit(machine.addMinute(get().timer, Date.now()), { doneDismissed: false });
+  },
+  startDuration: (ms: number) => {
+    primeAudio();
+    const duration = Math.max(1000, Math.round(ms));
+    const created = machine.createTimer(duration);
+    commit(machine.start(created, Date.now()), { doneDismissed: false });
   },
   dismissDone: () => {
     if (get().timer.status === "done") commit(get().timer, { doneDismissed: true });

@@ -216,7 +216,17 @@ function VolumeCard() {
   );
 }
 
-export function HomeTab({ variant, tools, dock }: { variant: Variant; tools: { title: string; Icon: (p: IconProps) => ReactNode }[]; dock: { title: string; Icon: (p: IconProps) => ReactNode }[] }) {
+export function HomeTab({
+  variant,
+  tools,
+  dock,
+  onToolClick,
+}: {
+  variant: Variant;
+  tools: { title: string; Icon: (p: IconProps) => ReactNode }[];
+  dock: { title: string; Icon: (p: IconProps) => ReactNode }[];
+  onToolClick?: (title: string) => void;
+}) {
   return (
     <div className="pv-home">
       <div className="pv-home-left">
@@ -225,7 +235,12 @@ export function HomeTab({ variant, tools, dock }: { variant: Variant; tools: { t
       </div>
       <section className="pv-tools" aria-label="Быстрые инструменты">
         {tools.map(({ title, Icon }) => (
-          <motion.button key={title} className="ig-glass-control ig-glass-control--tile" {...tap}>
+          <motion.button
+            key={title}
+            className="ig-glass-control ig-glass-control--tile"
+            {...tap}
+            onClick={() => onToolClick?.(title)}
+          >
             <Icon />
             <span>{title}</span>
           </motion.button>

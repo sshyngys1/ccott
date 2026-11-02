@@ -40,6 +40,7 @@ import {
   IconText,
   type IconProps,
 } from "../icons";
+import { CommandBar, type CmdStandState } from "./commandBar";
 import { ClipboardTab, FocusGallery, HomeTab, NotesTab, PillContent, SettingsView, TextTab, type PillState, type Variant } from "./tabs";
 
 type Theme = "dark" | "light";
@@ -47,6 +48,8 @@ type Vibrancy = "none" | "acrylic" | "mica";
 type Wallpaper = "vivid" | "white" | "night";
 type TabId = "home" | "clipboard" | "text" | "notes";
 type View = TabId | "settings";
+type IslandMode = "panel" | "cmd";
+type Lang = "ru" | "en";
 
 const TABS: { id: TabId; title: string; Icon: (p: IconProps) => ReactNode }[] = [
   { id: "home", title: "Главная", Icon: IconHome },
@@ -126,11 +129,11 @@ function useClock() {
 
 // ───────────────────────────── Panel ─────────────────────────────
 
-function TabBody({ view, variant, focus }: { view: View; variant: Variant; focus: boolean }) {
+function TabBody({ view, variant, focus, onOpenCmd }: { view: View; variant: Variant; focus: boolean; onOpenCmd?: () => void }) {
   const dock = usePreviewDock((s) => s.dock);
   switch (view) {
     case "home":
-      return <HomeTab variant={variant} tools={TOOLS} dock={dock} />;
+      return <HomeTab variant={variant} tools={TOOLS} dock={dock} onToolClick={(t) => { if (t === "Команда") onOpenCmd?.(); }} />;
     case "clipboard":
       return <ClipboardTab variant={variant} focus={focus} />;
     case "text":
@@ -142,7 +145,7 @@ function TabBody({ view, variant, focus }: { view: View; variant: Variant; focus
   }
 }
 
-function PanelContent({ view, onView, onCollapse, clock, variant, focus }: { view: View; onView: (v: View) => void; onCollapse: () => void; clock: { time: string; date: string }; variant: Variant; focus: boolean }) {
+function PanelContent({ view, onView, onCollapse, onOpenCmd, clock, variant, focus }: { view: View; onView: (v: View) => void; onCollapse: () => void; onOpenCmd?: () => void; clock: { time: string; date: string }; variant: Variant; focus: boolean }) {
   const lastTab = useRef<TabId>(view === "settings" ? "home" : view);
   if (view !== "settings") lastTab.current = view;
   const settings = view === "settings";
@@ -204,7 +207,7 @@ function PanelContent({ view, onView, onCollapse, clock, variant, focus }: { vie
           exit={exit}
           transition={{ ...(settings ? springs.view : springs.tab), opacity: fades.pillSwap }}
         >
-          <TabBody view={view} variant={variant} focus={focus} />
+          <TabBody view={view} variant={variant} focus={focus} onOpenCmd={onOpenCmd} />
         </motion.div>
       </AnimatePresence>
     </div>
@@ -221,7 +224,35 @@ function pillSize(geo: IslandGeometry, state: PillState): BoxSize {
   return geo.pillActivity; // media (playing/paused) and timer share --ig-pill-width-activity
 }
 
-function LiveIsland({ geo, pillState, expanded, setExpanded, clock, view, setView, variant, focus }: { geo: IslandGeometry; pillState: PillState; expanded: boolean; setExpanded: (v: boolean) => void; clock: { time: string; date: string }; view: View; setView: (v: View) => void; variant: Variant; focus: boolean }) {
+function LiveIsland({
+  geo,
+  pillState,
+  expanded,
+  setExpanded,
+  clock,
+  view,
+  setView,
+  variant,
+  focus,
+  mode,
+  setMode,
+  lang,
+  cmdState,
+}: {
+  geo: IslandGeometry;
+  pillState: PillState;
+  expanded: boolean;
+  setExpanded: (v: boolean) => void;
+  clock: { time: string; date: string };
+  view: View;
+  setView: (v: View) => void;
+  variant: Variant;
+  focus: boolean;
+  mode: IslandMode;
+  setMode: (m: IslandMode) => void;
+  lang: Lang;
+  cmdState: CmdStandState;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   usePointerLight(ref);
   const attached = usePreviewDock((s) => s.added);
@@ -234,7 +265,10 @@ function LiveIsland({ geo, pillState, expanded, setExpanded, clock, view, setVie
   }, [expanded]);
 
   const base = pillSize(geo, pillState);
-  const size: BoxSize = expanded ? geo.panel : hover ? hoveredPill(base, geo.pillHoverGrow) : base;
+  const [cmdBarHeight, setCmdBarHeight] = useState(geo.cmd.height);
+  const isCmd = mode === "cmd";
+  const targetSize: BoxSize = isCmd ? { ...geo.cmd, height: cmdBarHeight } : geo.panel;
+  const size: BoxSize = expanded ? targetSize : hover ? hoveredPill(base, geo.pillHoverGrow) : base;
 
   return (
     <motion.div
@@ -243,7 +277,7 @@ function LiveIsland({ geo, pillState, expanded, setExpanded, clock, view, setVie
       data-hover={!expanded && hover}
       initial={false}
       animate={{ width: size.width, height: size.height, borderRadius: size.radius }}
-      transition={springs[kind]}
+      transition={isCmd ? (expanded ? springs.cmdResize : springs.cmdCollapse) : springs[kind]}
       style={{ top: geo.top }}
       onHoverStart={() => {
         setKind("pill");
@@ -258,11 +292,53 @@ function LiveIsland({ geo, pillState, expanded, setExpanded, clock, view, setVie
       <AttachWaveLayer added={attached} />
       <AnimatePresence initial={false}>
         {expanded ? (
-          <motion.div key="panel" className="pv-island-layer pv-island-layer--panel" style={{ width: geo.panel.width, height: geo.panel.height }} initial={{ opacity: 0, scale: layerScale.panelEnter }} animate={{ opacity: 1, scale: 1, transition: fades.panelIn }} exit={{ opacity: 0, scale: layerScale.panelExit, transition: fades.panelOut }}>
-            <PanelContent view={view} onView={setView} onCollapse={() => setExpanded(false)} clock={clock} variant={variant} focus={focus} />
-          </motion.div>
+          isCmd ? (
+            <motion.div
+              key="cmd"
+              className="pv-island-layer pv-island-layer--cmd"
+              style={{ width: geo.cmd.width, height: "100%" }}
+              initial={{ opacity: 0, scale: layerScale.panelEnter }}
+              animate={{ opacity: 1, scale: 1, transition: fades.panelIn }}
+              exit={{ opacity: 0, scale: layerScale.panelExit, transition: fades.panelOut }}
+            >
+              <CommandBar
+                lang={lang}
+                state={cmdState}
+                onClose={() => setExpanded(false)}
+                onHeightChange={setCmdBarHeight}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="panel"
+              className="pv-island-layer pv-island-layer--panel"
+              style={{ width: geo.panel.width, height: geo.panel.height }}
+              initial={{ opacity: 0, scale: layerScale.panelEnter }}
+              animate={{ opacity: 1, scale: 1, transition: fades.panelIn }}
+              exit={{ opacity: 0, scale: layerScale.panelExit, transition: fades.panelOut }}
+            >
+              <PanelContent
+                view={view}
+                onView={setView}
+                onCollapse={() => setExpanded(false)}
+                onOpenCmd={() => {
+                  setMode("cmd");
+                  setExpanded(true);
+                }}
+                clock={clock}
+                variant={variant}
+                focus={focus}
+              />
+            </motion.div>
+          )
         ) : (
-          <motion.div key={`pill-${pillState}`} className="pv-island-layer" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: fades.pillIn }} exit={{ opacity: 0, transition: fades.pillOut }}>
+          <motion.div
+            key={`pill-${pillState}`}
+            className="pv-island-layer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: fades.pillIn }}
+            exit={{ opacity: 0, transition: fades.pillOut }}
+          >
             <PillContent state={pillState} time={clock.time} />
           </motion.div>
         )}
@@ -440,7 +516,13 @@ function Preview() {
   const [view, setView] = useState<View>(() => readParam("tab", ["home", "clipboard", "text", "notes", "settings"] as const, "home"));
   const [variant, setVariant] = useState<Variant>(() => readParam("v", ["default", "empty", "alt"] as const, "default"));
   const focus = readParam("focus", ["0", "1"] as const, "0") === "1";
-  const solo = readParam("solo", ["0", "island", "pills", "focus"] as const, "0");
+  const solo = readParam("solo", ["0", "island", "pills", "focus", "cmd"] as const, "0");
+  const [lang, setLang] = useState<Lang>(() => readParam("lang", ["ru", "en"] as const, "ru"));
+  const [mode, setMode] = useState<IslandMode>(() => readParam("mode", ["panel", "cmd"] as const, "panel"));
+  const [cmdState, setCmdState] = useState<CmdStandState>(() =>
+    readParam("cmd", ["live", "empty", "results", "few", "calc", "convert", "loading", "error", "notfound"] as const, "live"),
+  );
+  const [standaloneCmdHeight, setStandaloneCmdHeight] = useState(420);
   const clock = useClock();
   const geo = useMemo(() => readIslandGeometry(), []);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -458,7 +540,21 @@ function Preview() {
           прозрачное окно 800×520 · data-vibrancy="{vibrancy}"{vibrancy !== "none" ? " (нативный blur симулирован CSS)" : ""}
         </span>
       )}
-      <LiveIsland geo={geo} pillState={pillState} expanded={expanded} setExpanded={setExpanded} clock={clock} view={view} setView={setView} variant={variant} focus={focus} />
+      <LiveIsland
+        geo={geo}
+        pillState={pillState}
+        expanded={expanded}
+        setExpanded={setExpanded}
+        clock={clock}
+        view={view}
+        setView={setView}
+        variant={variant}
+        focus={focus}
+        mode={mode}
+        setMode={setMode}
+        lang={lang}
+        cmdState={cmdState}
+      />
     </div>
   );
 
@@ -484,6 +580,25 @@ function Preview() {
         {wall}
         <main className={`pv-solo pv-solo--${solo}`}>
           {solo === "island" && island}
+          {solo === "cmd" && (
+            <div className={`pv-window pv-window--${vibrancy}`}>
+              <LiveIsland
+                geo={geo}
+                pillState="idle"
+                expanded={true}
+                setExpanded={setExpanded}
+                clock={clock}
+                view="home"
+                setView={setView}
+                variant="default"
+                focus={focus}
+                mode="cmd"
+                setMode={setMode}
+                lang={lang}
+                cmdState={cmdState}
+              />
+            </div>
+          )}
           {solo === "pills" && <PillStates geo={geo} time={clock.time} />}
           {solo === "focus" && (
             <div className="ig-glass pv-gallery pv-gallery--single">
@@ -509,7 +624,9 @@ function Preview() {
               <span className="pv-caption">визуальный язык island-win · превью</span>
             </div>
           </div>
+          <Segmented label="Язык" value={lang} onChange={setLang} options={[{ value: "ru", label: "RU" }, { value: "en", label: "EN" }]} />
           <Segmented label="Тема" value={theme} onChange={setTheme} options={[{ value: "dark", label: "Тёмная" }, { value: "light", label: "Светлая" }]} />
+          <Segmented label="Режим острова" value={mode} onChange={setMode} options={[{ value: "panel", label: "Панель" }, { value: "cmd", label: "Командная строка" }]} />
           <Segmented label="data-vibrancy" value={vibrancy} onChange={setVibrancy} options={[{ value: "none", label: "none" }, { value: "acrylic", label: "acrylic" }, { value: "mica", label: "mica" }]} />
           <Segmented label="Обои" value={wallpaper} onChange={setWallpaper} options={[{ value: "vivid", label: "Яркие" }, { value: "white", label: "Белое окно" }, { value: "night", label: "Тёмные" }]} />
         </div>
@@ -580,6 +697,47 @@ function Preview() {
           <h2>Фокус (волна 2)</h2>
           <div className="ig-glass pv-gallery pv-gallery--single">
             <FocusGallery />
+          </div>
+        </section>
+
+        <section className="pv-section">
+          <h2>Командная строка (v0.3)</h2>
+          <div className="pv-section-head pv-section-head--sub">
+            <span className="pv-caption">
+              Интерактивный макет командной строки Meniscus: поиск приложений, файлов, быстрые команды, калькулятор и конвертер валют/единиц.
+            </span>
+            <div className="pv-row">
+              <Segmented
+                label="Состояние макета"
+                value={cmdState}
+                onChange={setCmdState}
+                options={[
+                  { value: "live", label: "Живой ввод" },
+                  { value: "empty", label: "Пустое / подсказки" },
+                  { value: "results", label: "Результаты" },
+                  { value: "few", label: "1–2 результата" },
+                  { value: "calc", label: "Калькулятор" },
+                  { value: "convert", label: "Конвертер" },
+                  { value: "loading", label: "Загрузка" },
+                  { value: "error", label: "Офлайн" },
+                  { value: "notfound", label: "Не найдено" },
+                ]}
+              />
+            </div>
+          </div>
+          <div className={`pv-window pv-window--${vibrancy}`} style={{ height: "480px" }}>
+            <div
+              className="ig-glass pv-island"
+              style={{
+                width: geo.cmd.width,
+                height: standaloneCmdHeight,
+                borderRadius: geo.cmd.radius,
+                top: geo.top,
+                transition: "height 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            >
+              <CommandBar lang={lang} state={cmdState} onHeightChange={setStandaloneCmdHeight} />
+            </div>
           </div>
         </section>
 

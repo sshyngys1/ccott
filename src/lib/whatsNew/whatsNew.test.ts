@@ -39,6 +39,17 @@ describe("semver", () => {
 });
 
 describe("WhatsNew catalog & auto-show logic", () => {
+  it("lists the six 0.3.0 features in release order with at most four steps each", () => {
+    const items = getWhatsNewForVersion("0.3.0")!;
+    expect(items.map(item => item.id)).toEqual(["command", "shelf", "downloads", "tiles", "lite", "motion"]);
+    expect(getWhatsNewForVersion("v0.3.0")).toEqual(items);
+    expect(items.map(item => item.stepKeys?.length ?? 0)).toEqual([4, 4, 3, 4, 1, 0]);
+    for (const item of items) {
+      expect(item.titleKey).toBe(`whatsNew.v030.${item.id}.title`);
+      expect(item.descKey).toBe(`whatsNew.v030.${item.id}.desc`);
+    }
+  });
+
   it("never downgrades a valid marker through manual acknowledgment", () => {
     window.localStorage.setItem(WHATS_NEW_STORAGE_KEY, "0.3.0");
     acknowledgeWhatsNew("0.2.2");

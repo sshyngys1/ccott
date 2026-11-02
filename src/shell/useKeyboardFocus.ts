@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { invoke, listen } from "../ipc";
 import { useIslandStore } from "../store";
-import { KeyboardFocusController } from "./keyboardFocus";
+import { isTextTarget, KeyboardFocusController } from "./keyboardFocus";
 
 const noop = () => {};
 
@@ -31,19 +31,53 @@ export function useKeyboardFocus(islandRef: RefObject<HTMLElement | null>): Keyb
     });
     controllerRef.current = controller;
 
-    const onFocusIn = (e: FocusEvent) => controller.focusIn(e.target);
-    const onFocusOut = () => controller.focusOut();
+    let restoreTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancelRestore = () => {
+      clearTimeout(restoreTimer);
+      restoreTimer = undefined;
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      cancelRestore();
+      controller.focusIn(e.target);
+    };
+    const onFocusOut = (e: FocusEvent) => {
+      cancelRestore();
+      const cmd = useIslandStore.getState().view === "cmd";
+      if (controller.active && cmd) {
+        // Cmd closes through explicit actions or native focus-changed. A null target can be an activation/MoveFocus
+        // hand-off, so recover its DOM focus. Other views keep the usual focusOut path, including null targets.
+        const target = e.target;
+        if (e.relatedTarget === null && isTextTarget(target)) {
+          restoreTimer = setTimeout(() => {
+            restoreTimer = undefined;
+            const state = useIslandStore.getState();
+            if (!controller.active || state.mode !== "expanded" || state.view !== "cmd") return;
+            if (!target.isConnected || !islandRef.current?.contains(target)) return;
+            const doc = target.ownerDocument;
+            if (!doc.activeElement || doc.activeElement === doc.body) target.focus();
+          }, 0);
+        }
+        return;
+      }
+      controller.focusOut();
+    };
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
 
     const unsubscribeStore = useIslandStore.subscribe((s, prev) => {
-      if (s.mode === "collapsed" && prev.mode !== "collapsed") controller.release();
+      if (s.mode === "collapsed" && prev.mode !== "collapsed") {
+        cancelRestore();
+        controller.release();
+      }
     });
 
     let disposed = false;
     let unlisten: () => void = noop;
     listen("island://focus-changed", ({ active }) => {
-      if (!active) controller.lost();
+      if (!active) {
+        cancelRestore();
+        controller.lost();
+      }
     }).then(
       (u) => {
         if (disposed) u();
@@ -58,6 +92,7 @@ export function useKeyboardFocus(islandRef: RefObject<HTMLElement | null>): Keyb
       unsubscribeStore();
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
+      cancelRestore();
       controller.release();
       controllerRef.current = null;
     };

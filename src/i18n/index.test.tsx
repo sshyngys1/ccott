@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { countText, getLanguage, getLocale, localizeMessage, plural, pluralCategory, resolveLanguage, setLanguage, t, useT } from ".";
 import { en } from "./en";
 import { ru } from "./ru";
+import { WHATS_NEW_CATALOG } from "../lib/whatsNew/catalog";
 import { base64Decode } from "../lib/text/base64";
 import { jsonPretty } from "../lib/text/json";
 import { DEFAULT_FOLDER, folderDisplayName } from "../lib/notes/model";
@@ -29,6 +30,14 @@ describe("language selection and translation", () => {
       const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
       expect(placeholders(en[key]), key).toEqual(placeholders(ru[key]));
       expect(en[key].trim(), key).not.toBe("");
+    }
+    for (const items of Object.values(WHATS_NEW_CATALOG)) for (const item of items) {
+      for (const key of [item.titleKey, item.descKey, ...(item.stepKeys ?? [])]) {
+        expect(ru[key]?.trim(), key).toBeTruthy();
+        expect(en[key]?.trim(), key).toBeTruthy();
+        const shortcuts = (text: string) => [...text.matchAll(/\{kbd:([^{}]+)\}/g)].map(match => match[1]);
+        expect(shortcuts(en[key]), key).toEqual(shortcuts(ru[key]));
+      }
     }
   });
 

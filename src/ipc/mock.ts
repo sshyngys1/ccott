@@ -6,6 +6,7 @@ import type {
   AudioState,
   BatteryState,
   ClipItem,
+  CmdItem,
   DockItem,
   CommandArgs,
   CommandName,
@@ -13,13 +14,16 @@ import type {
   EventName,
   Events,
   FullscreenApp,
+  HotkeyStatus,
   IslandMode,
   IslandShape,
   MediaState,
   Note,
   Settings,
+  ShelfItem,
   UpdateInfo,
 } from "../shared/types";
+import { COMMAND_HOTKEY_FALLBACKS, DEFAULT_QUICK_TILES, SHELF_RETENTION_HOURS } from "../shared/types";
 import {
   DEFAULT_AUTO_HIDE_APPS,
   normalizeAccelerator,
@@ -27,6 +31,10 @@ import {
   normalizeFullscreenAllowlist,
 } from "../shell/settings/hotkey";
 import { t } from "../i18n";
+import { listMockDownloads, openMockDownload, resetMockDownloads, setMockDownloadsEnabled, startMockDownload } from "./downloadsMock";
+export { mockDownloadOpens } from "./downloadsMock";
+
+export const mockStartDownload = () => startMockDownload((items) => mockEmit("downloads://changed", items));
 
 // ───────────────────────────── helpers ─────────────────────────────
 /** Gradient cover as a `data:` URL of a generated SVG. */
@@ -124,9 +132,15 @@ export const mockConfig = {
   keyboardFocusDelayMs: 30,
   failKeyboardFocus: false,
   failHotkeyRegistration: false,
+  failSettingsSave: false,
+  busyHotkeys: [] as string[],
   captureOutcome: "success" as "success" | "cancel" | "error" | "empty",
   qrText: "https://example.com/ccott",
-  dockOpenError: false
+  dockOpenError: false,
+  shelfDragOutcome: "drop" as "drop" | "cancel" | "error",
+  currencyOffline: false,
+  currencyStale: false,
+  currencyFail: false,
 };
 
 /** Helpers for poking the app from the browser console / devtools: `__ISLAND_MOCK__.openSettings()`, … */
@@ -135,6 +149,8 @@ export interface MockHelpers {
   openSettings: () => void;
   /** Simulates pressing the global summon hotkey (`island://summoned`). */
   summon: () => void;
+  /** Simulates opening the command bar (`cmd://open`). */
+  cmdOpen: () => void;
   /** Simulates a copy in another app (`clipboard://added` + `clipboard://changed`). */
   copy: (text: string, kind?: ClipItem["kind"]) => ClipItem;
   /** Simulates the user clicking another window while the island holds the keyboard (`island://focus-changed`). */
@@ -188,6 +204,8 @@ const TRACKS: Track[] = [
 ];
 
 interface MockState {
+  shelf: ShelfItem[];
+  nextShelfId: number;
   dock: DockItem[];
   nextDockId: number;
   trackIndex: number;
@@ -203,6 +221,7 @@ interface MockState {
   update: UpdateInfo | null;
   clips: ClipItem[];
   notes: Note[];
+  cmdItems: CmdItem[];
   nextClipId: number;
   nextNoteId: number;
 }
@@ -248,6 +267,11 @@ function clip(
 }
 
 function createState(): MockState {
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  if (urlParams?.get("offline") === "1") mockConfig.currencyOffline = true;
+  const initialTheme = urlParams?.get("theme") === "light" ? ("light" as const) : urlParams?.get("theme") === "dark" ? ("dark" as const) : ("auto" as const);
+  const initialLite = urlParams?.get("lite") === "1";
+  const initialLang = urlParams?.get("lang") === "en" ? ("en" as const) : urlParams?.get("lang") === "ru" ? ("ru" as const) : ("auto" as const);
   const now = Date.now();
   const min = 60_000;
   const devices: AudioDevice[] = [
@@ -317,8 +341,94 @@ function createState(): MockState {
       updatedAt: now - 30 * 60 * min
     },
   ];
+  const cmdItems: CmdItem[] = [
+    {
+      id: "app-telegram",
+      kind: "app",
+      title: "Telegram",
+      subtitle: "Telegram Desktop · C:\\Users\\User\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe",
+      icon: null,
+    },
+    {
+      id: "app-code",
+      kind: "app",
+      title: "Visual Studio Code",
+      subtitle: "Code.exe · C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+      icon: null,
+    },
+    {
+      id: "app-chrome",
+      kind: "app",
+      title: "Google Chrome",
+      subtitle: "chrome.exe · C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      icon: null,
+    },
+    {
+      id: "app-terminal",
+      kind: "app",
+      title: "Windows Terminal",
+      subtitle: "wt.exe · shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+      icon: null,
+    },
+    {
+      id: "app-ytm",
+      kind: "app",
+      title: "YouTube Music",
+      subtitle: "msedge_proxy.exe · C:\\Program Files (x86)\\Microsoft\\Edge\\Application",
+      icon: null,
+    },
+    {
+      id: "file-design-spec",
+      kind: "file",
+      title: "design-spec.md",
+      subtitle: "C:\\Users\\User\\Documents\\island-win\\docs\\design-spec.md",
+      icon: null,
+    },
+    {
+      id: "file-island-tsx",
+      kind: "file",
+      title: "Island.tsx",
+      subtitle: "C:\\Users\\User\\Documents\\island-win\\src\\shell\\Island.tsx",
+      icon: null,
+    },
+    {
+      id: "file-report-xlsx",
+      kind: "file",
+      title: "Quarterly_Report.xlsx",
+      subtitle: "C:\\Users\\User\\Documents\\Reports\\Quarterly_Report.xlsx",
+      icon: null,
+    },
+    {
+      id: "file-screenshot-png",
+      kind: "file",
+      title: "Screenshot_2026-11-02.png",
+      subtitle: "C:\\Users\\User\\Pictures\\Screenshots\\Screenshot_2026-11-02.png",
+      icon: null,
+    },
+    {
+      id: "folder-docs",
+      kind: "folder",
+      title: "Documents",
+      subtitle: "C:\\Users\\User\\Documents",
+      icon: null,
+    },
+    {
+      id: "folder-downloads",
+      kind: "folder",
+      title: "Downloads",
+      subtitle: "C:\\Users\\User\\Downloads",
+      icon: null,
+    },
+  ];
   return {
     trackIndex: 0,
+    shelf: urlParams?.get("shelf") === "empty" ? [] : [
+      { id: "shelf-1", path: "C:\\Users\\User\\Documents\\Report.pdf", name: "Report.pdf", kind: "file", size: 124_800, addedAt: now, missing: false, icon: "" },
+      { id: "shelf-2", path: "C:\\Users\\User\\Pictures\\Photo.png", name: "Photo.png", kind: "file", size: 2_400_000, addedAt: now - min, missing: false, icon: "" },
+      { id: "shelf-3", path: "C:\\Users\\User\\Projects", name: "Projects", kind: "folder", size: null, addedAt: now - 2 * min, missing: false, icon: "" },
+      { id: "shelf-4", path: "C:\\Users\\User\\Downloads\\Moved.zip", name: "Moved.zip", kind: "file", size: 4096, addedAt: now - 3 * min, missing: true, icon: "" },
+    ],
+    nextShelfId: 5,
     dock: ["Terminal", "Documents", "Projects", "Sketches", "Notes"].map((name, index) => ({
       id: `dock-${index + 1}`,
       name,
@@ -332,8 +442,8 @@ function createState(): MockState {
     devices,
     settings: {
       ocrLanguage: "auto",
-      language: "auto",
-      theme: "auto",
+      language: initialLang,
+      theme: initialTheme,
       vibrancy: "none",
       monitor: "primary",
       autostart: false,
@@ -344,6 +454,12 @@ function createState(): MockState {
       summonHotkey: "Ctrl+Alt+I",
       fullscreenAllowlist: [],
       autoHideApps: [...DEFAULT_AUTO_HIDE_APPS],
+      quickTiles: DEFAULT_QUICK_TILES.map((tile) => ({ ...tile })),
+      liteMode: initialLite,
+      commandHotkey: "Ctrl+Alt+Space",
+      downloadsMonitor: true,
+      shelfKeepAfterDrag: false,
+      shelfRetentionHours: 24,
     },
     fullscreenApps: [
       { exe: "chrome.exe", title: "YouTube — Google Chrome", lastSeen: now - 60_000 },
@@ -369,16 +485,47 @@ function createState(): MockState {
     update: null,
     clips,
     notes,
+    cmdItems,
     nextClipId: 11,
     nextNoteId: 4,
   };
 }
 
 let state = createState();
+let hotkeyStatus: HotkeyStatus = { summon: "ok", command: "ok", commandFallbackFrom: null };
+let pendingSettingsSave = false;
+
+/** Simulate startup registrations, including the persisted default-only fallback and its events. */
+export function mockHotkeysStartup(occupied: readonly string[], settings: Partial<Pick<Settings, "summonHotkey" | "commandHotkey">> = {}): void {
+  mockConfig.busyHotkeys = occupied.map(normalizeAccelerator);
+  state.settings = { ...state.settings, ...settings };
+  const { summonHotkey, commandHotkey } = state.settings;
+  const isBusy = (shortcut: string) => mockConfig.busyHotkeys.includes(shortcut);
+  const summon = !summonHotkey ? "off" : isBusy(summonHotkey) ? "busy" : "ok";
+  let command: HotkeyStatus["command"] = !commandHotkey ? "off" : isBusy(commandHotkey) || (summon === "ok" && commandHotkey === summonHotkey) ? "busy" : "ok";
+  let commandFallbackFrom: string | null = null;
+  if (command === "busy" && commandHotkey === "Ctrl+Alt+Space") {
+    const fallback = COMMAND_HOTKEY_FALLBACKS.find((key) => !isBusy(key) && (summon !== "ok" || key !== summonHotkey));
+    if (fallback) {
+      state.settings.commandHotkey = fallback;
+      commandFallbackFrom = commandHotkey;
+      command = "ok";
+    }
+  }
+  hotkeyStatus = { summon, command, commandFallbackFrom };
+  pendingSettingsSave = commandFallbackFrom !== null && mockConfig.failSettingsSave;
+  mockEmit("settings://changed", state.settings);
+  mockEmit("hotkeys://status", hotkeyStatus);
+}
 
 /** Reset all mutable mock data and counters (tests). Listeners stay registered. */
 export function resetMock(): void {
+  mockConfig.shelfDragOutcome = "drop";
+  resetMockDownloads();
   state = createState();
+  hotkeyStatus = { summon: "ok", command: "ok", commandFallbackFrom: null };
+  pendingSettingsSave = false;
+  mockConfig.failSettingsSave = false;
   mockStats.shapeCalls = 0;
   mockStats.modeCalls = 0;
   mockStats.lastShape = null;
@@ -392,9 +539,13 @@ export function resetMock(): void {
   mockConfig.keyboardFocusDelayMs = 30;
   mockConfig.failKeyboardFocus = false;
   mockConfig.failHotkeyRegistration = false;
+  mockConfig.busyHotkeys = [];
   mockConfig.captureOutcome = "success";
   mockConfig.qrText = "https://example.com/ccott";
   mockConfig.dockOpenError = false;
+  mockConfig.currencyOffline = false;
+  mockConfig.currencyStale = false;
+  mockConfig.currencyFail = false;
   clearTimeout(artworkTimer);
   artworkTimer = undefined;
   scheduleTrackEnd();
@@ -505,6 +656,78 @@ const handlers: Handlers = {
   dock_start_drag: ({ id }) => {
     if (!state.dock.some((i) => i.id === id)) throw new Error(t("dock.notFound"));
   },
+  cmd_search: ({ query, limit }) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return state.cmdItems
+      .filter((item) => item.title.toLowerCase().includes(q) || item.subtitle.toLowerCase().includes(q))
+      .slice(0, limit);
+  },
+  cmd_launch: ({ id, mode: _mode }) => {
+    const item = state.cmdItems.find((i) => i.id === id);
+    if (!item) throw new Error("Item not found: " + id);
+  },
+  shelf_list: () => {
+    const hours = state.settings.shelfRetentionHours;
+    const retained = state.shelf.filter(item => hours === 0 || item.addedAt > Date.now() - hours * 3_600_000);
+    if (retained.length !== state.shelf.length) { state.shelf = retained; mockEmit("shelf://changed", retained); }
+    return state.shelf;
+  },
+  shelf_add: ({ paths }) => {
+    const key = (path: string) => path.replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+    for (const path of paths) {
+      if (!/^(?:[a-z]:[\\/]|\\\\)/i.test(path) || path.includes("\0")) throw new Error(t("shelf.missing"));
+    }
+    for (const path of paths) {
+      const existing = state.shelf.find(item => key(item.path) === key(path));
+      state.shelf = state.shelf.filter(item => item !== existing);
+      state.shelf.unshift({ id: existing?.id ?? `shelf-${state.nextShelfId++}`, path,
+        name: path.replace(/\\+$/, "").split(/[\\/]/).pop() || path, kind: existing?.kind ?? "file",
+        size: existing?.size ?? null, addedAt: Date.now(), missing: false, icon: existing?.icon ?? "" });
+    }
+    mockEmit("shelf://changed", state.shelf);
+    return state.shelf;
+  },
+  shelf_remove: ({ ids }) => {
+    state.shelf = state.shelf.filter(item => !ids.includes(item.id));
+    mockEmit("shelf://changed", state.shelf); return state.shelf;
+  },
+  shelf_clear: () => { state.shelf = []; mockEmit("shelf://changed", []); return []; },
+  shelf_open: ({ id, mode }) => {
+    if (!state.shelf.some(item => item.id === id && !item.missing) || !["open", "reveal"].includes(mode)) throw new Error(t("shelf.missing"));
+  },
+  shelf_start_drag: ({ ids }) => {
+    if (!ids.length || ids.some(id => !state.shelf.some(item => item.id === id && !item.missing))) throw new Error(t("shelf.missing"));
+    if (mockConfig.shelfDragOutcome === "error") throw new Error(t("shelf.error"));
+    if (mockConfig.shelfDragOutcome === "drop" && !state.settings.shelfKeepAfterDrag) {
+      state.shelf = state.shelf.filter(item => !ids.includes(item.id)); mockEmit("shelf://changed", state.shelf);
+    }
+  },
+  // §20a: live mock registration state, including startup busy/fallback simulation.
+  hotkeys_status: () => hotkeyStatus,
+  cmd_currency_rates: ({ base }) => {
+    if (mockConfig.currencyFail) {
+      throw new Error("Currency network offline");
+    }
+    const normBase = base.toUpperCase();
+    const ratesTable: Record<string, Record<string, number>> = {
+      USD: { USD: 1, EUR: 0.92, RUB: 96.5, KZT: 495.0, GBP: 0.77, JPY: 152.0, CNY: 7.12, CHF: 0.86, CAD: 1.38, AUD: 1.51 },
+      EUR: { EUR: 1, USD: 1.087, RUB: 104.9, KZT: 538.0, GBP: 0.837, JPY: 165.2, CNY: 7.74, CHF: 0.935 },
+      GBP: { GBP: 1, USD: 1.298, EUR: 1.194, KZT: 635.40, RUB: 125.2, JPY: 197.4 },
+      KZT: { KZT: 1, USD: 0.00202, EUR: 0.00186, RUB: 0.195, GBP: 0.00157 },
+      RUB: { RUB: 1, USD: 0.01036, EUR: 0.00953, KZT: 5.13, GBP: 0.00799 },
+    };
+    const rates = ratesTable[normBase] ?? { [normBase]: 1, USD: 1, EUR: 0.92, KZT: 495 };
+    const stale = mockConfig.currencyOffline || (normBase === "GBP" && mockConfig.currencyStale);
+    return {
+      base: normBase,
+      rates,
+      updatedAt: Date.now() - (stale ? 7200000 : 60000),
+      stale: Boolean(stale),
+    };
+  },
+  downloads_list: () => listMockDownloads(state.settings.downloadsMonitor, (items) => mockEmit("downloads://changed", items)),
+  downloads_open: ({ id, mode }) => openMockDownload(id, mode),
   island_set_shape: ({ shape }) => {
     mockStats.shapeCalls += 1;
     mockStats.lastShape = shape;
@@ -551,14 +774,30 @@ const handlers: Handlers = {
   window_recent_maximized_apps: () => mockRecentMaximizedApps(),
   settings_get: () => state.settings,
   settings_set: ({ patch }) => {
+    if (patch.shelfKeepAfterDrag !== undefined && typeof patch.shelfKeepAfterDrag !== "boolean") throw new Error("Invalid shelfKeepAfterDrag");
+    if (patch.shelfRetentionHours !== undefined && !SHELF_RETENTION_HOURS.includes(patch.shelfRetentionHours)) throw new Error("Invalid shelfRetentionHours");
+    if (patch.downloadsMonitor !== undefined && typeof patch.downloadsMonitor !== "boolean") throw new Error("Invalid downloadsMonitor");
     const next: Settings = { ...state.settings, ...patch };
+    if (JSON.stringify(next) === JSON.stringify(state.settings)) {
+      if (pendingSettingsSave && mockConfig.failSettingsSave) throw new Error(t("hotkey.sessionOnly"));
+      pendingSettingsSave = false;
+      return state.settings;
+    }
+    if (patch.commandHotkey !== undefined) {
+      const normalized = normalizeAccelerator(patch.commandHotkey);
+      if (normalized !== state.settings.commandHotkey && normalized && (mockConfig.failHotkeyRegistration || mockConfig.busyHotkeys.includes(normalized))) {
+        throw new Error(t("hotkey.registration", { shortcut: normalized }));
+      }
+      next.commandHotkey = normalized;
+    }
     if (patch.summonHotkey !== undefined) {
       const normalized = normalizeAccelerator(patch.summonHotkey);
-      if (normalized && mockConfig.failHotkeyRegistration) {
+      if (normalized !== state.settings.summonHotkey && normalized && (mockConfig.failHotkeyRegistration || mockConfig.busyHotkeys.includes(normalized))) {
         throw new Error(t("hotkey.registration", { shortcut: normalized }));
       }
       next.summonHotkey = normalized;
     }
+    if (next.commandHotkey && next.commandHotkey === next.summonHotkey) throw new Error(t("hotkey.distinct"));
     if (patch.fullscreenAllowlist !== undefined) {
       next.fullscreenAllowlist = normalizeFullscreenAllowlist(patch.fullscreenAllowlist);
     }
@@ -567,8 +806,20 @@ const handlers: Handlers = {
     }
     next.hoverExpandDelayMs = Math.max(0, Math.min(1000, Math.round(next.hoverExpandDelayMs)));
     next.hoverCollapseDelayMs = Math.max(0, Math.min(2000, Math.round(next.hoverCollapseDelayMs)));
+    const downloadsChanged = next.downloadsMonitor !== state.settings.downloadsMonitor;
+    const summonChanged = next.summonHotkey !== state.settings.summonHotkey;
+    const commandChanged = next.commandHotkey !== state.settings.commandHotkey;
+    if (summonChanged) hotkeyStatus.summon = next.summonHotkey ? "ok" : "off";
+    if (commandChanged) {
+      hotkeyStatus.command = next.commandHotkey ? "ok" : "off";
+      hotkeyStatus.commandFallbackFrom = null;
+    }
     state.settings = next;
+    if (downloadsChanged) setMockDownloadsEnabled(next.downloadsMonitor, (items) => mockEmit("downloads://changed", items));
     mockEmit("settings://changed", state.settings);
+    if (summonChanged || commandChanged) mockEmit("hotkeys://status", hotkeyStatus);
+    pendingSettingsSave = mockConfig.failSettingsSave;
+    if (pendingSettingsSave) throw new Error(t("hotkey.sessionOnly"));
     return state.settings;
   },
   updater_check: () => {
@@ -744,6 +995,11 @@ export function mockOpenSettings(): void {
   mockEmit("island://open-settings", null);
 }
 
+/** Test/dev helper: the command bar hotkey was pressed (`cmd://open`). */
+export function mockCmdOpen(): void {
+  mockEmit("cmd://open", null);
+}
+
 /** Test/dev helper: the global summon hotkey was pressed (`island://summoned`). */
 export function mockSummon(): void {
   mockEmit("island://summoned", null);
@@ -779,6 +1035,7 @@ if (typeof window !== "undefined") {
   const helpers: MockHelpers = {
     openSettings: mockOpenSettings,
     summon: mockSummon,
+    cmdOpen: mockCmdOpen,
     copy: (text, kind = /^https?:\/\//.test(text) ? "link" : "text") => mockCopy({ kind, text, sourceApp: "chrome.exe" }),
     loseFocus: mockLoseKeyboardFocus,
     setMedia: mockSetMedia,
@@ -812,4 +1069,44 @@ export function mockSetSpectrum(patch: Partial<AudioSpectrum>): void {
     sampledAt: patch.sampledAt ?? Date.now(),
   };
   mockEmit("audio://spectrum", state.spectrum);
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (e) => {
+    // Alt+Space or Ctrl+Alt+Space to open command bar in browser mock
+    if (
+      (e.altKey && e.code === "Space") ||
+      (e.ctrlKey && e.altKey && e.code === "Space")
+    ) {
+      e.preventDefault();
+      mockCmdOpen();
+    }
+  });
+
+  if (import.meta.env.MODE !== "test") {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shouldOpenCmd = urlParams.get("cmd") === "1" || urlParams.has("cmdQuery");
+    if (shouldOpenCmd) {
+      mockStats.keyboardFocus = true;
+      const trigger = () => {
+        const store = (window as unknown as { __ISLAND_STORE__?: typeof import("../store").useIslandStore }).__ISLAND_STORE__;
+        if (store) {
+          const s = store.getState();
+          if (s.mode !== "expanded" || s.view !== "cmd") {
+            s.setView("cmd");
+            s.setMode("expanded");
+          }
+        }
+        if (mockListenerCount("cmd://open") > 0) {
+          mockEmit("island://focus-changed", { active: true });
+        } else {
+          setTimeout(trigger, 30);
+        }
+      };
+      if (document.readyState === "complete") {
+        setTimeout(trigger, 20);
+      } else {
+        window.addEventListener("DOMContentLoaded", () => setTimeout(trigger, 20));
+      }
+    }
+  }
 }

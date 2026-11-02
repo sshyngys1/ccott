@@ -31,7 +31,7 @@ it("switches mounted settings and all tabs immediately, persists the choice, and
   await waitFor(async () => expect((await invoke("settings_get")).language).toBe("en"));
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
   await screen.findByRole("tab", { name: "Text" });
-  expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Clipboard", "Text", "Notes"]);
+  expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Clipboard", "Text", "Notes", "Shelf"]);
   fireEvent.click(screen.getByRole("tab", { name: "Text" }));
   expect(await screen.findByRole("textbox", { name: "Text to transform" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Format JSON" })).toBeInTheDocument();

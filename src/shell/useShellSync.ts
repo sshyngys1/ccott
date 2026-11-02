@@ -38,10 +38,19 @@ export function useThemeSync(): void {
   }, [themeMode, setTheme]);
 }
 
-/** Follows settings.vibrancy (default none), mirroring the native result to `<html data-vibrancy>`. */
+/** Mirrors the flat material preference to `<html data-lite>` as settings change. */
+export function useLiteSync(): void {
+  const liteMode = useIslandStore((s) => s.settings.liteMode);
+  useEffect(() => {
+    document.documentElement.dataset.lite = String(liteMode);
+  }, [liteMode]);
+}
+
+/** Follows settings.vibrancy (suppressed in lite mode), mirroring the native result to `<html data-vibrancy>`. */
 export function useVibrancySync(): void {
   const setVibrancy = useIslandStore((s) => s.setVibrancy);
   const requested = useIslandStore((s) => s.settings.vibrancy);
+  const liteMode = useIslandStore((s) => s.settings.liteMode);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,11 +60,11 @@ export function useVibrancySync(): void {
       setVibrancy(applied);
     };
     document.documentElement.dataset.vibrancy = "none";
-    invoke("window_set_vibrancy", { mode: requested }).then((r) => apply(r.applied), () => apply("none"));
+    invoke("window_set_vibrancy", { mode: liteMode ? "none" : requested }).then((r) => apply(r.applied), () => apply("none"));
     return () => {
       cancelled = true;
     };
-  }, [requested, setVibrancy]);
+  }, [requested, liteMode, setVibrancy]);
 }
 
 /** Loads settings (theme, hover delays, DND, …) into the store and follows `settings://changed`. Missing backend (wave 1) → defaults. */

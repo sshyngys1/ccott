@@ -1,8 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MotionConfig } from "motion/react";
 import * as ipc from "../../ipc";
 import { mockCopy, mockListenerCount, resetMock } from "../../ipc/mock";
 import { onShellRequest, type ShellRequest } from "../../shared/shellBus";
+import { resetIslandStore, useIslandStore } from "../../store";
 import { ClipboardTab } from "./ClipboardTab";
 
 let requests: ShellRequest[] = [];
@@ -10,17 +12,21 @@ let off: () => void;
 
 beforeEach(() => {
   resetMock();
+  resetIslandStore();
+  useIslandStore.setState({ mode: "expanded", activeTab: "clipboard", view: "tabs" });
   requests = [];
   off = onShellRequest((r) => { requests.push(r); });
 });
 afterEach(() => {
   off();
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-async function mountTab() {
-  render(<ClipboardTab />);
+// These tests assert clipboard behavior; exit animation duration must not retain obsolete rows under load.
+async function mountTab(skipAnimations = true) {
+  render(<MotionConfig skipAnimations={skipAnimations}><ClipboardTab /></MotionConfig>);
   await screen.findByText("npm run tauri dev");
   await waitFor(() => expect(mockListenerCount("clipboard://changed")).toBe(1));
 }
@@ -86,8 +92,16 @@ describe("Clipboard tab: search", () => {
   });
 
   it("finds by text", async () => {
-    await mountTab();
+    await mountTab(true);
+    // Leave performance.now / rAF real: Motion's shared frame clock survives between tests.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const spy = vi.spyOn(ipc, "invoke");
     fireEvent.change(screen.getByRole("textbox", { name: "Поиск в истории буфера" }), { target: { value: "hello@" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(120); });
+    expect(spy).toHaveBeenCalledWith("clipboard_list", { query: "hello@", limit: 100 });
+    // Exit rows belong to Motion's frame queue; flush it after the filtered data renders.
+    await act(async () => { await vi.advanceTimersByTimeAsync(32); });
+    vi.useRealTimers();
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(rows()[0]).toHaveTextContent("hello@example.com");
   });
@@ -111,17 +125,89 @@ describe("Clipboard tab: search", () => {
 });
 
 describe("Clipboard tab: paste / copy", () => {
+  it.each(["unmount", "collapse", "tab", "settings", "whatsNew", "cmd", "away and back"])("cancels pending paste on %s before 160ms", async (action) => {
+    await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const spy = vi.spyOn(ipc, "invoke");
+    fireEvent.click(within(rowOf("npm run tauri dev")).getByRole("option"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    act(() => {
+      const state = useIslandStore.getState();
+      if (action === "unmount") cleanup();
+      else if (action === "collapse") state.setMode("collapsed");
+      else if (action === "tab") state.setActiveTab("home");
+      else if (action === "away and back") {
+        state.setActiveTab("home");
+        state.setActiveTab("clipboard");
+      } else state.setView(action as "settings" | "whatsNew" | "cmd");
+    });
+    // Navigation cases deliberately keep ClipboardTab mounted, as AnimatePresence does during exit.
+    if (action !== "unmount") expect(screen.getByText("npm run tauri dev")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(requests).toEqual([]);
+    expect(spy).not.toHaveBeenCalledWith("clipboard_paste", expect.anything());
+  });
+
+  it("restarts the 160ms delay and pastes only the latest activated record", async () => {
+    await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const spy = vi.spyOn(ipc, "invoke");
+    fireEvent.click(within(rowOf("npm run tauri dev")).getByRole("option"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(80); });
+    fireEvent.click(rows()[0]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(159); });
+    expect(requests).toEqual([]);
+    expect(spy).not.toHaveBeenCalledWith("clipboard_paste", expect.anything());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(requests).toEqual([{ type: "collapse" }]);
+    expect(spy.mock.calls.filter(([cmd]) => cmd === "clipboard_paste")).toEqual([["clipboard_paste", { id: 1, mode: "paste" }]]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(spy.mock.calls.filter(([cmd]) => cmd === "clipboard_paste")).toHaveLength(1);
+  });
+
+  it("a new copy activation cancels an earlier pending paste", async () => {
+    await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const spy = vi.spyOn(ipc, "invoke");
+    fireEvent.click(within(rowOf("npm run tauri dev")).getByRole("option"));
+    fireEvent.click(rows()[0], { shiftKey: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(requests).toEqual([{ type: "toast", text: "Скопировано" }]);
+    expect(spy.mock.calls.filter(([cmd]) => cmd === "clipboard_paste")).toEqual([["clipboard_paste", { id: 1, mode: "copy" }]]);
+  });
+
+  it("highlights the chosen row for 160ms before requesting collapse and paste", async () => {
+    await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const spy = vi.spyOn(ipc, "invoke");
+    const row = rowOf("npm run tauri dev");
+    fireEvent.click(within(row).getByRole("option"));
+    expect(row.querySelector(".cb-paste-flash")).toBeInTheDocument();
+    expect(requests).toEqual([]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(159); });
+    expect(requests).toEqual([]);
+    expect(spy).not.toHaveBeenCalledWith("clipboard_paste", expect.anything());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(requests).toEqual([{ type: "collapse" }]);
+    expect(spy).toHaveBeenCalledWith("clipboard_paste", expect.objectContaining({ mode: "paste" }));
+  });
+
   it("click collapses the island first, then pastes", async () => {
     await mountTab();
     const order: string[] = [];
     off();
     let released!: () => void;
-    off = onShellRequest((r) => { order.push(`shell:${r.type}`); return new Promise<void>((resolve) => { released = resolve; }); });
+    off = onShellRequest((r) => {
+      order.push(`shell:${r.type}`);
+      useIslandStore.getState().setMode("collapsed");
+      cleanup();
+      return new Promise<void>((resolve) => { released = resolve; });
+    });
     const spy = vi.spyOn(ipc, "invoke").mockImplementation((async (cmd: string) => {
       order.push(`invoke:${cmd}`);
     }) as never);
     fireEvent.click(within(rowOf("npm run tauri dev")).getByRole("option"));
-    expect(order).toEqual(["shell:collapse"]);
+    await waitFor(() => expect(order).toEqual(["shell:collapse"]));
     expect(spy).not.toHaveBeenCalled();
     await act(async () => { released(); });
     expect(order).toEqual(["shell:collapse", "invoke:clipboard_paste"]);
@@ -135,7 +221,7 @@ describe("Clipboard tab: paste / copy", () => {
     const input = screen.getByRole("textbox", { name: "Поиск в истории буфера" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(requests).toEqual([{ type: "collapse" }]);
+    await waitFor(() => expect(requests).toEqual([{ type: "collapse" }]));
     await waitFor(() => expect(spy).toHaveBeenCalledWith("clipboard_paste", { id: 8, mode: "paste" }));
   });
 
@@ -161,8 +247,15 @@ describe("Clipboard tab: paste / copy", () => {
     const real = ipc.invoke;
     vi.spyOn(ipc, "invoke").mockImplementation(((cmd: string, args: never) =>
       cmd === "clipboard_paste" ? Promise.reject(new Error(error)) : real(cmd as never, args)) as never);
+    off();
+    off = onShellRequest((r) => {
+      requests.push(r);
+      if (r.type === "collapse") {
+        useIslandStore.getState().setMode("collapsed");
+        cleanup();
+      }
+    });
     fireEvent.click(within(rowOf("npm run tauri dev")).getByRole("option"));
-    cleanup();
     await waitFor(() => expect(requests).toEqual([{ type: "collapse" }, { type: "toast", text: message }]));
   });
 });

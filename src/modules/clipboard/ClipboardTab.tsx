@@ -2,7 +2,7 @@ import { t, useT } from "../../i18n";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { IconClipboard, IconPin, IconSearch, IconTrash } from "../../design/icons";
-import { pressScale, springs } from "../../design/motion";
+import { durations, pressScale, springs } from "../../design/motion";
 import { useScrollFade } from "../../design/useScrollFade";
 import { invoke } from "../../ipc";
 import { cursorAfterRemoval, cursorIndex, groupClips, moveCursor } from "../../lib/clipboard/format";
@@ -13,6 +13,7 @@ import { useArmed } from "../../lib/useArmed";
 import { useNow } from "../../lib/useNow";
 import { requestShell } from "../../shared/shellBus";
 import type { ClipItem, PasteMode } from "../../shared/types";
+import { useIslandStore } from "../../store";
 import { ClipRow } from "./ClipRow";
 import "./clipboard.css";
 
@@ -22,6 +23,30 @@ const tap = { whileTap: { scale: pressScale }, transition: springs.press } as co
 
 export function ClipboardTab() {
   useT();
+  const [highlight, setHighlight] = useState<{ id: number; seq: number } | null>(null);
+  const highlightSeq = useRef(0);
+  const pasteTimer = useRef<number | null>(null);
+  const activationSeq = useRef(0);
+  const cancelPendingPaste = useCallback(() => {
+    ++activationSeq.current;
+    if (pasteTimer.current !== null) {
+      window.clearTimeout(pasteTimer.current);
+      pasteTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    // Presence keeps exiting tabs mounted: cancel on navigation itself, even if it is immediately reversed.
+    const unsubscribe = useIslandStore.subscribe((state, previous) => {
+      if (state.mode !== previous.mode || state.activeTab !== previous.activeTab || state.view !== previous.view) {
+        cancelPendingPaste();
+      }
+    });
+    return () => {
+      unsubscribe();
+      cancelPendingPaste();
+    };
+  }, [cancelPendingPaste]);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [items, setItems] = useState<ClipItem[] | null>(null);
@@ -72,16 +97,31 @@ export function ClipboardTab() {
   }, [cursorItem]);
 
   // ── actions ──
-  const activate = useCallback(async (item: ClipItem, mode: PasteMode) => {
-    try {
-      if (mode === "paste") await requestShell({ type: "collapse" });
-      await invoke("clipboard_paste", { id: item.id, mode });
-      if (mode === "copy") await requestShell({ type: "toast", get text() { return t("copied"); } });
-    } catch (err) {
-      console.warn("[island] clipboard_paste failed", err);
-      await requestShell({ type: "toast", text: mode === "paste" ? pasteErrorText(err) : t("couldnTCopy") });
+  const activate = useCallback((item: ClipItem, mode: PasteMode) => {
+    cancelPendingPaste();
+    const seq = activationSeq.current;
+    setHighlight({ id: item.id, seq: ++highlightSeq.current });
+    const perform = async () => {
+      try {
+        // Once collapse starts, finish collapse → paste even if the panel unmounts during focus release.
+        if (mode === "paste") await requestShell({ type: "collapse" });
+        await invoke("clipboard_paste", { id: item.id, mode });
+        if (mode === "copy") await requestShell({ type: "toast", get text() { return t("copied"); } });
+      } catch (err) {
+        console.warn("[island] clipboard_paste failed", err);
+        await requestShell({ type: "toast", text: mode === "paste" ? pasteErrorText(err) : t("couldnTCopy") });
+      }
+    };
+    if (mode === "paste") {
+      pasteTimer.current = window.setTimeout(() => {
+        if (seq !== activationSeq.current) return;
+        pasteTimer.current = null;
+        void perform();
+      }, durations.med * 1000);
+    } else {
+      void perform();
     }
-  }, []);
+  }, [cancelPendingPaste]);
 
   const togglePin = useCallback(
     (item: ClipItem) => {
@@ -193,6 +233,7 @@ export function ClipboardTab() {
       key={c.id}
       item={c}
       now={now}
+      highlight={highlight?.id === c.id ? highlight.seq : undefined}
       cursor={cursorItem?.id === c.id}
       onCursor={() => setCursorId(c.id)}
       onActivate={(mode) => activate(c, mode)}

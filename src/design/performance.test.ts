@@ -4,8 +4,41 @@ import { expect, it } from "vitest";
 
 const glass = readFileSync(new URL("./glass.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 const cssRules = [...glass.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, declarations]) => ({
-  selectors: selector.trim().split(/\s*,\s*/), declarations,
+  selectorText: selector.trim(), selectors: selector.trim().split(/\s*,\s*/), declarations,
 }));
+
+it("lite mode removes material effects from glass, cards, controls and menus without changing layout", () => {
+  const liteRules = cssRules.filter(rule => rule.selectorText.includes('[data-lite="true"]'));
+  expect(liteRules.length).toBeGreaterThan(0);
+  const surface = liteRules.find(rule => rule.selectors.includes(':root[data-lite="true"] .ig-island.ig-glass[data-resizing="true"]'))!;
+  for (const primitive of [".ig-glass", ".ig-glass-card", ".ig-glass-control", ".ig-tab-thumb", ".ig-chip", ".ig-glass-input", ".ig-field"]) {
+    expect(surface.selectorText).toContain(primitive);
+  }
+  for (const property of ["background-image: none;", "backdrop-filter: none;", "-webkit-backdrop-filter: none;"]) {
+    expect(surface.declarations).toContain(property);
+  }
+  expect(surface.declarations).toContain("box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-stroke);");
+  for (const primitive of [".ig-glass", ".ig-glass-control"]) {
+    for (const pseudo of ["before", "after"]) {
+      const rule = liteRules.find(rule => rule.selectors.includes(`:root[data-lite="true"] ${primitive}::${pseudo}`))!;
+      for (const property of ["content: none;", "display: none;", "background: none;", "mask: none;", "mix-blend-mode: normal;"]) {
+        expect(rule.declarations).toContain(property);
+      }
+    }
+  }
+  for (const rule of liteRules) {
+    expect(rule.declarations).not.toMatch(/(?:^|;)\s*(?:position|isolation|inset|width|height|padding|margin|transform|animation|transition)\s*:/m);
+    // Hiding decorative pseudo-elements is the sole display override.
+    if (rule.selectorText.includes("::before")) continue;
+    expect(rule.declarations).not.toMatch(/(?:^|;)\s*display\s*:/m);
+    expect(rule.declarations).not.toMatch(/radial-gradient|url\(|var\(--ig-(?:shadow|shadow-pill|inner-glow|edge-shade)\)/);
+  }
+  expect(cssRules.find(rule => rule.selectors.includes(".ig-glass"))?.declarations).toContain("radial-gradient(");
+  expect(cssRules.find(rule => rule.selectors.includes(".ig-glass--refract"))?.declarations).toContain("url(#ig-refraction)");
+  expect(cssRules.find(rule => rule.selectors.includes(".ig-glass::before"))?.declarations).toContain("exclude");
+  expect(cssRules.find(rule => rule.selectors.includes(".ig-glass::after"))?.declarations).toContain("soft-light");
+  expect(cssRules.find(rule => rule.selectors.includes(".ig-glass"))?.declarations).toContain("var(--ig-shadow)");
+});
 
 it("smooths equalizer samples with a short finite transition, none under reduced motion", () => {
   const rules = [...glass.matchAll(/\.ig-eq > i\s*\{([^}]+)\}/g)].map(match => match[1]);

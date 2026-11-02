@@ -16,10 +16,10 @@ export function clipboardToastPreview(text: string, preview: string = text): str
 }
 
 /** Shows a toast in the pill (the hold timer lives in `useToastSync`). Suppressed by doNotDisturb. */
-export function showToast(toast: { label: string; preview?: string; previewKey?: PillToast["previewKey"]; onClick?: () => void; actionLabel?: string; color?: string }): void {
+export function showToast(toast: Omit<PillToast, "id" | "preview"> & { preview?: string }): void {
   const store = useIslandStore.getState();
   if (store.doNotDisturb) return;
-  store.setToast({ id: ++seq, label: toast.label, preview: toast.preview ?? "", ...(toast.previewKey ? { previewKey: toast.previewKey } : {}), ...(toast.onClick ? { onClick:toast.onClick } : {}), ...(toast.actionLabel ? {actionLabel:toast.actionLabel} : {}), ...(toast.color ? {color:toast.color} : {}) });
+  store.setToast({ ...toast, id: ++seq, preview: toast.preview ?? "" });
 }
 
 /** Records an available update in the store and shows a one-time «Доступно обновление» toast per version. */

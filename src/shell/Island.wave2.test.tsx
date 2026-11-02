@@ -78,6 +78,28 @@ afterEach(() => {
   resetIslandStore();
 });
 
+it("unmounts the outgoing tab before mounting the next heavy screen, including rapid navigation", async () => {
+  const { container } = await mountIsland(FIELD_MODULES);
+  await expandAndShow("text");
+  expect(screen.getByLabelText("Поиск")).toBeInTheDocument();
+  const simultaneous: number[] = [];
+  const sample = () => simultaneous.push(container.querySelectorAll('.ig-panel-body > div').length);
+  const observer = new MutationObserver(sample);
+  observer.observe(container, { childList: true, subtree: true });
+  try {
+    act(() => useIslandStore.getState().setActiveTab("notes"));
+    sample();
+    expect(screen.queryByText("Другая вкладка")).toBeNull();
+    await screen.findByText("Другая вкладка");
+    expect(screen.queryByLabelText("Поиск")).toBeNull();
+    act(() => useIslandStore.getState().setView("settings"));
+    act(() => useIslandStore.getState().setView("tabs"));
+    act(() => useIslandStore.getState().setActiveTab("text"));
+    await screen.findByLabelText("Поиск");
+    expect(Math.max(...simultaneous)).toBe(1);
+  } finally { observer.disconnect(); }
+});
+
 describe("keyboard focus", () => {
   it("focusin on a field in the expanded panel calls island_set_keyboard_focus(true) and re-focuses the field", async () => {
     await mountIsland(FIELD_MODULES);
@@ -96,6 +118,56 @@ describe("keyboard focus", () => {
     act(() => screen.getByRole("button", { name: "Кнопка" }).focus());
     await new Promise((r) => setTimeout(r, 60));
     expect(mockStats.keyboardFocusCalls).toEqual([]);
+  });
+
+  it("releases the keyboard on a null-target blur outside cmd, then collapses when the cursor leaves", async () => {
+    await mountIsland(FIELD_MODULES);
+    await expandAndShow("text");
+    const input = screen.getByLabelText("Поиск");
+    act(() => input.focus());
+    await waitFor(() => expect(mockStats.keyboardFocus).toBe(true));
+    expect(useIslandStore.getState().view).toBe("tabs");
+    expect(useIslandStore.getState().hoverInside).toBe(true);
+
+    act(() => input.blur());
+    expect(document.body).toHaveFocus();
+    await waitFor(() => expect(mockStats.keyboardFocusCalls).toEqual([true, false]));
+    await waitFor(() => expect(mockStats.keyboardFocus).toBe(false));
+    expect(useIslandStore.getState().keyboardFocus).toBe(false);
+    expect(useIslandStore.getState().mode).toBe("expanded");
+
+    act(() => mockEmit("island://hover", { inside: false }));
+    await waitFor(() => expect(useIslandStore.getState().mode).toBe("collapsed"));
+  });
+
+  it("collapses on a null-target blur outside cmd when the cursor is already outside", async () => {
+    await mountIsland(FIELD_MODULES);
+    await expandAndShow("text");
+    const input = screen.getByLabelText("Поиск");
+    act(() => input.focus());
+    await waitFor(() => expect(mockStats.keyboardFocus).toBe(true));
+    act(() => mockEmit("island://hover", { inside: false }));
+    expect(useIslandStore.getState().mode).toBe("expanded");
+
+    act(() => input.blur());
+    expect(useIslandStore.getState().mode).toBe("collapsed");
+    await waitFor(() => expect(mockStats.keyboardFocusCalls).toEqual([true, false]));
+  });
+
+  it("keeps the keyboard when focus moves from a field to a button inside the island outside cmd", async () => {
+    await mountIsland(FIELD_MODULES);
+    await expandAndShow("text");
+    const input = screen.getByLabelText("Поиск");
+    const button = screen.getByRole("button", { name: "Кнопка" });
+    act(() => input.focus());
+    await waitFor(() => expect(mockStats.keyboardFocus).toBe(true));
+
+    act(() => button.focus());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(button).toHaveFocus();
+    expect(useIslandStore.getState().mode).toBe("expanded");
+    expect(useIslandStore.getState().keyboardFocus).toBe(true);
+    expect(mockStats.keyboardFocusCalls).toEqual([true]);
   });
 
   it("does not collapse when the cursor leaves while a field holds the keyboard", async () => {

@@ -26,14 +26,30 @@
   --ig-pill-width-toast: 312px; /* «Скопировано» */
   --ig-pill-hover-grow: 12px; /* extra width on hover (height grows by 1/6 of it) */
 
-  /* Geometry — expanded panel. 720×396 at top 8px → bottom edge 404px; shadow ≤ 40px sideways, ≤ 64px down. */
+  /* Geometry — expanded panel. Current outer shadow: 18px sideways, 30px down. */
   --ig-panel-width: 720px;
   --ig-panel-height: 396px;
+  /* Fourth quick-tools row: 64px + 8px gap. 8 + 468 + 30px shadow = 506px. */
+  --ig-quick-tile-row-height: 64px;
+  --ig-quick-tile-row-step: 72px;
+  --ig-panel-height-tall: 468px;
   --ig-panel-padding: 16px;
   --ig-tabbar-height: 36px;
   --ig-dock-height: 60px;
   --ig-control-height: 32px;
   --ig-control-height-lg: 40px;
+
+  /* Geometry — command bar (v0.3). Max 640×420 anchored at top 8px → fits 800×520 window with shadow. */
+  --ig-cmd-width: 640px;
+  --ig-cmd-height: 420px;
+  --ig-cmd-min-height: 160px;
+  --ig-cmd-radius: 28px;
+  --ig-cmd-input-height: 52px;
+  --ig-cmd-row-height: 48px;
+  --ig-cmd-group-height: 24px;
+  --ig-cmd-banner-height: 36px;
+  --ig-cmd-hero-height: 74px;
+  --ig-cmd-footer-height: 36px;
 
   /* Radii — concentric: inner = outer − padding (32 − 16 = 16). */
   --ig-radius-pill: 18px; /* = pill-height / 2 */
@@ -143,6 +159,13 @@
   --ig-surface-pressed: rgb(255 255 255 / 0.04);
   --ig-surface-sunken: rgb(0 0 0 / 0.26); /* tracks, inputs */
   --ig-surface-selected: rgb(255 255 255 / 0.15); /* active tab thumb, selected tile */
+  /* Opaque equivalents of the fallback plates, precomposited over --ig-surface for lite mode. */
+  --ig-lite-surface: rgb(22 23 29);
+  --ig-lite-raised: rgb(37 38 43);
+  --ig-lite-hover: rgb(47 48 53);
+  --ig-lite-pressed: rgb(31 32 38);
+  --ig-lite-sunken: rgb(16 17 21);
+  --ig-lite-selected: rgb(56 57 62);
   --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.07) 0%, rgb(255 255 255 / 0.015) 38%, rgb(255 255 255 / 0) 60%);
 
   /* Strokes & highlights */
@@ -214,6 +237,12 @@
   --ig-surface-pressed: rgb(214 216 224 / 0.75);
   --ig-surface-sunken: rgb(20 24 40 / 0.07);
   --ig-surface-selected: rgb(255 255 255 / 1);
+  --ig-lite-surface: rgb(238 239 244);
+  --ig-lite-raised: rgb(251 251 252);
+  --ig-lite-hover: rgb(255 255 255);
+  --ig-lite-pressed: rgb(220 222 229);
+  --ig-lite-sunken: rgb(223 224 230);
+  --ig-lite-selected: rgb(255 255 255);
   --ig-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.55) 0%, rgb(255 255 255 / 0.12) 40%, rgb(255 255 255 / 0) 65%);
 
   --ig-stroke: rgb(20 24 40 / 0.09);

@@ -1,6 +1,6 @@
 // Owner: F1 (Frontend-Shell). What's New screen (spec §17).
 import { useT } from "../i18n";
-import { IconBatteryCharging, IconCheck, IconMusic, IconNote } from "../design/icons";
+import { IconBatteryCharging, IconCheck, IconCleanText, IconCommand, IconDownload, IconFile, IconFolder, IconHome, IconMusic, IconNote } from "../design/icons";
 import { acknowledgeWhatsNew, getWhatsNewForVersion, type WhatsNewItem } from "../lib/whatsNew/catalog";
 import { useIslandStore } from "../store";
 import { APP_VERSION } from "../ipc";
@@ -10,6 +10,15 @@ interface WhatsNewViewProps {
   version?: string;
   onClose?: () => void;
   showTitle?: boolean;
+}
+
+/** Only the keyboard marker is interpreted; all other text remains escaped by React. */
+function renderStep(text: string) {
+  return text.split(/(\{kbd:[^{}]+\})/g).map((part, index) =>
+    index % 2 === 1
+      ? <kbd key={index} className="ig-kbd">{part.slice(5, -1)}</kbd>
+      : part,
+  );
 }
 
 export function WhatsNewView({ version = APP_VERSION, onClose, showTitle = true }: WhatsNewViewProps) {
@@ -46,6 +55,18 @@ export function WhatsNewView({ version = APP_VERSION, onClose, showTitle = true 
         return <IconBatteryCharging size={18} />;
       case "changelog":
         return <IconNote size={18} />;
+      case "command":
+        return <IconCommand />;
+      case "shelf":
+        return <IconFolder />;
+      case "downloads":
+        return <IconDownload />;
+      case "tiles":
+        return <IconHome />;
+      case "lite":
+        return <IconFile />;
+      case "motion":
+        return <IconCleanText />;
       default:
         return <IconCheck size={18} />;
     }
@@ -60,7 +81,7 @@ export function WhatsNewView({ version = APP_VERSION, onClose, showTitle = true 
         </span>
       </div>
 
-      <div className="ig-whats-new-list">
+      <div className="ig-whats-new-list ig-scroll">
         {items.map((item) => (
           <div key={item.id} className="ig-glass-card ig-whats-new-card">
             <div className="ig-whats-new-icon" aria-hidden="true">
@@ -69,6 +90,11 @@ export function WhatsNewView({ version = APP_VERSION, onClose, showTitle = true 
             <div className="ig-whats-new-content">
               <h4 className="ig-whats-new-item-title">{t(item.titleKey)}</h4>
               <p className="ig-whats-new-item-desc">{t(item.descKey)}</p>
+              {item.stepKeys && item.stepKeys.length > 0 && (
+                <ul className="ig-whats-new-steps">
+                  {item.stepKeys.map((key) => <li key={key}>{renderStep(t(key))}</li>)}
+                </ul>
+              )}
             </div>
           </div>
         ))}

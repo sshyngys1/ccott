@@ -88,7 +88,7 @@ fn description(path: &str) -> Option<String> {
         (!text.is_empty()).then_some(text)
     }
 }
-fn icon(path: &str) -> Result<String, windows::core::Error> {
+pub(crate) fn icon(path: &str) -> Result<String, windows::core::Error> {
     let path = wide(&shell_path(path));
     // SAFETY: COM is initialized on this worker. Shell returns an owned bitmap, which is deleted after extraction.
     let pixels = unsafe {

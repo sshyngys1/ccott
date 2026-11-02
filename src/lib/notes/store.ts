@@ -26,7 +26,10 @@ export interface NotesStore {
   selectFolder: (folder: FolderFilter) => void;
   addFolder: (rawName: string) => void;
   select: (id: number) => void;
-  newNote: () => void;
+  newNote: (fresh?: boolean) => void;
+  timerFocusRequested: boolean;
+  requestTimerFocus: () => void;
+  clearTimerFocus: () => void;
   /** Called on every editor input with the editor's current HTML. */
   edit: (html: string) => void;
   /** Saves pending edits now (tab unmounts, switching notes). */
@@ -94,6 +97,9 @@ export const useNotesStore = create<NotesStore>()((set, get) => ({
   extraFolders: [],
   selected: null,
   save: { state: "idle", at: null },
+  timerFocusRequested: false,
+  requestTimerFocus: () => set({ timerFocusRequested: true }),
+  clearTimerFocus: () => set({ timerFocusRequested: false }),
 
   load: () => {
     if (get().loaded) return Promise.resolve();
@@ -138,8 +144,8 @@ export const useNotesStore = create<NotesStore>()((set, get) => ({
     set({ selected: id, save: { state: "idle", at: null } });
   },
 
-  newNote: () => {
-    if (get().selected === "new") return; // already an empty draft
+  newNote: (fresh = false) => {
+    if (get().selected === "new" && !fresh) return; // reuse the current draft unless explicitly requested
     void get().flush();
     draftToken++;
     set({ selected: "new", save: { state: "idle", at: null } });
@@ -250,7 +256,7 @@ export function resetNotesStore(): void {
   loading = null;
   draftToken = 0;
   unsaved.clear();
-  useNotesStore.setState({ notes: [], loaded: false, folder: ALL_FOLDERS, extraFolders: [], selected: null, save: { state: "idle", at: null } });
+  useNotesStore.setState({ notes: [], loaded: false, folder: ALL_FOLDERS, extraFolders: [], selected: null, save: { state: "idle", at: null }, timerFocusRequested: false });
 }
 
 /** Number of edits waiting for the debounce / a save (tests). */

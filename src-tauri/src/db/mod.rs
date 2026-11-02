@@ -45,6 +45,20 @@ const MIGRATIONS: &[&str] = &[
         icon TEXT NOT NULL DEFAULT '',
         position INTEGER NOT NULL
     );",
+    // v4: temporary file references. Existing clipboard, notes and dock data are untouched.
+    "CREATE TABLE shelf (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL,
+        path_key TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        size INTEGER,
+        added_at INTEGER NOT NULL,
+        missing INTEGER NOT NULL DEFAULT 0,
+        icon TEXT NOT NULL DEFAULT '',
+        position INTEGER NOT NULL
+    );
+    CREATE INDEX idx_shelf_added ON shelf(added_at);",
 ];
 
 /// Current schema version (= number of migrations).
@@ -172,7 +186,7 @@ mod tests {
             .unwrap();
         assert_eq!(v, schema_version());
         migrate(&mut conn).unwrap();
-        for table in ["clips", "notes", "dock"] {
+        for table in ["clips", "notes", "dock", "shelf"] {
             let n: i64 = conn
                 .query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -182,6 +196,40 @@ mod tests {
                 .unwrap();
             assert_eq!(n, 1, "table {table}");
         }
+    }
+
+    #[test]
+    fn shelf_migration_preserves_existing_dock_and_clipboard() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for migration in &MIGRATIONS[..3] {
+            conn.execute_batch(migration).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        conn.execute("INSERT INTO dock(path,path_key,name,kind,icon,position) VALUES ('p','p','name','file','icon',5)", []).unwrap();
+        conn.execute(
+            "INSERT INTO clips(kind,text,created_at,hash) VALUES ('text','preserved',12,'hash')",
+            [],
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT icon,position FROM dock", [], |r| Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?
+            )))
+            .unwrap(),
+            ("icon".into(), 5)
+        );
+        assert_eq!(
+            conn.query_row("SELECT text FROM clips", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "preserved"
+        );
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM shelf", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -209,7 +257,7 @@ mod tests {
                 .unwrap(),
             "<p>Текст</p>"
         );
-        assert_eq!(schema_version(), 3);
+        assert_eq!(schema_version(), 4);
     }
 
     #[test]

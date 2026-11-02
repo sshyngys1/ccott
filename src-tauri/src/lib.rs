@@ -11,10 +11,13 @@ mod window;
 mod audio;
 mod capture;
 mod clipboard;
+mod cmd;
 mod db;
 mod dock;
+mod downloads;
 mod media;
 mod notes;
+mod shelf;
 mod system;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,6 +49,9 @@ pub fn run() {
                     if matches!(event, tauri::RunEvent::Exit) {
                         audio::shutdown(app);
                         system::shutdown(app);
+                        downloads::shutdown(app);
+                        shelf::shutdown(app);
+                        cmd::shutdown(app);
                     }
                 })
                 .build(),
@@ -62,10 +68,13 @@ pub fn run() {
                 let _ = anchor.set(app.handle().clone());
             }
             db::setup(app)?;
+            shelf::setup(app, worker_app.clone())?;
             audio::setup(app, worker_app.clone())?;
             clipboard::setup(app)?;
             media::setup(app)?;
             system::setup(app, worker_app.clone())?;
+            downloads::setup(app, worker_app.clone())?;
+            cmd::setup(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -79,9 +88,19 @@ pub fn run() {
             window::window_recent_maximized_apps,
             settings::settings_get,
             settings::settings_set,
+            hotkeys::hotkeys_status,
             updater::updater_check,
             updater::updater_install,
             // ── commands: R2 ──
+            shelf::shelf_list,
+            shelf::shelf_add,
+            shelf::shelf_remove,
+            shelf::shelf_clear,
+            shelf::shelf_open,
+            shelf::shelf_start_drag,
+            cmd::cmd_search,
+            cmd::cmd_launch,
+            cmd::cmd_currency_rates,
             dock::dock_list,
             dock::dock_add,
             dock::dock_remove,
@@ -110,6 +129,8 @@ pub fn run() {
             notes::notes_save,
             notes::notes_delete,
             system::system_get_battery,
+            downloads::downloads_list,
+            downloads::downloads_open,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

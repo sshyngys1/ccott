@@ -1,0 +1,17 @@
+.shelf { position: relative; height: 100%; display: flex; flex-direction: column; gap: var(--ig-space-2); min-height: 0; }
+.shelf-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--ig-space-2); }
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--ig-space-6) * 3), 1fr)); align-content: start; gap: var(--ig-space-2); padding: var(--ig-space-2); min-height: 0; flex: 1; overflow: auto; }
+.shelf-item { height: auto; min-width: 0; display: flex; flex-direction: column; gap: var(--ig-space-1); padding: var(--ig-space-2); text-align: center; border-radius: var(--ig-radius-md); }
+.shelf-item[aria-selected="true"] { background: var(--ig-accent-soft); box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-accent); }
+.shelf-icon { display: grid; place-items: center; width: calc(var(--ig-space-6) + var(--ig-space-4)); height: calc(var(--ig-space-6) + var(--ig-space-4)); }
+.shelf-icon img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.shelf-name { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ig-text-sm); }
+.shelf-meta { color: var(--ig-text-secondary); font-size: var(--ig-text-xs); overflow-wrap: anywhere; }
+.shelf-item[data-missing="true"] { color: var(--ig-text-tertiary); }
+.shelf-item[data-missing="true"] .shelf-icon { opacity: .5; }
+.shelf-item[data-missing="true"] .shelf-meta { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-empty { flex: 1; }
+.shelf[data-dragging="true"] { outline: var(--ig-outline-width) solid var(--ig-accent); border-radius: var(--ig-radius-lg); }
+.shelf-drop-label { position: absolute; inset: auto var(--ig-space-4) var(--ig-space-4); padding: var(--ig-space-2); background: var(--ig-surface); color: var(--ig-accent); border-radius: var(--ig-radius-sm); text-align: center; pointer-events: none; }
+.shelf-menu { position: absolute; right: var(--ig-space-2); bottom: var(--ig-space-2); z-index: 2; display: flex; flex-direction: column; padding: var(--ig-space-1); max-width: 100%; box-shadow: var(--ig-shadow-control); }
+.shelf-menu button { justify-content: flex-start; }

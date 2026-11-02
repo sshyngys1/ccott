@@ -1,5 +1,7 @@
 mod drag;
 mod native;
+// Shared shell bitmap extraction; callers initialize COM on their worker thread.
+pub(crate) use native::icon as shell_icon;
 mod store;
 use crate::db::Db;
 use store::DockItem;

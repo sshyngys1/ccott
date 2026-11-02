@@ -6,6 +6,7 @@ import type { IslandModule, ModuleId } from "../shared/types";
 import { useIslandStore } from "../store";
 import { showToast } from "./toast";
 import type { HoverControls } from "../store/useHoverSync";
+import { useHotkeyFallbackToast } from "./hotkeys";
 
 const noop = () => {};
 
@@ -20,13 +21,17 @@ export interface ShellBusDeps {
 export function handleShellRequest(req: ShellRequest, deps: ShellBusDeps): void | Promise<void> {
   const store = useIslandStore.getState();
   switch (req.type) {
+    case "openCommand":
+      store.setView("cmd");
+      deps.controls.expandNow();
+      break;
     case "collapse": {
       const released = deps.releaseKeyboard();
       deps.controls.collapseNow();
       return released;
     }
     case "toast":
-      showToast({ label: req.text });
+      showToast({ label: req.text, actions: req.actions });
       break;
     case "openTab":
       if (deps.hasTab(req.tab)) store.setActiveTab(req.tab);
@@ -54,6 +59,7 @@ export function handleSummoned(controls: HoverControls, releaseKeyboard: () => P
 
 /** Subscribes once to the shell bus, `island://open-settings` and `island://summoned`. All arguments must be referentially stable. */
 export function useShellBus(controls: HoverControls, releaseKeyboard: () => Promise<void>, tabs: readonly IslandModule[], prepareExpand: () => Promise<void>): void {
+  useHotkeyFallbackToast(controls);
   useEffect(() => {
     const deps: ShellBusDeps = {
       controls,
@@ -77,6 +83,8 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
     let disposed = false;
     let unlistenSettings: () => void = noop;
     let unlistenSummoned: () => void = noop;
+    let unlistenCmdOpen: () => void = noop;
+    let unlistenFocus: () => void = noop;
     listen("island://open-settings", () => {
       cancelSummon();
       openSettings(controls);
@@ -84,6 +92,34 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
       (u) => {
         if (disposed) u();
         else unlistenSettings = u;
+      },
+      noop,
+    );
+    listen("cmd://open", () => {
+      cancelSummon();
+      const state = useIslandStore.getState();
+      if (state.mode === "expanded" && state.view === "cmd") {
+        void releaseKeyboard();
+        controls.collapseNow();
+      } else {
+        state.setView("cmd");
+        controls.expandNow();
+      }
+    }).then(
+      (u) => {
+        if (disposed) u();
+        else unlistenCmdOpen = u;
+      },
+      noop,
+    );
+    // The command bar is held open regardless of the cursor; another window taking focus closes it.
+    listen("island://focus-changed", ({ active }) => {
+      const state = useIslandStore.getState();
+      if (!active && state.mode === "expanded" && state.view === "cmd") controls.collapseNow();
+    }).then(
+      (u) => {
+        if (disposed) u();
+        else unlistenFocus = u;
       },
       noop,
     );
@@ -116,6 +152,8 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
       offMode();
       unlistenSettings();
       unlistenSummoned();
+      unlistenCmdOpen();
+      unlistenFocus();
     };
   }, [controls, releaseKeyboard, tabs, prepareExpand]);
 }

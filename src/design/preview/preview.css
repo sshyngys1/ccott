@@ -269,6 +269,11 @@ html {
   margin-left: calc(var(--ig-panel-width) / -2);
   transform-origin: 50% 0;
 }
+.pv-island-layer--cmd {
+  inset: 0 auto auto 50%;
+  margin-left: calc(var(--ig-cmd-width) / -2);
+  transform-origin: 50% 0;
+}
 
 /* Pill content (layout classes .ig-pill-row / .ig-pill-title / .ig-pill-time live in glass.css) */
 .pv-pill-ring {

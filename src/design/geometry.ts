@@ -26,6 +26,8 @@ export interface IslandGeometry {
   pillToast: BoxSize;
   pillHoverGrow: number;
   panel: BoxSize;
+  panelTall: BoxSize;
+  cmd: BoxSize;
 }
 
 /** Fallbacks equal the shipped token values (used in tests / before CSS loads). */
@@ -36,6 +38,8 @@ export const DEFAULT_GEOMETRY: IslandGeometry = {
   pillToast: { width: 312, height: 36, radius: 18 },
   pillHoverGrow: 12,
   panel: { width: 720, height: 396, radius: 32 },
+  panelTall: { width: 720, height: 468, radius: 32 },
+  cmd: { width: 640, height: 420, radius: 28 },
 };
 
 export function readIslandGeometry(el: Element = document.documentElement): IslandGeometry {
@@ -53,6 +57,16 @@ export function readIslandGeometry(el: Element = document.documentElement): Isla
       width: px("--ig-panel-width", d.panel.width),
       height: px("--ig-panel-height", d.panel.height),
       radius: px("--ig-radius-panel", d.panel.radius),
+    },
+    panelTall: {
+      width: px("--ig-panel-width", d.panelTall.width),
+      height: px("--ig-panel-height-tall", d.panelTall.height),
+      radius: px("--ig-radius-panel", d.panelTall.radius),
+    },
+    cmd: {
+      width: px("--ig-cmd-width", d.cmd.width),
+      height: px("--ig-cmd-height", d.cmd.height),
+      radius: px("--ig-cmd-radius", d.cmd.radius),
     },
   };
 }

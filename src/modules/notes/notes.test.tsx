@@ -215,11 +215,11 @@ describe("Notes tab: timer card", () => {
   it("idle → running → paused → reset, with presets and +1 мин", async () => {
     await mountNotes();
     const card = screen.getByRole("region", { name: "Таймер" });
-    expect(within(card).getByText("05:00")).toBeInTheDocument();
+    expect(within(card).getByLabelText("05:00")).toBeInTheDocument();
     expect(within(card).getByText("Готов к запуску")).toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole("button", { name: "10 мин" }));
-    expect(within(card).getByText("10:00")).toBeInTheDocument();
+    expect(within(card).getByLabelText("10:00")).toBeInTheDocument();
     expect(within(card).getByText("из 10 мин")).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "10 мин" })).toHaveAttribute("aria-pressed", "true");
 
@@ -271,7 +271,7 @@ describe("timer pill (compact)", () => {
       useTimerStore.getState().toggle();
       render(<TimerPill />);
       expect(screen.getByText("Таймер")).toBeInTheDocument();
-      expect(screen.getByText("3:00")).toBeInTheDocument();
+      expect(screen.getByLabelText("3:00")).toBeInTheDocument();
       expect(document.querySelector(".ig-ring")).toHaveAttribute("data-state", "running");
       fireEvent.click(screen.getByRole("button"));
       expect(requests).toEqual([{ type: "openTab", tab: "notes" }]);
@@ -294,7 +294,7 @@ describe("timer pill (compact)", () => {
     });
     render(<TimerPill />);
     expect(screen.getByText("Время вышло")).toBeInTheDocument();
-    expect(screen.getByText("0:00")).toBeInTheDocument();
+    expect(screen.getByLabelText("0:00")).toBeInTheDocument();
     expect(screen.getByRole("button")).toHaveAttribute("data-state", "done");
     fireEvent.click(screen.getByRole("button"));
     expect(useTimerStore.getState().doneDismissed).toBe(true);

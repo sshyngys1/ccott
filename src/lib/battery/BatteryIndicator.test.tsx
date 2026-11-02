@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { BatteryIndicator } from "./BatteryIndicator";
+import { act, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { BatteryIndicator, BatteryIndicatorView } from "./BatteryIndicator";
 import { useBatteryStore } from "./batteryStore";
 
 describe("BatteryIndicator", () => {
@@ -57,7 +57,7 @@ describe("BatteryIndicator", () => {
     render(<BatteryIndicator variant="pill" />);
     const el = screen.getByRole("status");
     expect(el).toBeInTheDocument();
-    expect(el.textContent).toBe("—%");
+    expect(el.textContent).toBe("—");
     expect(el.getAttribute("aria-label")).toContain("неизвестен");
   });
 
@@ -72,17 +72,17 @@ describe("BatteryIndicator", () => {
     });
     const { container } = render(<BatteryIndicator variant="pill" />);
     const el = screen.getByRole("status");
-    expect(el.textContent).toBe("50%");
+    expect(el.textContent).toBe("50");
     const svg = container.querySelector("svg.ig-battery-symbol");
     expect(svg).toHaveAttribute("data-tone", "normal");
     const clip = container.querySelector("clipPath");
     expect(clip).toBeInTheDocument();
-    const fillRect = container.querySelector("g[clip-path] rect");
-    expect(fillRect).toBeInTheDocument();
-    expect(fillRect).toHaveAttribute("width", "18");
+    const fillRect = container.querySelector(".ig-battery-fill");
+    expect(fillRect).toHaveStyle({ transform: "translateX(-18px)" });
+    expect(fillRect?.querySelector("rect")).toHaveAttribute("width", "36");
   });
 
-  it("renders 0% battery without colored fill rect and critical tone", () => {
+  it("renders 0% battery with a translated-away fill and critical tone", () => {
     useBatteryStore.getState().setBattery({
       hasBattery: true,
       percent: 0,
@@ -93,11 +93,11 @@ describe("BatteryIndicator", () => {
     });
     const { container } = render(<BatteryIndicator variant="pill" />);
     const el = screen.getByRole("status");
-    expect(el.textContent).toBe("0%");
+    expect(el.textContent).toBe("0");
     const svg = container.querySelector("svg.ig-battery-symbol");
     expect(svg).toHaveAttribute("data-tone", "critical");
-    const fillRect = container.querySelector("g[clip-path] rect");
-    expect(fillRect).toBeNull();
+    const fillRect = container.querySelector(".ig-battery-fill");
+    expect(fillRect).toHaveStyle({ transform: "translateX(-36px)" });
   });
 
   it("renders 100% battery with full 36px fill", () => {
@@ -111,12 +111,13 @@ describe("BatteryIndicator", () => {
     });
     const { container } = render(<BatteryIndicator variant="pill" />);
     const el = screen.getByRole("status");
-    expect(el.textContent).toBe("100%");
-    const fillRect = container.querySelector("g[clip-path] rect");
-    expect(fillRect).toHaveAttribute("width", "36");
+    expect(el.textContent).toBe("100");
+    const fillRect = container.querySelector(".ig-battery-fill");
+    expect(fillRect).toHaveStyle({ transform: "translateX(0px)" });
+    expect(fillRect?.querySelector("rect")).toHaveAttribute("width", "36");
   });
 
-  it("renders charging 50% with 18px fill and centered bolt path", () => {
+  it("renders charging 50% with a translated fill and centered bolt path", () => {
     useBatteryStore.getState().setBattery({
       hasBattery: true,
       percent: 50,
@@ -127,9 +128,10 @@ describe("BatteryIndicator", () => {
     });
     const { container } = render(<BatteryIndicator variant="pill" />);
     const svg = container.querySelector("svg.ig-battery-symbol");
-    expect(svg).toHaveAttribute("data-tone", "charging");
-    const fillRect = container.querySelector("g[clip-path] rect");
-    expect(fillRect).toHaveAttribute("width", "18");
+    expect(svg).toHaveAttribute("data-charging", "true");
+    const fillRect = container.querySelector(".ig-battery-fill");
+    expect(fillRect).toHaveStyle({ transform: "translateX(-18px)" });
+    expect(fillRect?.querySelector("rect")).toHaveAttribute("width", "36");
     const bolt = container.querySelector("path.ig-battery-ink");
     expect(bolt).toBeInTheDocument();
     expect(bolt).toHaveAttribute("d", "M19.5 4 11.5 13h6l-2 7 9-11h-6Z");
@@ -146,9 +148,9 @@ describe("BatteryIndicator", () => {
     });
     const { container } = render(<BatteryIndicator variant="pill" />);
     const svg = container.querySelector("svg.ig-battery-symbol");
-    expect(svg).toHaveAttribute("data-tone", "charging");
-    const fillRect = container.querySelector("g[clip-path] rect");
-    expect(fillRect).toBeNull();
+    expect(svg).toHaveAttribute("data-charging", "true");
+    const fillRect = container.querySelector(".ig-battery-fill");
+    expect(fillRect).toHaveStyle({ transform: "translateX(-36px)" });
     const bolt = container.querySelector("path.ig-battery-ink");
     expect(bolt).toBeInTheDocument();
   });
@@ -175,4 +177,22 @@ describe("BatteryIndicator", () => {
     expect(gradients).toHaveLength(2);
     expect(gradients[0].id).not.toBe(gradients[1].id);
   });
+});
+
+it.each(["pill", "head"] as const)("%s strikes on a plug edge, never on mount or percent-only updates, and fades on unplug", (variant) => {
+  vi.useFakeTimers();
+  try {
+    const battery = { hasBattery: true, percent: 78, charging: true, acConnected: true, saver: false, remainingSeconds: null };
+    const { container, rerender } = render(<BatteryIndicatorView variant={variant} battery={battery} />);
+    const indicator = container.querySelector(`[data-charge-transition], .ig-${variant}-battery`);
+    expect(indicator).not.toHaveAttribute("data-charge-transition");
+    rerender(<BatteryIndicatorView variant={variant} battery={{ ...battery, charging: false }} />);
+    expect(indicator).toHaveAttribute("data-charge-transition", "unplug");
+    rerender(<BatteryIndicatorView variant={variant} battery={battery} />);
+    expect(indicator).toHaveAttribute("data-charge-transition", "plug");
+    rerender(<BatteryIndicatorView variant={variant} battery={{ ...battery, percent: 79 }} />);
+    act(() => vi.advanceTimersByTime(780));
+    expect(indicator).not.toHaveAttribute("data-charge-transition");
+    expect(container.querySelector(".ig-battery-fill")).toHaveStyle({ transform: `translateX(${(0.79 - 1) * 36}px)` });
+  } finally { vi.useRealTimers(); }
 });

@@ -203,6 +203,7 @@ export const IconGlobe = makeIcon(
 export const IconPlus = makeIcon("Plus", <path d="M10 4.5v11M4.5 10h11" />);
 export const IconCheck = makeIcon("Check", <path d="m4.75 10.25 3.25 3.25 7.25-7.5" />);
 export const IconChevronDown = makeIcon("ChevronDown", <path d="m5.5 8 4.5 4.5L14.5 8" />);
+export const IconDownload = makeIcon("Download", <path d="M10 3v10m-4-4 4 4 4-4M4 14v3h12v-3" />);
 export const IconCloud = makeIcon(
   "Cloud",
   <path d="M6 15.5h8.25a3.25 3.25 0 0 0 .4-6.48A4.75 4.75 0 0 0 5.5 8.1 3.7 3.7 0 0 0 6 15.5Z" />,
@@ -403,6 +404,50 @@ export const IconBatteryCharging = makeIcon(
     <path d="m9.5 7.5-2 3h2.5l-1 2.5" />
   </>,
 );
+// ── v0.3: command bar ──
+export const IconCalculator = makeIcon(
+  "Calculator",
+  <>
+    <rect x="3.5" y="2.5" width="13" height="15" rx="2.25" />
+    <rect x="5.5" y="4.5" width="9" height="3" rx="0.75" />
+    <circle cx="6.5" cy="10.5" r=".75" fill="currentColor" />
+    <circle cx="10" cy="10.5" r=".75" fill="currentColor" />
+    <circle cx="13.5" cy="10.5" r=".75" fill="currentColor" />
+    <circle cx="6.5" cy="14" r=".75" fill="currentColor" />
+    <circle cx="10" cy="14" r=".75" fill="currentColor" />
+    <path d="M12.5 14h2" />
+  </>,
+);
+export const IconConverter = makeIcon(
+  "Converter",
+  <>
+    <path d="M4 6.5h10M11.5 4 14 6.5l-2.5 2.5" />
+    <path d="M16 13.5H6M8.5 11 6 13.5l2.5 2.5" />
+  </>,
+);
+export const IconPercent = makeIcon(
+  "Percent",
+  <>
+    <line x1="15" y1="5" x2="5" y2="15" />
+    <circle cx="7" cy="7" r="1.75" />
+    <circle cx="13" cy="13" r="1.75" />
+  </>,
+);
+export const IconRuler = makeIcon(
+  "Ruler",
+  <>
+    <rect x="2.5" y="6" width="15" height="8" rx="1.5" />
+    <path d="M6 6v3M9.5 6v2M13 6v3" />
+  </>,
+);
+export const IconApp = makeIcon(
+  "App",
+  <>
+    <rect x="3" y="3" width="14" height="14" rx="2.5" />
+    <path d="M7 6.5h6M7 10h6M7 13.5h4" />
+  </>,
+);
+
 export const IconBatterySaver = makeIcon(
   "BatterySaver",
   <>

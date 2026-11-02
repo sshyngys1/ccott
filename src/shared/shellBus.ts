@@ -4,13 +4,22 @@
  */
 import type { ModuleId } from "./types";
 
+/** Local UI actions; never sent over IPC. */
+export interface ToastAction {
+  label: string;
+  icon: "file" | "folder" | "settings";
+  onClick: () => void;
+}
+
 export type ShellRequest =
   /** Collapse the island now (no delay) and release keyboard focus, e.g. before clipboard paste. */
   | { type: "collapse" }
   /** Expand the island and switch to a tab, e.g. clicking a pill activity. */
   | { type: "openTab"; tab: ModuleId }
+  /** Open the command bar from a mouse action, with immediate expansion and input focus. */
+  | { type: "openCommand" }
   /** Show a short message in the pill (e.g. «Скопировано», «Нет окна для вставки»). Suppressed by doNotDisturb. */
-  | { type: "toast"; text: string };
+  | { type: "toast"; text: string; actions?: ToastAction[] };
 
 /** A listener may return a promise; `requestShell` resolves after every listener has finished. */
 type Listener = (req: ShellRequest) => void | Promise<void>;

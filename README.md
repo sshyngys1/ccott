@@ -11,12 +11,17 @@
 
 <p align="center">
   <b>A Dynamic Island–style control center that lives at the top of your Windows desktop.</b><br/>
-  Media, volume, clipboard history, screenshots and OCR, a color picker, QR codes, an app dock, text tools, notes and a<br/>
-  focus timer — one hover away. In English and Russian.
+  A command bar, media, volume, clipboard history, a file shelf, a downloads monitor, screenshots and OCR, a color picker,<br/>
+  QR codes, an app dock, text tools, notes and a focus timer — one hover or one hotkey away. In English and Russian.
 </p>
 
 <p align="center">
   <img src="docs/screenshots/pill-media.png" alt="Collapsed CCOTT pill showing the playing track" width="420" />
+  <img src="docs/screenshots/pill-downloads.png" alt="Collapsed CCOTT pill showing a download in progress" width="420" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/command-bar.jpg" alt="Command bar converting 100 USD to EUR" width="720" />
 </p>
 
 ---
@@ -32,28 +37,48 @@ or press a hotkey.
 
 | | |
 | --- | --- |
+| ⌨️ **Command bar** | `Ctrl+Alt+Space` from anywhere: launch apps (`Ctrl+Enter` — as administrator), find files and folders, calculate (`12*7+3`, `15% of 2400`), convert units (`5 km in miles`) and currencies with live rates (`100 usd in eur`, `100 баксов в тенге`), start a timer (`timer 10 min`). |
+| 🗄️ **File shelf** | Drop files on the collapsed pill to park them, then drag one or several out of the Shelf tab into any app. Choose whether a dragged file stays and how long the shelf keeps files. |
+| ⬇️ **Downloads monitor** | Browser downloads show in the pill with name, size and speed; when done, open the file or its folder in one click. |
 | 🎵 **Now playing** | Works with any app that reports to Windows media controls (Spotify, browsers, Media Player…): artwork, title, seek bar, play/pause/next/previous. |
 | 🔊 **Volume & output** | System volume and mute, scroll the mouse wheel over the volume card, switch the output device. |
 | 📋 **Clipboard history** | Text, links, images and files with search and pinning. Click an entry to paste it into the app you were using; Shift+click only copies. Content from password managers is never recorded. |
 | ✍️ **Text tools** | Fix text typed in the wrong keyboard layout (RU ⇄ EN), transliteration, letter case, whitespace cleanup, JSON pretty/minify, Base64, live character/word/line counts. |
 | 📸 **Screenshots & OCR** | Capture a region or the whole screen to the clipboard (Shift+click saves a PNG to `Pictures\Screenshots\CCOTT`). Copy text from anywhere on screen with offline Windows OCR. |
 | 🎯 **Color picker & QR** | Pick any pixel with a magnifier and copy its HEX. Scan a QR code on screen (links get an Open button) or turn text into a QR image. |
-| 🗂️ **Dock** | Drop apps, folders and files onto the island to pin them, open them with a click, drag them out to copy them anywhere. |
+| 🗂️ **Dock** | Drop apps, folders and files onto the dock area of Home to pin them, open them with a click, drag them out to copy them anywhere. |
+| 🧩 **Your own Home** | Choose the quick-tool tiles, their order and size (1×1 or 2×1, up to 8 cells): Region, Full screen, Text from screen, QR code, Color picker, Command bar, Screenshots, New note, Timer, Clipboard. With no tiles the player takes the full width. |
 | 🗒️ **Notes & timer** | Rich-text notes in folders with autosave, plus a focus timer with presets that keeps counting in the pill while the island is collapsed. |
-| ⌨️ **Summon hotkey** | `Ctrl+Alt+I` (configurable) shows the island anywhere — even over a fullscreen app or game in borderless mode. |
+| 🔑 **Summon hotkey** | `Ctrl+Alt+I` (configurable) shows the island anywhere — even over a fullscreen app or game in borderless mode. |
 | 🖥️ **Stays out of the way** | Hides in fullscreen apps and over maximized browsers, so your tabs stay clickable; choose the apps yourself. Hold the cursor at the top edge or press the hotkey to bring it back. |
-| ⚙️ **Settings** | English or Russian (follows Windows by default), light/dark/auto theme, monitor selection, start with Windows, Do Not Disturb, hover delays. |
+| ⚙️ **Settings** | English or Russian (follows Windows by default), light/dark/auto theme, **Lite mode** (flat surfaces instead of glass for weaker GPUs), monitor selection, start with Windows, Do Not Disturb, hover delays, both hotkeys. |
 | 🔄 **Auto-update** | Signed updates from GitHub Releases, checked in the background or on demand. |
 
 ## Screenshots
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/home.jpg" alt="Home: player and volume" /></td>
-    <td><img src="docs/screenshots/clipboard.jpg" alt="Clipboard history" /></td>
+    <td><img src="docs/screenshots/home.jpg" alt="Home: player, volume, tiles and dock" /></td>
+    <td><img src="docs/screenshots/command-bar-apps.jpg" alt="Command bar searching apps and files" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Home — player, volume, quick tools, dock</sub></td>
+    <td align="center"><sub>Command bar — apps, files and folders</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/home-tiles.jpg" alt="Home with custom tiles" /></td>
+    <td><img src="docs/screenshots/tiles-edit.jpg" alt="Editing the tiles" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Home with your own tiles</sub></td>
+    <td align="center"><sub>Arranging the tiles</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/shelf.jpg" alt="File shelf" /></td>
+    <td><img src="docs/screenshots/clipboard.jpg" alt="Clipboard history" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>File shelf</sub></td>
     <td align="center"><sub>Clipboard history with pinned items</sub></td>
   </tr>
   <tr>
@@ -66,11 +91,19 @@ or press a hotkey.
   </tr>
   <tr>
     <td><img src="docs/screenshots/settings.jpg" alt="Settings" /></td>
-    <td><img src="docs/screenshots/home-light.jpg" alt="Light theme" /></td>
+    <td><img src="docs/screenshots/whats-new.jpg" alt="What is new page" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Settings</sub></td>
+    <td align="center"><sub>What's new after an update</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/home-light.jpg" alt="Light theme" /></td>
+    <td><img src="docs/screenshots/home-lite.jpg" alt="Lite mode" /></td>
+  </tr>
+  <tr>
     <td align="center"><sub>Light theme</sub></td>
+    <td align="center"><sub>Lite mode — flat surfaces, no glass</sub></td>
   </tr>
 </table>
 
@@ -96,8 +129,11 @@ ships with Windows 11.
 | --- | --- |
 | Open the panel | Hover the pill at the top of the screen |
 | Summon / hide anywhere | `Ctrl+Alt+I` (change it in Settings); `Esc` closes it again |
+| Command bar | `Ctrl+Alt+Space` (change or turn off in Settings → Behavior; if it is taken, CCOTT picks a free one and tells you). `Enter` runs, `Ctrl+Enter` runs as admin / shows the file in Explorer, `Esc` closes |
+| Park files on the shelf | Drag files onto the collapsed pill; take them out from the **Shelf** tab (`Ctrl`/`Shift`+click selects several) |
+| Arrange Home | Settings → Tiles → **Customize**: drag to reorder, × removes, the corner button switches 1×1 ⇄ 2×1, + adds |
 | Show the hidden pill over a browser | Hold the cursor at the top edge of the screen for a moment |
-| Pin an app, folder or file | Drag it onto the island, or press `+` in the dock |
+| Pin an app, folder or file | Drag it onto the dock area of the expanded Home tab, or press `+` in the dock |
 | Screenshot / text from screen | Click a tile on Home and drag a region; `Esc` or right click cancels |
 | Paste from history | Click an entry, or select it with `↑` `↓` and press `Enter` |
 | Copy without pasting | `Shift`+click or `Shift`+`Enter` |
@@ -107,8 +143,9 @@ ships with Windows 11.
 ## Privacy
 
 Everything stays on your computer. Clipboard history and notes are stored in a local SQLite database and settings in
-`settings.json`, both in `%APPDATA%\dev.islandwin.app`. The only network request CCOTT makes is checking
-GitHub Releases for updates. Clipboard entries marked as private by password managers are skipped, and copied text
+`settings.json`, both in `%APPDATA%\dev.islandwin.app`. CCOTT goes online only to check GitHub Releases for updates and, when you
+convert currencies in the command bar, to fetch exchange rates (only the currency code is sent; rates are cached for 12 hours).
+The downloads monitor and the shelf only read file names and sizes on your PC. Clipboard entries marked as private by password managers are skipped, and copied text
 that looks like a password is masked in the pill.
 
 ## Build from source
@@ -138,8 +175,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 | Path | Purpose |
 | --- | --- |
-| `src/shell/` | Island window, pill, navigation, settings |
-| `src/modules/` | Home, Clipboard, Text and Notes tabs |
+| `src/shell/` | Island window, pill, navigation, command bar, settings |
+| `src/modules/` | Home, Clipboard, Text, Notes and Shelf tabs |
 | `src/design/` | Design tokens, glass styles, icons, motion |
 | `src/ipc/` | Typed calls to Rust and the browser mock |
 | `src/lib/` | Module logic and state |
@@ -153,9 +190,10 @@ Built with [Tauri 2](https://tauri.app), Rust, React 19, TypeScript, Vite, Motio
 | Version | Planned |
 | --- | --- |
 | ✅ **0.2** — Quick tools | English interface, screenshots, offline OCR, color picker, QR codes, app and folder dock, auto-hide over browsers, automated release builds |
-| **0.2.x** | Bug fixes from Issues, a faster first expand after a long idle period |
-| **0.3** — Command bar & files | Command bar on a hotkey (apps, files, calculator, unit and currency converter, quick timers), file shelf (drop files on the pill and drag them out), download monitor, winget package |
-| **0.4** — Info & controls | Weather with hourly and 7-day forecasts and rain alerts, quick controls (Wi-Fi, Bluetooth, dark mode, power mode, Bluetooth headset battery), natural-language reminders, AI coding agent status (e.g. Claude Code is waiting or done) |
+| ✅ **0.2.x** | Bug fixes, lighter on memory and CPU, first animations |
+| ✅ **0.3** — Command bar & files | Command bar on a hotkey (apps, files, calculator, unit and currency converter, quick timers), file shelf, downloads monitor, customizable Home tiles, Lite mode, new animations |
+| **0.3.x** | Bug fixes from Issues, winget package |
+| **0.4** — Info & controls | Weather with hourly and 7-day forecasts and rain alerts, quick controls (Wi-Fi, Bluetooth, dark mode, power mode, Bluetooth headset battery), natural-language reminders, AI coding agent status (e.g. Claude Code is waiting or done), choosing dock or shelf when you drop a file on the island |
 | **0.5** — Media & polish | Synced song lyrics, audio visualizer, screen recording to MP4, native Mica/Acrylic backdrop |
 | **1.0** — Stable | Code-signed installer, idle footprint under 60 MB RAM and 0% CPU, Windows 10 and multi-monitor/mixed-DPI testing, docs for writing modules |
 | **Later** | Windows notifications in the pill, original desktop pets, optional AI features (bring your own key or a local model) |

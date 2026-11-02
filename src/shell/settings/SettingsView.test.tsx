@@ -1,8 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke, listen } from "../../ipc";
+import { APP_VERSION, invoke, listen } from "../../ipc";
 import {
   mockConfig,
+  mockHotkeysStartup,
   mockEmit,
   mockListenerCount,
   mockSetFullscreenApps,
@@ -12,14 +13,17 @@ import {
   resetMock,
 } from "../../ipc/mock";
 import { resetIslandStore, useIslandStore } from "../../store";
-import { useSettingsSync } from "../useShellSync";
+import { useLiteSync, useSettingsSync } from "../useShellSync";
 import { DEFAULT_AUTO_HIDE_APPS } from "./hotkey";
+import { DEFAULT_QUICK_TILES } from "../../shared/types";
+import { useTilesEditStore } from "../../lib/tiles/store";
 import { SettingsView } from "./SettingsView";
 import { MonitorPicker } from "./MonitorPicker";
 
 /** The view plus the shell's store↔backend sync, as inside the Island. */
 function Harness() {
   useSettingsSync();
+  useLiteSync();
   return <SettingsView />;
 }
 
@@ -37,6 +41,108 @@ afterEach(() => {
 const backend = () => invoke("settings_get");
 
 describe("SettingsView", () => {
+  it("stacks the two columns independently and preserves section labels and DOM/Tab order", () => {
+    const { container } = render(<SettingsView />);
+    const columns = container.querySelector(".ig-settings-columns")!;
+    const labels = (elements: Iterable<Element>) => [...elements].map(el => el.getAttribute("aria-labelledby"));
+    expect(labels(columns.querySelectorAll(":scope > .ig-settings-column--left")))
+      .toEqual(["ig-set-look", "ig-set-tiles"]);
+    const right = columns.querySelectorAll(":scope > .ig-settings-column--right");
+    expect(right).toHaveLength(1);
+    expect(labels(right[0].children)).toEqual(["ig-set-behaviour", "ig-set-shelf"]);
+    const sections = container.querySelectorAll("section");
+    const order = ["ig-set-look", "ig-set-behaviour", "ig-set-shelf", "ig-set-tiles", "ig-set-fullscreen", "ig-set-autohide"];
+    expect(labels(sections)).toEqual(order);
+    for (const section of sections) {
+      expect(section).toHaveAccessibleName(section.querySelector("h4")!.textContent!);
+    }
+    // Tab still follows the original sections; no positive tabindex or new stops on wrappers.
+    const stops = [...container.querySelectorAll<HTMLElement>('button, input, select, [tabindex]')]
+      .filter(el => el.tabIndex >= 0 && !el.matches(":disabled"));
+    expect([...new Set(stops.map(el => el.closest("section")?.getAttribute("aria-labelledby")))])
+      .toEqual(order);
+    expect(stops.every(el => el.tabIndex === 0)).toBe(true);
+    expect(labels(container.querySelectorAll(".ig-settings > .ig-settings-card--wide")))
+      .toEqual(["ig-set-fullscreen", "ig-set-autohide"]);
+  });
+
+  it.each(["ru", "en"] as const)("%s keeps shelf retention native, labelled, styled and persistent", async (language) => {
+    await invoke("settings_set", { patch: { language } });
+    useIslandStore.getState().applySettings(await backend());
+    const view = render(<SettingsView />);
+    const label = language === "ru" ? "Хранить на полке" : "Keep on shelf for";
+    const select = screen.getByLabelText(label);
+    expect(select.tagName).toBe("SELECT");
+    expect(select.parentElement).toHaveClass("ig-select");
+    expect(within(select).getAllByRole("option")).toHaveLength(5);
+    fireEvent.change(select, { target: { value: "72" } });
+    await waitFor(async () => expect((await backend()).shelfRetentionHours).toBe(72));
+    view.unmount();
+    render(<SettingsView />);
+    expect(screen.getByLabelText(label)).toHaveValue("72");
+  });
+
+  it.each(["ru", "en"] as const)("%s shows busy for both fields, saves a replacement, and restores rejected command input", async (language) => {
+    await invoke("settings_set", { patch: { language } });
+    mockHotkeysStartup(["Ctrl+Alt+I", "Ctrl+Shift+X", "Ctrl+Alt+Z"], { commandHotkey: "Ctrl+Shift+X" });
+    useIslandStore.getState().applySettings(await backend());
+    const hint = language === "ru" ? "Занято другим приложением — выберите другое" : "Used by another app — choose another shortcut";
+    const view = render(<Harness />);
+    await waitFor(() => expect(screen.getAllByText(hint)).toHaveLength(2));
+    const input = screen.getByLabelText(language === "ru" ? "Командная строка" : "Command bar");
+    fireEvent.click(input);
+    fireEvent.keyDown(input, { key: "z", code: "KeyZ", ctrlKey: true, altKey: true });
+    expect(await screen.findByRole("alert")).toHaveTextContent(language === "ru" ? /занято/ : /register/);
+    expect(input).toHaveValue("Ctrl+Shift+X");
+    expect((await backend()).commandHotkey).toBe("Ctrl+Shift+X");
+    fireEvent.click(input);
+    fireEvent.keyDown(input, { key: "k", code: "KeyK", ctrlKey: true, altKey: true });
+    await waitFor(async () => expect((await backend()).commandHotkey).toBe("Ctrl+Alt+K"));
+    await waitFor(() => expect(screen.getAllByText(hint)).toHaveLength(1));
+    expect(input).toHaveValue("Ctrl+Alt+K");
+    expect(screen.queryByRole("alert")).toBeNull();
+    view.unmount(); render(<Harness />);
+    expect(screen.getByLabelText(language === "ru" ? "Командная строка" : "Command bar")).toHaveValue("Ctrl+Alt+K");
+  });
+  it.each([["ru", "Следить за загрузками"], ["en", "Monitor downloads"]] as const)("%s saves downloads monitoring and restores the switch on reopen", async (language, label) => {
+    await invoke("settings_set", { patch: { language } });
+    useIslandStore.getState().applySettings(await backend());
+    const view = render(<Harness />);
+    expect(screen.getByRole("switch", { name: label })).toBeChecked();
+    fireEvent.click(screen.getByRole("switch", { name: label }));
+    await waitFor(async () => expect((await backend()).downloadsMonitor).toBe(false));
+    expect(screen.getByRole("switch", { name: label })).not.toBeChecked();
+    view.unmount();
+    render(<Harness />);
+    expect(screen.getByRole("switch", { name: label })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("switch", { name: label }));
+    await waitFor(async () => expect((await backend()).downloadsMonitor).toBe(true));
+  });
+  it.each([
+    ["ru", "Лёгкий режим", "Отключает эффекты стекла"],
+    ["en", "Lite mode", "Disables glass effects"],
+  ] as const)("%s saves lite mode, applies events immediately and restores it on reopen", async (language, label, hint) => {
+    await invoke("settings_set", { patch: { language } });
+    useIslandStore.getState().applySettings(await backend());
+    const view = render(<Harness />);
+    const toggle = screen.getByRole("switch", { name: new RegExp(label) });
+    expect(toggle.closest("section")).toHaveAccessibleName(language === "ru" ? "Внешний вид" : "Appearance");
+    expect(screen.getByText(new RegExp(hint))).toBeInTheDocument();
+    expect(toggle).not.toBeChecked();
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-lite", "false"));
+    fireEvent.click(toggle);
+    await waitFor(async () => expect((await backend()).liteMode).toBe(true));
+    expect(document.documentElement).toHaveAttribute("data-lite", "true");
+    view.unmount();
+    render(<Harness />);
+    expect(screen.getByRole("switch", { name: new RegExp(label) })).toBeChecked();
+    await waitFor(() => expect(mockListenerCount("settings://changed")).toBe(1));
+    // An external settings event updates the attribute and the switch without reopening.
+    act(() => mockEmit("settings://changed", { ...useIslandStore.getState().settings, liteMode: false }));
+    expect(document.documentElement).toHaveAttribute("data-lite", "false");
+    expect(screen.getByRole("switch", { name: new RegExp(label) })).not.toBeChecked();
+  });
+
   it.each([
     ["ru", "Язык распознавания текста", "Как в Windows", "Оптическое распознавание символов"],
     ["en", "Text recognition language", "System", "Optical character recognition"],
@@ -193,7 +299,7 @@ describe("SettingsView", () => {
 
   it("shows the current version and checks for updates manually when no release is available", async () => {
     render(<SettingsView />);
-    expect(screen.getByText("Версия 0.2.3")).toBeInTheDocument();
+    expect(screen.getByText(`Версия ${APP_VERSION}`)).toBeInTheDocument();
     const checkBtn = screen.getByRole("button", { name: "Проверить обновления" });
     fireEvent.click(checkBtn);
     await waitFor(() => expect(mockStats.updaterChecks).toBe(1));
@@ -267,6 +373,31 @@ describe("SettingsView", () => {
     expect(alert).toHaveTextContent(/Не удалось зарегистрировать сочетание клавиш/);
     expect(input).toHaveValue("Ctrl+Alt+I");
     expect((await backend()).summonHotkey).toBe("Ctrl+Alt+I");
+  });
+
+  it("records a new command bar hotkey, resets and disables it", async () => {
+    render(<SettingsView />);
+    const input = screen.getByLabelText("Командная строка");
+    expect(input).toHaveValue("Ctrl+Alt+Space");
+
+    // Record Alt+Space
+    fireEvent.click(input);
+    expect(input).toHaveValue("Нажмите сочетание…");
+    fireEvent.keyDown(input, { key: " ", code: "Space", altKey: true });
+    await waitFor(async () => expect((await backend()).commandHotkey).toBe("Alt+Space"));
+    expect(input).toHaveValue("Alt+Space");
+
+    // Disable
+    const disableBtn = screen.getByRole("button", { name: /Выключить — Командная строка/i });
+    fireEvent.click(disableBtn);
+    await waitFor(async () => expect((await backend()).commandHotkey).toBe(""));
+    expect(input).toHaveValue("");
+
+    // Reset
+    const resetBtn = screen.getByRole("button", { name: /Сбросить — Командная строка/i });
+    fireEvent.click(resetBtn);
+    await waitFor(async () => expect((await backend()).commandHotkey).toBe("Ctrl+Alt+Space"));
+    expect(input).toHaveValue("Ctrl+Alt+Space");
   });
 
   it("lists recent fullscreen apps, toggles fullscreenAllowlist, and shows the empty state and exclusive-fullscreen hint", async () => {
@@ -348,5 +479,33 @@ describe("SettingsView", () => {
     expect(within(enSection).getByRole("button", { name: "Add" })).toBeInTheDocument();
     expect(within(enSection).getByRole("button", { name: "Reset to browsers" })).toBeInTheDocument();
     expect(within(enSection).getByRole("button", { name: "Remove chrome.exe from list" })).toBeInTheDocument();
+  });
+
+  it("renders tiles section and handles customize and reset buttons", async () => {
+    useIslandStore.getState().applySettings({ ...useIslandStore.getState().settings, quickTiles: [] });
+    render(<SettingsView />);
+    const section = screen.getByRole("region", { name: "Плитки" });
+    expect(section).toBeInTheDocument();
+
+    const customizeBtn = within(section).getByRole("button", { name: "Настроить" });
+    const resetBtn = within(section).getByRole("button", { name: "Сбросить плитки" });
+
+    expect(customizeBtn).toBeInTheDocument();
+    expect(resetBtn).toBeInTheDocument();
+
+    // Click customize: sets editing = true, view = "tabs", activeTab = "home"
+    useTilesEditStore.setState({ editing: false });
+    fireEvent.click(customizeBtn);
+    expect(useTilesEditStore.getState().editing).toBe(true);
+    expect(useIslandStore.getState().view).toBe("tabs");
+    expect(useIslandStore.getState().activeTab).toBe("home");
+
+    // Click reset: sets quickTiles to DEFAULT_QUICK_TILES
+    await invoke("settings_set", { patch: { quickTiles: [] } });
+    fireEvent.click(resetBtn);
+    await waitFor(async () => {
+      const current = await invoke("settings_get");
+      expect(current.quickTiles).toEqual(DEFAULT_QUICK_TILES);
+    });
   });
 });

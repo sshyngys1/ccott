@@ -7,6 +7,7 @@ import { useMediaStore } from "../lib/media/store";
 import { resetIslandStore, useIslandStore } from "../store";
 import { Island } from "./Island";
 import { backgroundScreens } from "./preloadScreens";
+import { DEFAULT_QUICK_TILES, type TileSlot } from "../shared/types";
 
 // These interaction tests exercise the normal, preloaded UI. Cold loading is tested separately.
 beforeAll(async () => {
@@ -37,6 +38,47 @@ afterEach(() => {
 });
 
 describe("Island", () => {
+  it("resizes normal → seven cells → eight cells → normal with cheap glass and exact Rust shapes", async () => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    act(() => useIslandStore.getState().setMode("expanded"));
+    await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+    const seven: TileSlot[] = [...DEFAULT_QUICK_TILES, { id: "note", size: "1x1" }];
+    const eight: TileSlot[] = [...seven, { id: "timer", size: "1x1" }];
+    for (const [tiles, box, resizing] of [
+      [seven, DEFAULT_GEOMETRY.panelTall, true],
+      [eight, DEFAULT_GEOMETRY.panelTall, false],
+      [DEFAULT_QUICK_TILES, DEFAULT_GEOMETRY.panel, true],
+      [[], DEFAULT_GEOMETRY.panel, false],
+      [DEFAULT_QUICK_TILES, DEFAULT_GEOMETRY.panel, false],
+    ] as const) {
+      act(() => useIslandStore.getState().applySettings({
+        ...useIslandStore.getState().settings, quickTiles: [...tiles],
+      }));
+      if (resizing) expect(island).toHaveAttribute("data-resizing", "true");
+      else expect(island).not.toHaveAttribute("data-resizing");
+      await waitFor(() => expect(island.style.height).toBe(`${box.height}px`));
+      await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+      expect(mockStats.lastShape?.height).toBe(box.height);
+      expect(island.querySelector(".hm-tools") === null).toBe(tiles.length === 0);
+    }
+  });
+
+  it("prewarms a saved tall layout without changing the pill, then expands to its actual height", async () => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    act(() => useIslandStore.getState().applySettings({
+      ...useIslandStore.getState().settings,
+      quickTiles: [...DEFAULT_QUICK_TILES, { id: "note", size: "2x1" }],
+    }));
+    act(() => mockEmit("island://prewarm", null));
+    expect(useIslandStore.getState().mode).toBe("collapsed");
+    expect(island.style.height).toBe(`${DEFAULT_GEOMETRY.pill.height}px`);
+    act(() => useIslandStore.getState().setMode("expanded"));
+    await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+    expect(island.style.height).toBe(`${DEFAULT_GEOMETRY.panelTall.height}px`);
+    expect(mockStats.lastShape?.height).toBe(DEFAULT_GEOMETRY.panelTall.height);
+  });
   it("collapsed: shows the clock (HH:MM) and no tabs", async () => {
     await mountIsland();
     expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument();
@@ -50,7 +92,7 @@ describe("Island", () => {
     const tablist = await screen.findByRole("tablist", { name: "Вкладки острова" });
     expect(tablist).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Главная", "Буфер", "Текст", "Заметки"]);
+    expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Главная", "Буфер", "Текст", "Заметки", "Полка"]);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
     expect(useIslandStore.getState().mode).toBe("expanded");
@@ -67,6 +109,8 @@ describe("Island", () => {
     expect(await screen.findByRole("heading", { name: "Заметки" })).toBeInTheDocument();
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Заметки" }), { key: "ArrowRight" });
+    expect(useIslandStore.getState().activeTab).toBe("shelf");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Полка" }), { key: "ArrowRight" });
     expect(useIslandStore.getState().activeTab).toBe("home"); // wraps around
   });
 

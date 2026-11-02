@@ -38,7 +38,7 @@ export function NoteList() {
     <section className="ig-glass-card nt-list" aria-label={t("notes")}>
       <div className="nt-list-head">
         <span className="ig-section-label mod-label-flush">{folder === null ? t("allNotes") : folderDisplayName(folder)}</span>
-        <button type="button" className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm" aria-label={t("newNote")} title={t("newNoteCtrlN")} onClick={newNote}>
+        <button type="button" className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm" aria-label={t("newNote")} title={t("newNoteCtrlN")} onClick={() => newNote()}>
           <IconPlus size={16} />
         </button>
       </div>

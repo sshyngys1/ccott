@@ -1,16 +1,17 @@
 // Owner: F1. Global UI state of the shell (Zustand).
 import { create } from "zustand";
-import { APP_VERSION } from "../ipc";
+import type { ToastAction } from "../shared/shellBus";
+import { APP_VERSION, isTauri, mockUrlParams } from "../ipc";
 import { getWhatsNewForVersion, shouldAutoShowWhatsNew } from "../lib/whatsNew/catalog";
 import { setLanguage } from "../i18n";
-import type { IslandMode, ModuleId, Settings, ThemeMode, UpdateInfo, VibrancyMode } from "../shared/types";
+import { DEFAULT_QUICK_TILES, type IslandMode, type ModuleId, type Settings, type ThemeMode, type UpdateInfo, type VibrancyMode } from "../shared/types";
 import { DEFAULT_AUTO_HIDE_APPS } from "../shell/settings/hotkey";
 import { DEFAULT_COLLAPSE_DELAY_MS, DEFAULT_EXPAND_DELAY_MS } from "./hover";
 
 export type ResolvedTheme = "light" | "dark";
 
 /** What the expanded panel shows: the module tabs or the settings view (spec §6.8). */
-export type PanelView = "tabs" | "settings" | "whatsNew";
+export type PanelView = "tabs" | "settings" | "whatsNew" | "cmd";
 
 /** Values used until `settings_get` answers (equal to the Rust defaults). */
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,6 +28,12 @@ export const DEFAULT_SETTINGS: Settings = {
   summonHotkey: "Ctrl+Alt+I",
   fullscreenAllowlist: [],
   autoHideApps: [...DEFAULT_AUTO_HIDE_APPS],
+  quickTiles: DEFAULT_QUICK_TILES.map((tile) => ({ ...tile })),
+  liteMode: false,
+  commandHotkey: "Ctrl+Alt+Space",
+  downloadsMonitor: true,
+  shelfKeepAfterDrag: false,
+  shelfRetentionHours: 24,
 };
 
 export interface PillToast {
@@ -41,6 +48,12 @@ export interface PillToast {
   onClick?: () => void;
   actionLabel?: string;
   color?: string;
+  actions?: ToastAction[];
+  /** Shell-only toast presentation and render acknowledgement; never sent over IPC. */
+  shortcut?: string;
+  title?: string;
+  detail?: string;
+  onShown?: () => void;
 }
 
 export interface IslandState {
@@ -85,23 +98,27 @@ export interface IslandState {
   setTheme: (theme: ResolvedTheme) => void;
 }
 
-const initialState = () => ({
-  mode: "collapsed" as IslandMode,
-  activeTab: "home" as ModuleId,
-  view: "tabs" as PanelView,
-  keyboardFocus: false,
-  settings: DEFAULT_SETTINGS,
-  hoverInside: false,
-  vibrancy: "none" as VibrancyMode,
-  theme: "dark" as ResolvedTheme,
-  themeMode: "auto" as ThemeMode,
-  hoverExpandDelayMs: DEFAULT_EXPAND_DELAY_MS,
-  hoverCollapseDelayMs: DEFAULT_COLLAPSE_DELAY_MS,
-  doNotDisturb: false,
-  toast: null as PillToast | null,
-  availableUpdate: null as UpdateInfo | null,
-  updateToastShownFor: null as string | null,
-});
+const initialState = () => {
+  const urlParams = mockUrlParams();
+  const isCmdInit = urlParams?.get("cmd") === "1" || Boolean(urlParams?.has("cmdQuery"));
+  return {
+    mode: (isCmdInit ? "expanded" : "collapsed") as IslandMode,
+    activeTab: "home" as ModuleId,
+    view: (isCmdInit ? "cmd" : "tabs") as PanelView,
+    keyboardFocus: isCmdInit,
+    settings: DEFAULT_SETTINGS,
+    hoverInside: false,
+    vibrancy: "none" as VibrancyMode,
+    theme: "dark" as ResolvedTheme,
+    themeMode: "auto" as ThemeMode,
+    hoverExpandDelayMs: DEFAULT_EXPAND_DELAY_MS,
+    hoverCollapseDelayMs: DEFAULT_COLLAPSE_DELAY_MS,
+    doNotDisturb: false,
+    toast: null as PillToast | null,
+    availableUpdate: null as UpdateInfo | null,
+    updateToastShownFor: null as string | null,
+  };
+};
 
 export const useIslandStore = create<IslandState>()((set) => ({
   ...initialState(),
@@ -142,6 +159,10 @@ export const useIslandStore = create<IslandState>()((set) => ({
   setVibrancy: (vibrancy) => set({ vibrancy }),
   setTheme: (theme) => set({ theme }),
 }));
+
+if (typeof window !== "undefined" && !isTauri()) {
+  (window as unknown as { __ISLAND_STORE__?: typeof useIslandStore }).__ISLAND_STORE__ = useIslandStore;
+}
 
 /** Reset to initial values (tests). */
 export function resetIslandStore(): void {

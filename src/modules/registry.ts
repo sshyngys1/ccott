@@ -4,7 +4,8 @@ import clipboard, { clipboardScreen } from "./clipboard";
 import home from "./home";
 import notes, { notesScreen } from "./notes";
 import text, { textScreen } from "./text";
+import shelf from "./shelf";
 
-export const modules: IslandModule[] = [home, clipboard, text, notes].sort((a, b) => a.order - b.order);
+export const modules: IslandModule[] = [home, clipboard, text, notes, shelf].sort((a, b) => a.order - b.order);
 
 export const deferredTabs = [clipboardScreen, textScreen, notesScreen];

@@ -23,10 +23,19 @@ export const springs = {
   view: { type: "spring", stiffness: 900, damping: 54, mass: 1 },
   /** Wave 2: list reorder (`layout` on rows: pin moves a clip to the top, new clip pushes the list). Critically damped. */
   list: { type: "spring", stiffness: 1100, damping: 66, mass: 1 },
+  /** v0.3 Command Bar: pill → command bar expansion (640×420). Snappy, minimal overshoot (ζ ≈ 0.82), settles in ~220 ms. */
+  cmdExpand: { type: "spring", stiffness: 850, damping: 48, mass: 1, restDelta: 0.5, restSpeed: 2 },
+  /** v0.3 Command Bar: command bar → pill collapse. Critically damped (ζ ≈ 1.00), no bounce, settles in ~180 ms. */
+  cmdCollapse: { type: "spring", stiffness: 1400, damping: 75, mass: 1, restDelta: 0.5, restSpeed: 2 },
+  /** v0.3 Command Bar: content-based height resize when row/group count changes. Critically damped (ζ ≈ 1.00), no bounce. */
+  cmdResize: { type: "spring", stiffness: 950, damping: 52, mass: 1, restDelta: 0.5, restSpeed: 2 },
+  /** v0.3 Command Bar: keyboard cursor selection movement between rows. */
+  cmdSelect: { type: "spring", stiffness: 1200, damping: 70, mass: 1 },
 } satisfies Record<string, Transition>;
 
 /** Durations in seconds (Motion units). CSS mirrors live in tokens.css (--ig-dur-*). */
 export const durations = {
+  resultStagger: 0.018,
   instant: 0.06,
   fast: 0.1,
   med: 0.16,
@@ -70,11 +79,18 @@ export const tabSlide = { enter: 6, exit: -4 } as const;
 /** Wave 2: settings view slide (px, x axis). Opening: settings come from the right; «Назад» reverses the sign. */
 export const viewSlide = { enter: 16, exit: -12 } as const;
 
-/** Wave 2: list rows. New clip drops in from above, deleted row fades and collapses. Use with springs.list. */
+/** Wave 2: list rows. New clip drops in from above, deleted row fades without animating height. Use with springs.list. */
 export const listItem = {
   initial: { opacity: 0, y: -6 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, height: 0, transition: { duration: 0.12, ease: easings.in } },
+  exit: { opacity: 0, transition: { duration: durations.med, ease: easings.in } },
+} as const;
+
+/** v0.3: command bar list rows. Quick fade + subtle translate without height jumping. */
+export const cmdItem = {
+  initial: { opacity: 0, y: -4 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.1, ease: easings.out } },
+  exit: { opacity: 0, transition: { duration: 0.06, ease: easings.in } },
 } as const;
 
 /**

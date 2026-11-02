@@ -67,6 +67,44 @@ export type ThemeMode = "auto" | "light" | "dark";
 /** UI language (v0.2). "auto" = Windows display language: Russian → "ru", anything else → "en". */
 export type LanguageMode = "auto" | "ru" | "en";
 
+/** v0.3: quick-tool tiles on «Главная» (registry in `src/lib/tiles`). Unknown ids from a newer build are skipped by the UI. */
+export type TileId =
+  | "region" | "screen" | "ocr" | "qr" | "color"
+  /** v0.3 stage 2: shortcuts to features the app already has. */
+  | "screenshots" | "note" | "timer" | "clipboard"
+  /** v0.3: opens the command bar (same as `commandHotkey`). */
+  | "command";
+/** One grid cell, or a full row of the 2-column grid. */
+export type TileSize = "1x1" | "2x1";
+/** v0.3 (§20a): registration state of a global shortcut. busy = taken by another app/the system; off = empty setting. */
+export type HotkeyRegState = "ok" | "busy" | "off";
+export interface HotkeyStatus {
+  summon: HotkeyRegState;
+  command: HotkeyRegState;
+  /** Set when the default command hotkey was taken at startup and a fallback was registered instead
+   *  (the value it replaced, e.g. "Ctrl+Alt+Space"); null otherwise. */
+  commandFallbackFrom: string | null;
+}
+/** Tried in order when the default `commandHotkey` is taken at startup. */
+export const COMMAND_HOTKEY_FALLBACKS: readonly string[] = ["Ctrl+Shift+Space", "Alt+Shift+Space", "Ctrl+Alt+K"];
+export interface TileSlot {
+  id: TileId;
+  size: TileSize;
+}
+/** The grid is 2 columns × 3 rows, growing to 4 rows (the panel grows by one row) when a layout needs more than
+ *  QUICK_TILE_ROW_CELLS_3 cells. A layout uses at most this many cells ("2x1" counts as 2). */
+export const QUICK_TILE_CELLS = 8;
+/** Cells that fit the standard 3-row panel; more switches the panel to its tall size. */
+export const QUICK_TILE_ROW_CELLS_3 = 6;
+/** Factory layout (= v0.2.x): four 1×1 tiles, the colour picker across the last row. Rust default is identical. */
+export const DEFAULT_QUICK_TILES: readonly TileSlot[] = [
+  { id: "region", size: "1x1" },
+  { id: "screen", size: "1x1" },
+  { id: "ocr", size: "1x1" },
+  { id: "qr", size: "1x1" },
+  { id: "color", size: "2x1" },
+];
+
 export interface Settings {
   theme: ThemeMode;
   vibrancy: VibrancyMode;
@@ -93,7 +131,25 @@ export interface Settings {
   ocrLanguage: string;
   /** UI and tray language. Default "auto". */
   language: LanguageMode;
+  /** v0.3: ordered quick-tool layout. Unique ids, ≤ QUICK_TILE_CELLS cells; [] = all tiles hidden.
+   *  Default DEFAULT_QUICK_TILES; reset = settings_set({ quickTiles: DEFAULT_QUICK_TILES }). */
+  quickTiles: TileSlot[];
+  /** v0.3: «Лёгкий» mode — flat opaque surfaces instead of the glass effects (rim, grain, pointer glow, refraction,
+   *  layered shadows, blur) to save CPU/GPU. Animations stay. Default false. */
+  liteMode: boolean;
+  /** v0.3: global shortcut that opens the command bar, Tauri accelerator syntax. "" = disabled. Default "Ctrl+Alt+Space";
+   *  if the default is taken at startup, R1 falls back to COMMAND_HOTKEY_FALLBACKS and saves the one it got (§20a). */
+  commandHotkey: string;
+  /** v0.3: watch the user's Downloads folder and show downloads in the pill. Default true. */
+  downloadsMonitor: boolean;
+  /** v0.3 (§22): a file dragged out of the shelf stays there (true) or leaves it (false). Default false. */
+  shelfKeepAfterDrag: boolean;
+  /** v0.3 (§22): shelf items older than this many hours are removed; 0 = keep forever. One of SHELF_RETENTION_HOURS. Default 24. */
+  shelfRetentionHours: number;
 }
+
+/** v0.3 (§22): retention choices offered in Settings (hours; 0 = forever). */
+export const SHELF_RETENTION_HOURS: readonly number[] = [1, 24, 72, 168, 0];
 
 /** A fullscreen app R1 has seen recently (for the allowlist UI). */
 export interface FullscreenApp {
@@ -259,6 +315,24 @@ export interface DockItem {
   icon: string;
 }
 
+/** v0.3 (§22): a file or folder put on the shelf (a reference — the file is not copied). */
+export interface ShelfItem {
+  id: string;
+  /** Absolute path as dropped. */
+  path: string;
+  /** File/folder name with extension. */
+  name: string;
+  kind: "file" | "folder";
+  /** Bytes for files, null for folders or when unknown. */
+  size: number | null;
+  /** Unix ms when it was put on the shelf. */
+  addedAt: number;
+  /** The path no longer exists (moved/deleted): shown greyed out, drag/open disabled. */
+  missing: boolean;
+  /** 64×64 PNG icon as a data: URL ("" if none). */
+  icon: string;
+}
+
 // ───────────────────────────── Command & event registry ─────────────────────────────
 
 /**
@@ -326,6 +400,75 @@ export interface Commands {
   dock_open: [{ id: string }, void];
   /** Starts a native copy drag of the item's file/folder (drag-out of the dock). Rejects if the path is gone. */
   dock_start_drag: [{ id: string }, void];
+  // shelf (v0.3, R2, §22)
+  /** Shelf items, newest first; expired ones (shelfRetentionHours) are pruned before returning. */
+  shelf_list: [Record<string, never>, ShelfItem[]];
+  /** Puts paths on the shelf (duplicates of an existing path move to the top). Returns the new list. */
+  shelf_add: [{ paths: string[] }, ShelfItem[]];
+  /** Removes items; returns the new list. */
+  shelf_remove: [{ ids: string[] }, ShelfItem[]];
+  /** Removes everything. */
+  shelf_clear: [Record<string, never>, ShelfItem[]];
+  /** open = shell default action; reveal = show in Explorer. Rejects with a user-facing reason if the path is gone. */
+  shelf_open: [{ id: string; mode: "open" | "reveal" }, void];
+  /** Native drag of one or more items out of the shelf (copy effect; Move allowed when the target asks for it).
+   *  After a completed drop, items leave the shelf unless shelfKeepAfterDrag. */
+  shelf_start_drag: [{ ids: string[] }, void];
+  // command bar (v0.3)
+  /** Apps (Start menu) and files matching `query`, best first; ≤ `limit`. Empty query → []. Never blocks on a cold index:
+   *  returns what is ready and keeps indexing in the background. */
+  cmd_search: [{ query: string; limit: number }, CmdItem[]];
+  /** Runs an item from the last search. Rejects with a user-facing reason if it is gone. */
+  cmd_launch: [{ id: string; mode: CmdLaunchMode }, void];
+  /** Exchange rates for `base` (ISO 4217, upper case). Cached on disk; `stale` = served from cache because the network
+   *  failed. Rejects only when there is neither network nor cache. */
+  cmd_currency_rates: [{ base: string }, CurrencyRates];
+  /** v0.3 (§20a): current registration state of the summon/command shortcuts. */
+  hotkeys_status: [Record<string, never>, HotkeyStatus];
+  // downloads monitor (v0.3, R2)
+  /** Active downloads plus ones finished/failed in the last 5 minutes, newest first. */
+  downloads_list: [Record<string, never>, DownloadItem[]];
+  /** open = open the finished file; reveal = show it (or the partial file) in Explorer. Rejects if it is gone. */
+  downloads_open: [{ id: string; mode: "open" | "reveal" }, void];
+}
+
+/** v0.3: a file being downloaded into the user's Downloads folder (browser partial files: .crdownload, .part, .download). */
+export interface DownloadItem {
+  /** Stable for the lifetime of one download (survives the partial → final rename). */
+  id: string;
+  /** Final file name (without the partial-file suffix). */
+  name: string;
+  state: "active" | "done" | "failed";
+  receivedBytes: number;
+  /** null when the browser does not expose the total (the usual case for .crdownload). */
+  totalBytes: number | null;
+  /** Smoothed over the last few seconds; null until known or when stalled. */
+  bytesPerSec: number | null;
+  /** Epoch ms. */
+  startedAt: number;
+  updatedAt: number;
+}
+
+/** v0.3 command bar result coming from Rust (calculator/units/commands are computed in the UI). */
+export interface CmdItem {
+  /** Opaque, stable within a session; pass to `cmd_launch`. */
+  id: string;
+  kind: "app" | "file" | "folder";
+  title: string;
+  /** App: publisher/exe; file/folder: parent path (user-visible). */
+  subtitle: string;
+  /** PNG data URL of the real app/file icon (≤ 64 px), null while not extracted. */
+  icon: string | null;
+}
+/** open = default action; admin = run elevated (apps only); reveal = show in Explorer (files/folders/app target). */
+export type CmdLaunchMode = "open" | "admin" | "reveal";
+export interface CurrencyRates {
+  base: string;
+  /** 1 base = rates[code] code. */
+  rates: Record<string, number>;
+  /** Epoch ms of the provider's update. */
+  updatedAt: number;
+  stale: boolean;
 }
 
 export type CommandName = keyof Commands;
@@ -355,6 +498,15 @@ export interface Events {
   "clipboard://changed": null;
   /** R2: the dock list changed (any window/source). */
   "dock://changed": DockItem[];
+  /** v0.3, R2 (§22): the shelf changed (add/remove/expire/missing). */
+  "shelf://changed": ShelfItem[];
+  /** v0.3, R1: the command bar hotkey was pressed. The island is already shown and keyboard focus is taken; UI toggles
+   *  the command bar. */
+  "cmd://open": null;
+  /** v0.3, R1 (§20a): hotkey registration state changed (startup, settings change, fallback). */
+  "hotkeys://status": HotkeyStatus;
+  /** v0.3, R2: the downloads list changed (same shape as `downloads_list`); at most ~2 Hz while bytes are flowing. */
+  "downloads://changed": DownloadItem[];
 }
 
 export type EventName = keyof Events;

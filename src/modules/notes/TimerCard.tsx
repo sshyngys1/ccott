@@ -1,7 +1,10 @@
 import { t, useT } from "../../i18n";
 import { motion } from "motion/react";
+import { useEffect, useRef } from "react";
+import { useNotesStore } from "../../lib/notes/store";
 import { IconCheck, IconPause, IconPlay, IconReset, IconTimer } from "../../design/icons";
 import { pressScale, springs } from "../../design/motion";
+import { TimerDigits } from "../../design/fx/TimerDigits";
 import { ProgressRing, type RingState } from "../../design/ProgressRing";
 import { MINUTE_MS, TIMER_PRESETS_MIN, remainingAt, ringValue } from "../../lib/timer/machine";
 import { useTimerStore } from "../../lib/timer/store";
@@ -13,6 +16,14 @@ const STATUS_TEXT = { get idle() { return t("readyToStart"); }, get running() { 
 
 export function TimerCard() {
   useT();
+  const ref = useRef<HTMLElement>(null);
+  const focusRequested = useNotesStore((s) => s.timerFocusRequested);
+  useEffect(() => {
+    if (!focusRequested || !ref.current) return;
+    ref.current.scrollIntoView?.({ block: "nearest" });
+    ref.current.focus({ preventScroll: true });
+    useNotesStore.getState().clearTimerFocus();
+  }, [focusRequested]);
   const timer = useTimerStore((s) => s.timer);
   const now = useTimerStore((s) => s.now);
   const { toggle, reset, selectPreset, addMinute } = useTimerStore.getState();
@@ -24,7 +35,8 @@ export function TimerCard() {
   const totalMin = Math.round(timer.totalMs / MINUTE_MS);
 
   return (
-    <section className={done ? "ig-glass-card ig-glass-card--success nt-timer" : "ig-glass-card nt-timer"} aria-label={t("timer")}>
+    <section ref={ref} tabIndex={-1} className={done ? "ig-glass-card ig-glass-card--success nt-timer" : "ig-glass-card nt-timer"} aria-label={t("timer")}>
+      {done && <span key={timer.finishedAt} className="ig-timer-finish" aria-hidden="true" />}
       <header className="nt-timer-head">
         <span className="nt-timer-title">
           <IconTimer size={16} />
@@ -44,7 +56,7 @@ export function TimerCard() {
             </>
           ) : (
             <>
-              <span className="nt-timer-time ig-num">{formatTimerFace(remaining)}</span>
+              <span className="nt-timer-time ig-num"><TimerDigits text={formatTimerFace(remaining)} /></span>
               <span className="mod-caption">{t("timer.total", { count: totalMin })}</span>
             </>
           )}

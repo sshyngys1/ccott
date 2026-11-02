@@ -33,6 +33,9 @@
   margin-left: calc(var(--ig-panel-width) / -2);
   transform-origin: 50% 0;
 }
+.ig-island[data-tall="true"] > .ig-island-layer--panel {
+  height: var(--ig-panel-height-tall);
+}
 
 /* ── Pill content ── */
 .ig-pill-row {
@@ -64,6 +67,26 @@
   min-width: 0;
   font-size: var(--ig-text-xs);
   color: var(--ig-text-tertiary);
+}
+.ig-pill-hotkey-message {
+  flex: 1;
+  min-width: 0;
+}
+.ig-pill-hotkey-line {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+}
+.ig-pill-shortcut,
+.ig-pill-feedback--shortcut .ig-glass-control {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ig-pill-hotkey-detail {
+  display: block;
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading-tight);
+  color: var(--ig-danger-text);
 }
 .ig-pill-badge {
   display: grid;
@@ -135,12 +158,13 @@
   align-items: center;
 }
 .ig-battery-symbol {
-  width: calc(var(--ig-control-height) + var(--ig-space-2-5));
-  height: var(--ig-space-5);
+  width: auto;
+  height: var(--ig-space-3);
+  aspect-ratio: 42 / 24;
   color: var(--ig-battery-normal);
   font: var(--ig-weight-bold, 700) var(--ig-text-xs) / 1 var(--ig-font);
 }
-.ig-battery-symbol[data-tone="charging"] { color: var(--ig-battery-charging); }
+
 .ig-battery-symbol[data-tone="critical"] { color: var(--ig-battery-critical); }
 .ig-battery-symbol[data-tone="low"] { color: var(--ig-battery-low); }
 .ig-battery-symbol[data-tone="unknown"] { color: var(--ig-battery-unknown); }
@@ -182,21 +206,39 @@
 }
 .ig-pill-action:focus-visible { outline: var(--ig-space-0-5) solid var(--ig-accent); outline-offset: calc(-1 * var(--ig-space-0-5)); }
 .ig-settings {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--ig-space-3);
-  align-items: start;
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--ig-stroke-strong) transparent;
 }
+.ig-settings-columns {
+  display: flow-root;
+}
+/* Keep DOM/Tab order: appearance, behaviour, shelf, tiles. The right stack is
+   one float so neither left card is pushed down by a preceding right card. */
+.ig-settings-column--left,
+.ig-settings-column--right {
+  width: calc((100% - var(--ig-space-3)) / 2);
+}
+.ig-settings-column--left {
+  float: left;
+  clear: left;
+}
+.ig-settings-column--right {
+  float: right;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+}
+.ig-settings-column--left ~ .ig-settings-column--left {
+  margin-top: var(--ig-space-3);
+}
 .ig-settings-card {
   padding: var(--ig-space-1) 0;
 }
 .ig-settings-card--wide {
-  grid-column: 1 / -1;
+  margin-top: var(--ig-space-3);
 }
 .ig-hotkey-controls {
   display: flex;
@@ -215,7 +257,7 @@
   color: var(--ig-accent);
 }
 .ig-hotkey-error {
-  color: var(--ig-danger, #ef4444);
+  color: var(--ig-danger-text);
 }
 .ig-fullscreen-empty {
   margin: 0;
@@ -292,6 +334,7 @@
 }
 .ig-whats-new-card {
   display: flex;
+  flex-shrink: 0;
   align-items: flex-start;
   gap: var(--ig-space-3);
   padding: var(--ig-space-2-5) var(--ig-space-3);
@@ -328,6 +371,17 @@
   color: var(--ig-text-secondary);
   line-height: var(--ig-leading-relaxed);
 }
+.ig-whats-new-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  margin: var(--ig-space-1) 0 0;
+  padding-left: var(--ig-space-4);
+  list-style: disc;
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading);
+  color: var(--ig-text-secondary);
+}
 .ig-whats-new-footer {
   display: flex;
   justify-content: flex-end;
@@ -350,3 +404,33 @@
   background: currentColor;
   border-radius: 1px;
 }
+/* Shelf uses the idle pill slot; media, downloads and timers keep their priority. */
+.ig-shelf-badge { display: inline-flex; align-items: center; gap: var(--ig-space-1); padding: 0; background: transparent; border: 0; cursor: pointer; color: var(--ig-accent-on-strong); font-size: var(--ig-text-xs); }
+.ig-shelf-drop { justify-content: center; gap: var(--ig-space-2); color: var(--ig-accent-on-strong); font-size: var(--ig-text-sm); }
+.ig-island[data-shelf-drop="true"] { box-shadow: inset 0 0 0 var(--ig-outline-width) var(--ig-accent-on-strong); }
+
+/* Charge colour is a second plate: only its opacity changes. */
+.ig-battery-fill { transform-origin: 0 0; transition: transform var(--ig-dur-slow) var(--ig-ease-out); }
+.ig-battery-charge-fill { fill: var(--ig-battery-charging); opacity: 0; transition: opacity var(--ig-dur-slow) var(--ig-ease-out); }
+.ig-battery-symbol[data-charging="true"] .ig-battery-charge-fill { opacity: 1; }
+.ig-battery-bolt, .ig-battery-number { transform-origin: 18px 12px; transition: opacity var(--ig-dur-slow) var(--ig-ease-out); }
+.ig-battery-bolt { opacity: 0; }
+.ig-battery-number { font-size: var(--ig-text-lg); }
+.ig-battery-symbol[data-charging="true"] .ig-battery-bolt { opacity: 1; }
+.ig-battery-symbol[data-charging="true"] .ig-battery-number { opacity: 0; }
+.ig-battery-flash { fill: var(--ig-battery-normal); opacity: 0; pointer-events: none; }
+[data-charge-transition="plug"] .ig-battery-bolt { animation: ig-charge-strike var(--ig-dur-slow) var(--ig-ease-spring) both; }
+[data-charge-transition="plug"] .ig-battery-flash { animation: ig-charge-flash var(--ig-dur-slow) var(--ig-ease-out) var(--ig-dur-slow) both; }
+[data-charge-transition="plug"] .ig-battery-charge-fill { transition-delay: calc(var(--ig-dur-slow) * 2); }
+@keyframes ig-charge-strike { from { opacity: 0; transform: translateY(calc(-1 * var(--ig-space-3))); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ig-charge-flash { 0%, 100% { opacity: 0; } 35% { opacity: 0.8; } }
+@media (prefers-reduced-motion: reduce) {
+  .ig-battery-fill { transition: none; }
+  [data-charge-transition="plug"] .ig-battery-bolt { animation: ig-feedback-fade var(--ig-dur-slow) var(--ig-ease-out); }
+  [data-charge-transition="plug"] .ig-battery-flash { animation: none; }
+  [data-charge-transition="plug"] .ig-battery-charge-fill { transition-delay: 0s; }
+}
+@keyframes ig-feedback-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.ig-head-battery .ig-battery-symbol { width: var(--ig-space-6); height: var(--ig-space-4); }
+.ig-head-battery .ig-battery-number { display: none; }

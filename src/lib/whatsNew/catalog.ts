@@ -4,9 +4,10 @@ import type { TranslationKey } from "../../i18n";
 
 export interface WhatsNewItem {
   id: string;
-  icon: "player" | "spectrum" | "battery" | "changelog";
+  icon: "player" | "spectrum" | "battery" | "changelog" | "command" | "shelf" | "downloads" | "tiles" | "lite" | "motion";
   titleKey: TranslationKey;
   descKey: TranslationKey;
+  stepKeys?: TranslationKey[];
 }
 
 export const WHATS_NEW_CATALOG: Record<string, WhatsNewItem[]> = {
@@ -42,6 +43,37 @@ export const WHATS_NEW_CATALOG: Record<string, WhatsNewItem[]> = {
     { id: "cover", icon: "player", titleKey: "whatsNew.v023.cover.title", descKey: "whatsNew.v023.cover.desc" },
     { id: "equalizer", icon: "spectrum", titleKey: "whatsNew.v023.equalizer.title", descKey: "whatsNew.v023.equalizer.desc" },
     { id: "dock", icon: "changelog", titleKey: "whatsNew.v023.dock.title", descKey: "whatsNew.v023.dock.desc" },
+  ],
+  "0.3.0": [
+    {
+      id: "command", icon: "command",
+      titleKey: "whatsNew.v030.command.title", descKey: "whatsNew.v030.command.desc",
+      stepKeys: ["whatsNew.v030.command.step1", "whatsNew.v030.command.step2", "whatsNew.v030.command.step3", "whatsNew.v030.command.step4"],
+    },
+    {
+      id: "shelf", icon: "shelf",
+      titleKey: "whatsNew.v030.shelf.title", descKey: "whatsNew.v030.shelf.desc",
+      stepKeys: ["whatsNew.v030.shelf.step1", "whatsNew.v030.shelf.step2", "whatsNew.v030.shelf.step3", "whatsNew.v030.shelf.step4"],
+    },
+    {
+      id: "downloads", icon: "downloads",
+      titleKey: "whatsNew.v030.downloads.title", descKey: "whatsNew.v030.downloads.desc",
+      stepKeys: ["whatsNew.v030.downloads.step1", "whatsNew.v030.downloads.step2", "whatsNew.v030.downloads.step3"],
+    },
+    {
+      id: "tiles", icon: "tiles",
+      titleKey: "whatsNew.v030.tiles.title", descKey: "whatsNew.v030.tiles.desc",
+      stepKeys: ["whatsNew.v030.tiles.step1", "whatsNew.v030.tiles.step2", "whatsNew.v030.tiles.step3", "whatsNew.v030.tiles.step4"],
+    },
+    {
+      id: "lite", icon: "lite",
+      titleKey: "whatsNew.v030.lite.title", descKey: "whatsNew.v030.lite.desc",
+      stepKeys: ["whatsNew.v030.lite.step1"],
+    },
+    {
+      id: "motion", icon: "motion",
+      titleKey: "whatsNew.v030.motion.title", descKey: "whatsNew.v030.motion.desc",
+    },
   ],
 };
 

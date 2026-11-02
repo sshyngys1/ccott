@@ -1227,6 +1227,7 @@ textarea.ig-glass-input {
   min-width: 0;
 }
 .ig-select > select {
+  color-scheme: inherit;
   appearance: none;
   height: var(--ig-control-height-sm);
   min-width: 0;
@@ -1241,6 +1242,11 @@ textarea.ig-glass-input {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--ig-stroke);
   cursor: default;
+}
+/* Native popups need an opaque surface even when the panel uses vibrancy. */
+.ig-select > select > option {
+  background-color: var(--ig-lite-surface);
+  color: var(--ig-text);
 }
 .ig-select > select:hover {
   background-color: var(--ig-surface-hover);
@@ -1404,6 +1410,427 @@ textarea.ig-glass-input {
 }
 .ig-pill-row[data-state="done"] .ig-pill-time {
   color: var(--ig-success);
+}
+
+/* ═════════════════════════════════ v0.3: Command Bar (Командная строка) ═════════════════════════════════ */
+.ig-cmd {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Header & Input */
+.ig-cmd-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  height: var(--ig-cmd-input-height);
+  padding: 0 var(--ig-space-4);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--ig-stroke);
+}
+.ig-cmd-header__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ig-accent-text);
+  flex-shrink: 0;
+}
+.ig-cmd-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ig-text);
+  font: var(--ig-weight-medium) var(--ig-text-lg) / var(--ig-leading-tight) var(--ig-font-display);
+  outline: none;
+  padding: 0;
+  margin: 0;
+}
+.ig-cmd-input::placeholder {
+  color: var(--ig-text-tertiary);
+  font-weight: var(--ig-weight-regular);
+}
+.ig-cmd-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  flex-shrink: 0;
+}
+
+/* Hero card (instant result: Calculator / Converter) */
+.ig-cmd-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  height: var(--ig-cmd-hero-height, 74px);
+  margin: var(--ig-space-2) var(--ig-space-3);
+  padding: 0 var(--ig-space-4);
+  background-color: var(--ig-surface-raised);
+  border-radius: var(--ig-radius-md);
+  border: 1px solid var(--ig-stroke);
+  box-shadow: var(--ig-shadow-control);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+.ig-cmd-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ig-accent);
+}
+.ig-cmd-hero__lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--ig-radius-sm);
+  background-color: var(--ig-surface-hover);
+  color: var(--ig-accent-text);
+  flex-shrink: 0;
+}
+.ig-cmd-hero__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.ig-cmd-hero__value {
+  color: var(--ig-text);
+  font: var(--ig-weight-bold) 20px / 1.1 var(--ig-font-display);
+  letter-spacing: -0.01em;
+}
+.ig-cmd-hero__formula {
+  color: var(--ig-text-secondary);
+  font: var(--ig-weight-regular) 11.5px / 1.2 var(--ig-font);
+}
+.ig-cmd-hero__meta {
+  color: var(--ig-text-tertiary);
+  font: var(--ig-weight-regular) 11px / 1.2 var(--ig-font);
+}
+.ig-cmd-hero__action {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  color: var(--ig-text-secondary);
+  font-size: var(--ig-text-xs);
+  flex-shrink: 0;
+}
+
+/* Results body / scroll list with soft gradient edge mask (no backdrop-filter) */
+.ig-cmd-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ig-space-2) 0;
+  box-sizing: border-box;
+}
+.ig-cmd-body:empty {
+  display: none;
+}
+.ig-cmd-body[data-scrollable="true"] {
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+}
+.ig-cmd-body[data-scrollable="true"][data-scrolled-top="true"] {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 20px,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 20px,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+}
+.ig-cmd-body[data-scrollable="true"][data-scrolled-bottom="true"] {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 20px,
+    black 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 20px,
+    black 100%
+  );
+}
+
+/* Section label */
+.ig-cmd-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  height: var(--ig-cmd-group-height, 24px);
+  padding: 0 var(--ig-space-3);
+  margin: 0 var(--ig-space-2);
+  color: var(--ig-text-tertiary);
+  font: var(--ig-weight-semibold) 11px / 1 var(--ig-font);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+  box-sizing: border-box;
+}
+.ig-cmd-section-label:first-child {
+  margin-top: 0;
+}
+
+/* App placeholder badge */
+.ig-cmd-app-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ig-radius-sm);
+  font: var(--ig-weight-bold) 13px / 1 var(--ig-font-display);
+  flex-shrink: 0;
+}
+.ig-cmd-app-badge--tg {
+  background: #24a1de;
+  color: #ffffff;
+}
+
+/* Result row (46px + 1px top/bottom margin = 48px row slot) */
+.ig-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  height: 46px;
+  padding: 0 var(--ig-space-3);
+  margin: 1px var(--ig-space-2);
+  border-radius: var(--ig-radius-md);
+  box-sizing: border-box;
+  cursor: pointer;
+  position: relative;
+  transition: background-color var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-cmd-row:hover {
+  background-color: var(--ig-surface-hover);
+}
+.ig-cmd-row[aria-selected="true"] {
+  background-color: var(--ig-row-selected);
+}
+.ig-cmd-row[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 10px;
+  bottom: 10px;
+  width: 2.5px;
+  border-radius: 1.5px;
+  background-color: var(--ig-accent-text);
+}
+.ig-cmd-row__lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ig-radius-sm);
+  background-color: var(--ig-surface-raised);
+  color: var(--ig-text-secondary);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px var(--ig-stroke);
+}
+.ig-cmd-row[aria-selected="true"] .ig-cmd-row__lead {
+  background-color: var(--ig-surface-hover);
+  color: var(--ig-accent-text);
+}
+.ig-cmd-row__lead[data-kind="app"] {
+  color: var(--ig-accent-text);
+}
+.ig-cmd-row__lead[data-kind="file"] {
+  color: var(--ig-warning-text);
+}
+.ig-cmd-row__lead[data-kind="calc"] {
+  color: var(--ig-success-text);
+}
+.ig-cmd-row__lead[data-kind="convert"] {
+  color: var(--ig-accent-text);
+}
+.ig-cmd-row__lead[data-kind="command"] {
+  color: var(--ig-text);
+}
+
+.ig-cmd-row__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.ig-cmd-row__title {
+  color: var(--ig-text);
+  font: var(--ig-weight-medium) var(--ig-text-md) / 1.2 var(--ig-font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ig-cmd-row__meta {
+  color: var(--ig-text-tertiary);
+  font: var(--ig-weight-regular) var(--ig-text-xs) / 1.2 var(--ig-font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ig-cmd-row__action {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  color: var(--ig-text-tertiary);
+  font-size: var(--ig-text-xs);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+.ig-cmd-row:hover .ig-cmd-row__action,
+.ig-cmd-row[aria-selected="true"] .ig-cmd-row__action {
+  opacity: 1;
+}
+
+/* Footer / status */
+.ig-cmd-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ig-cmd-footer-height);
+  padding: 0 var(--ig-space-4);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-top: 1px solid var(--ig-stroke);
+  color: var(--ig-text-tertiary);
+  font-size: var(--ig-text-xs);
+  background-color: var(--ig-surface-sunken);
+}
+.ig-cmd-footer__hints {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  overflow: hidden;
+}
+.ig-cmd-hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+  white-space: nowrap;
+}
+.ig-cmd-footer__status {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  font-weight: var(--ig-weight-medium);
+  flex-shrink: 0;
+}
+
+/* Banner / offline warning inside cmd */
+.ig-cmd-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  height: var(--ig-cmd-banner-height, 36px);
+  min-height: var(--ig-cmd-banner-height, 36px);
+  margin: var(--ig-space-2) var(--ig-space-3) 0 var(--ig-space-3);
+  padding: 0 var(--ig-space-3);
+  border-radius: var(--ig-radius-sm);
+  background-color: var(--ig-danger-soft);
+  color: var(--ig-danger-text);
+  font: var(--ig-weight-medium) 12px / 1 var(--ig-font);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ig-cmd-banner--info {
+  background-color: var(--ig-surface-raised);
+  color: var(--ig-text-secondary);
+  border: 1px solid var(--ig-stroke);
+}
+
+/* Lite mode changes material only. Keep layout/positioning and content animations in their owners.
+   Opaque tokens are independent of data-vibrancy, including while a native reply is pending. */
+:root[data-lite="true"],
+:root[data-lite="true"][data-vibrancy],
+:root[data-lite="true"][data-theme][data-vibrancy] {
+  --ig-surface: var(--ig-lite-surface);
+  --ig-surface-raised: var(--ig-lite-raised);
+  --ig-surface-hover: var(--ig-lite-hover);
+  --ig-surface-pressed: var(--ig-lite-pressed);
+  --ig-surface-sunken: var(--ig-lite-sunken);
+  --ig-surface-selected: var(--ig-lite-selected);
+}
+:root[data-lite="true"] .ig-glass {
+  background-color: var(--ig-surface);
+}
+:root[data-lite="true"] .ig-glass--pill {
+  background-color: var(--ig-surface-strong);
+  --ig-surface-raised: var(--ig-surface-strong);
+  --ig-surface-hover: var(--ig-surface-strong);
+  --ig-surface-pressed: var(--ig-surface-strong);
+  --ig-surface-selected: var(--ig-surface-strong);
+}
+/* The resizing selector also beats the native-vibrancy resizing shadow. No doubled base rules. */
+:root[data-lite="true"] .ig-island.ig-glass[data-resizing="true"],
+:root[data-lite="true"] :is(.ig-glass, .ig-glass-card, .ig-glass-control, .ig-tab-thumb, .ig-chip, .ig-kbd, .ig-glass-input, .ig-field, .ig-select > select) {
+  background-image: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-stroke);
+}
+:root[data-lite="true"] .ig-glass::before,
+:root[data-lite="true"] .ig-glass::after,
+:root[data-lite="true"] .ig-glass-control::before,
+:root[data-lite="true"] .ig-glass-control::after {
+  content: none;
+  display: none;
+  background: none;
+  mask: none;
+  mix-blend-mode: normal;
+}
+/* Retain selection and focus cues with one line instead of layered elevation/halos. */
+:root[data-lite="true"] :is(.ig-glass-control, .ig-chip):is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [data-selected="true"]),
+:root[data-lite="true"] :is(.ig-glass-input, .ig-field):hover {
+  box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-stroke-strong);
+}
+:root[data-lite="true"] :is(.ig-glass-input:focus, .ig-glass-input[data-focus-visible="true"], .ig-field:focus-within, .ig-field[data-focus-visible="true"], .ig-select > select:focus-visible) {
+  box-shadow: inset 0 0 0 var(--ig-outline-width) var(--ig-accent-text);
+}
+:root[data-lite="true"] :is(.ig-glass-input[aria-invalid="true"], .ig-field[data-invalid="true"]) {
+  box-shadow: inset 0 0 0 var(--ig-outline-width) var(--ig-danger-text);
+}
+/* These pseudo-elements are functional (thumbs), so retain them and only flatten their shadows. */
+:root[data-lite="true"] .ig-switch::before,
+:root[data-lite="true"] .ig-glass-slider::-webkit-slider-thumb {
+  box-shadow: inset 0 0 0 var(--ig-rim-width) var(--ig-stroke);
 }
 
 /* ───────────────────────── Reduced motion ───────────────────────── */

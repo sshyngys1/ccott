@@ -1960,14 +1960,16 @@ dependencies = [
 
 [[package]]
 name = "island-win"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "image",
  "log",
  "qrcode",
+ "reqwest",
  "rqrr",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

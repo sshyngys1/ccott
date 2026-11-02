@@ -82,7 +82,11 @@ export function VolumeCard() {
   };
 
   return (
-    <section ref={rootRef} className="ig-glass-card hm-volume" aria-label={t("volume")}>
+    <motion.section
+      ref={rootRef}
+      className="ig-glass-card hm-volume"
+      aria-label={t("volume")}
+    >
       <motion.button
         type="button"
         className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-glass-control--sm"
@@ -166,6 +170,6 @@ export function VolumeCard() {
           })}
         </ul>
       )}
-    </section>
+    </motion.section>
   );
 }

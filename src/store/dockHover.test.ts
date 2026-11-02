@@ -16,3 +16,15 @@ it("keeps the panel open during native drag/dialog, then resumes ordinary hover 
   act(()=>{useDockStore.setState({interacting:false});vi.advanceTimersByTime(400);});
   expect(useIslandStore.getState().mode).toBe("collapsed");hook.unmount();
 });
+it("keeps the hotkey-opened command bar open while the cursor is elsewhere; explicit collapse still closes it",async()=>{
+  resetMock();resetDockStore();resetIslandStore();vi.useFakeTimers();
+  const hook=renderHook(()=>useHoverSync());
+  await act(async()=>{});
+  act(()=>{useIslandStore.getState().setView("cmd");hook.result.current.expandNow();mockEmit("island://hover",{inside:false});vi.advanceTimersByTime(2000);});
+  expect(useIslandStore.getState().mode).toBe("expanded");
+  expect(useIslandStore.getState().view).toBe("cmd");
+  act(()=>{hook.result.current.collapseNow();});
+  expect(useIslandStore.getState().mode).toBe("collapsed");
+  act(()=>{hook.result.current.expandNow();mockEmit("island://hover",{inside:false});vi.advanceTimersByTime(400);});
+  expect(useIslandStore.getState().mode).toBe("collapsed");hook.unmount();
+});
