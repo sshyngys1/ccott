@@ -125,6 +125,7 @@
   font-size: var(--ig-text-sm);
 }
 .hm-controls {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -416,3 +417,15 @@
 
 .hm-track-text { display: flex; flex-direction: column; gap: var(--ig-space-1); min-width: 0; }
 .hm-home--with-tools .hm-track-text { gap: 0; }
+.hm-home[data-dock="false"],
+.hm-home[data-dock="false"]:has(.hm-tools),
+.hm-home.hm-home--with-tools[data-dock="false"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* The lyrics button sits at the right edge of the transport row without moving the centred prev/play/next. */
+.hm-controls > .ig-lyrics-toggle {
+  position: absolute;
+  right: 0;
+  margin: 0;
+}

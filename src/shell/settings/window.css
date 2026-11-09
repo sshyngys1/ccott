@@ -1,0 +1,70 @@
+.ig-settings-window {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ig-surface);
+  padding: var(--ig-space-5);
+  box-sizing: border-box;
+}
+.ig-settings-window__header h1 {
+  margin: 0 0 var(--ig-space-4);
+  font-size: var(--ig-text-xl);
+  font-weight: var(--ig-weight-semibold);
+}
+.ig-settings-window__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  width: calc(var(--ig-space-5) * 10);
+  flex: none;
+  padding: var(--ig-space-1);
+}
+.ig-settings-window__layout { display: flex; flex: 1; min-height: 0; gap: var(--ig-space-4); }
+.ig-settings-window__content { flex: 1; min-width: 0; padding: var(--ig-space-1); }
+.ig-settings-window__section {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+  flex: none;
+  padding: var(--ig-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--ig-radius-sm);
+  background: transparent;
+  color: var(--ig-text-secondary);
+  text-align: left;
+  font: inherit;
+  font-size: var(--ig-text-sm);
+  cursor: pointer;
+}
+.ig-settings-window__section svg { flex: none; }
+.ig-settings-window__section:hover { background: var(--ig-surface-raised); color: var(--ig-text); }
+.ig-settings-window__section[aria-current="page"] { background: var(--ig-row-selected); color: var(--ig-accent-text); border-color: var(--ig-stroke); }
+@media (max-width: 700px) {
+  .ig-settings-window__nav { width: auto; }
+  .ig-settings-window__section span { display: none; }
+}
+.ig-settings-window .ig-settings { height: auto; overflow: visible; }
+.ig-settings-window .ig-settings-card { margin: 0 0 var(--ig-space-4); }
+.ig-settings-window .ig-whats-new-container {
+  /* Settings has an auto-height parent; the island already supplies its body height. */
+  max-height: calc(100dvh - var(--ig-space-5) * 8);
+}
+.ig-settings-window section { scroll-margin-top: var(--ig-space-4); }
+.ig-settings-window :focus-visible { outline: var(--ig-space-0-5) solid var(--ig-focus); outline-offset: var(--ig-space-0-5); }
+.ig-currency-picker { position: relative; width: 100%; }
+.ig-currency-picker input { width: 100%; box-sizing: border-box; }
+.ig-currency-picker__options {
+  position: absolute;
+  z-index: 2;
+  top: 100%;
+  width: 100%;
+  max-height: calc(var(--ig-control-height) * 6);
+  overflow-y: auto;
+  background: var(--ig-surface);
+  border: 1px solid var(--ig-stroke-strong);
+  border-radius: var(--ig-radius-sm);
+  box-shadow: var(--ig-shadow);
+}
+.ig-currency-picker__options [data-active="true"] { background: var(--ig-row-selected); }
+.ig-settings-window .ig-settings-error { color: var(--ig-danger-text); }

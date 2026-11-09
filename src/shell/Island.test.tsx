@@ -1,13 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mockCopy, mockEmit, mockListenerCount, mockSetMedia, mockStats, resetMock } from "../ipc/mock";
-import { DEFAULT_GEOMETRY, hoveredPill } from "../design/geometry";
+import { DEFAULT_GEOMETRY, hoveredPill, panelHeight } from "../design/geometry";
 import { EMPTY_MEDIA } from "../lib/media/progress";
 import { useMediaStore } from "../lib/media/store";
+import { useTilesEditStore } from "../lib/tiles/store";
 import { resetIslandStore, useIslandStore } from "../store";
 import { Island } from "./Island";
 import { backgroundScreens } from "./preloadScreens";
-import { DEFAULT_QUICK_TILES, type TileSlot } from "../shared/types";
+import { useTabsEditStore } from "./tabs/store";
+import { DEFAULT_QUICK_TILES, type FeatureId, type TileSlot } from "../shared/types";
 
 // These interaction tests exercise the normal, preloaded UI. Cold loading is tested separately.
 beforeAll(async () => {
@@ -92,7 +94,7 @@ describe("Island", () => {
     const tablist = await screen.findByRole("tablist", { name: "Вкладки острова" });
     expect(tablist).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Главная", "Буфер", "Текст", "Заметки", "Полка"]);
+    expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["Главная", "Буфер", "Текст", "Заметки", "Полка", "Погода", "Управление", "Агенты"]);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
     expect(useIslandStore.getState().mode).toBe("expanded");
@@ -111,6 +113,12 @@ describe("Island", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: "Заметки" }), { key: "ArrowRight" });
     expect(useIslandStore.getState().activeTab).toBe("shelf");
     fireEvent.keyDown(screen.getByRole("tab", { name: "Полка" }), { key: "ArrowRight" });
+    expect(useIslandStore.getState().activeTab).toBe("weather");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Погода" }), { key: "ArrowRight" });
+    expect(useIslandStore.getState().activeTab).toBe("control");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Управление" }), { key: "ArrowRight" });
+    expect(useIslandStore.getState().activeTab).toBe("agents");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Агенты" }), { key: "ArrowRight" });
     expect(useIslandStore.getState().activeTab).toBe("home"); // wraps around
   });
 
@@ -235,7 +243,7 @@ describe("Island", () => {
       const size = mode === "expanded" ? DEFAULT_GEOMETRY.panel : DEFAULT_GEOMETRY.pill;
       expect(island.style.width).toBe(`${size.width}px`);
       expect(island.style.height).toBe(`${size.height}px`);
-      act(() => useIslandStore.getState().setView(mode === "expanded" ? "settings" : "tabs"));
+      act(() => useIslandStore.getState().setView(mode === "expanded" ? "whatsNew" : "tabs"));
       expect(island).not.toHaveAttribute("data-resizing");
     }
   });
@@ -295,4 +303,91 @@ describe("Island", () => {
     expect(screen.getByText("hello@example.com")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Скопировано")).toBeNull(), { timeout: 4000 });
   }, 8000);
+
+  it("resizes panel height and Rust shape when dock is disabled and/or only one tab is visible, then restores on re-enable", async () => {
+    const { container } = await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    act(() => useIslandStore.getState().setMode("expanded"));
+    await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"));
+    expect(island.style.height).toBe(`${DEFAULT_GEOMETRY.panel.height}px`);
+    expect(mockStats.lastShape?.height).toBe(DEFAULT_GEOMETRY.panel.height);
+
+    const singleTabFeatures: FeatureId[] = ["clipboard", "text", "notes", "shelf", "weather", "control", "agents"];
+    const tallTiles: TileSlot[] = [...DEFAULT_QUICK_TILES, { id: "screenshots", size: "1x1" }];
+
+    for (const [disabledFeatures, quickTiles, expected] of [
+      [["dock"] as FeatureId[], DEFAULT_QUICK_TILES, panelHeight(DEFAULT_GEOMETRY, { dock: false, tabBar: true, tall: false })],
+      [singleTabFeatures, DEFAULT_QUICK_TILES, panelHeight(DEFAULT_GEOMETRY, { dock: true, tabBar: false, tall: false })],
+      [[...singleTabFeatures, "dock"] as FeatureId[], DEFAULT_QUICK_TILES, panelHeight(DEFAULT_GEOMETRY, { dock: false, tabBar: false, tall: false })],
+      [[...singleTabFeatures, "dock"] as FeatureId[], tallTiles, panelHeight(DEFAULT_GEOMETRY, { dock: false, tabBar: false, tall: true })],
+      [[] as FeatureId[], DEFAULT_QUICK_TILES, DEFAULT_GEOMETRY.panel.height],
+    ] as const) {
+      act(() =>
+        useIslandStore.getState().applySettings({
+          ...useIslandStore.getState().settings,
+          disabledFeatures: [...disabledFeatures],
+          quickTiles: [...quickTiles],
+        }),
+      );
+      expect(island).toHaveAttribute("data-resizing", "true");
+      await waitFor(() => expect(island.style.height).toBe(`${expected}px`));
+      await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"), { timeout: 2000 });
+      expect(mockStats.lastShape?.height).toBe(expected);
+      expect(container.querySelector<HTMLElement>(".ig-island-layer--panel")?.style.height).toBe(`${expected}px`);
+    }
+  });
+
+  it("prewarms a saved compact layout (no dock, single tab) without changing the pill, then expands to its exact height", async () => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+    const expected = panelHeight(DEFAULT_GEOMETRY, { dock: false, tabBar: false, tall: false });
+    act(() =>
+      useIslandStore.getState().applySettings({
+        ...useIslandStore.getState().settings,
+        disabledFeatures: ["dock", "clipboard", "text", "notes", "shelf", "weather", "control", "agents"],
+      }),
+    );
+    act(() => mockEmit("island://prewarm", null));
+    expect(useIslandStore.getState().mode).toBe("collapsed");
+    expect(island.style.height).toBe(`${DEFAULT_GEOMETRY.pill.height}px`);
+    act(() => useIslandStore.getState().setMode("expanded"));
+    await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"), { timeout: 2000 });
+    expect(island.style.height).toBe(`${expected}px`);
+    expect(mockStats.lastShape?.height).toBe(expected);
+  });
+
+  it("clicking «Свернуть» while cursor is over the island collapses and stays collapsed until leave + re-enter", async () => {
+    await mountIsland();
+    const island = screen.getByRole("region", { name: "Dynamic Island" });
+
+    // Hover opens the island
+    act(() => mockEmit("island://hover", { inside: true }));
+    await screen.findByRole("tablist");
+    expect(useIslandStore.getState().mode).toBe("expanded");
+
+    // Also engage edit-mode holds to verify releasing holds on collapse does not re-trigger expansion
+    act(() => {
+      useTabsEditStore.getState().setEditing(true);
+      useTilesEditStore.getState().setEditing(true);
+    });
+
+    // Click Collapse while cursor is still inside the island
+    fireEvent.click(screen.getByRole("button", { name: "Свернуть" }));
+    expect(useIslandStore.getState().mode).toBe("collapsed");
+    expect(island).toHaveAttribute("data-hover", "false");
+
+    // Wait well past hoverExpandDelayMs (120 ms) and collapse settle (~335 ms): must stay collapsed at resting pill size
+    await waitFor(() => expect(island).not.toHaveAttribute("data-resizing"), { timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 250));
+    expect(useIslandStore.getState().mode).toBe("collapsed");
+    expect(island.style.width).toBe(`${DEFAULT_GEOMETRY.pill.width}px`);
+    expect(island.style.height).toBe(`${DEFAULT_GEOMETRY.pill.height}px`);
+    expect(mockStats.lastShape?.height).toBe(DEFAULT_GEOMETRY.pill.height);
+
+    // Leaving and re-entering expands normally again
+    act(() => mockEmit("island://hover", { inside: false }));
+    act(() => mockEmit("island://hover", { inside: true }));
+    await screen.findByRole("tablist");
+    expect(useIslandStore.getState().mode).toBe("expanded");
+  });
 });

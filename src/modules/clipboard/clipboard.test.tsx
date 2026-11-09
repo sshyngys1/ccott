@@ -125,7 +125,7 @@ describe("Clipboard tab: search", () => {
 });
 
 describe("Clipboard tab: paste / copy", () => {
-  it.each(["unmount", "collapse", "tab", "settings", "whatsNew", "cmd", "away and back"])("cancels pending paste on %s before 160ms", async (action) => {
+  it.each(["unmount", "collapse", "tab", "whatsNew", "cmd", "away and back"])("cancels pending paste on %s before 160ms", async (action) => {
     await mountTab();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const spy = vi.spyOn(ipc, "invoke");
@@ -139,7 +139,7 @@ describe("Clipboard tab: paste / copy", () => {
       else if (action === "away and back") {
         state.setActiveTab("home");
         state.setActiveTab("clipboard");
-      } else state.setView(action as "settings" | "whatsNew" | "cmd");
+      } else state.setView(action as "whatsNew" | "cmd");
     });
     // Navigation cases deliberately keep ClipboardTab mounted, as AnimatePresence does during exit.
     if (action !== "unmount") expect(screen.getByText("npm run tauri dev")).toBeInTheDocument();

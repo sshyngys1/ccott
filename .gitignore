@@ -46,3 +46,6 @@ dist-ssr
 
 # Task-owned browser profiles, traces and performance measurements
 /.perf/
+
+# Generated agent-hook sidecar (rebuilt before Cargo / Tauri bundling).
+/src-tauri/binaries/ccott-hook-*.exe

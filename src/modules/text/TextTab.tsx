@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { IconBraces, IconCheck, IconCleanText, IconCopy, IconQr, IconSwap, IconUndo, IconWarning, type IconProps } from "../../design/icons";
 import { pressScale, springs } from "../../design/motion";
 import { copyText } from "../../lib/copy";
+import { useFeatureEnabled } from "../../lib/features";
 import { generateQr, type GeneratedQr } from "../../lib/qr/generate";
 import { QrPanel } from "./QrPanel";
 import { pickPrefill } from "../../lib/text/prefill";
@@ -72,9 +73,11 @@ export function TextTab() {
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [qr,setQr] = useState<GeneratedQr | null>(null);
   const [qrError,setQrError] = useState<string | null>(null);
+  const clipboardEnabled = useFeatureEnabled("clipboard");
 
-  // Offer the fresh clipboard text once per session when the field is empty.
+  // Offer the fresh clipboard text once per session when the field is empty (unless clipboard is disabled).
   useEffect(() => {
+    if (!clipboardEnabled) return;
     const s = useTextStore.getState();
     if (s.prefilled) return;
     s.markPrefilled();
@@ -89,7 +92,7 @@ export function TextTab() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clipboardEnabled]);
 
   // Keep the replaced part selected after a transform applied to a selection.
   useLayoutEffect(() => {

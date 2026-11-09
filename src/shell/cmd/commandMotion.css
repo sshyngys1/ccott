@@ -42,3 +42,12 @@
 @keyframes ig-cmd-fade { from { opacity: 0; } to { opacity: 1; } }
 
 :root[data-lite="true"] .ig-cmd-shimmer::after { animation: none; opacity: 0.6; }
+.ig-cmd .ig-cmd-row[data-currency-selected="true"],
+.ig-cmd .ig-cmd-row[aria-selected="true"][data-currency-selected="true"] {
+  background: var(--ig-row-selected);
+  background-color: var(--ig-row-selected);
+}
+.ig-cmd .ig-cmd-row[data-currency-selected="true"]::before,
+.ig-cmd .ig-cmd-row[aria-selected="true"][data-currency-selected="true"]::before {
+  display: block;
+}

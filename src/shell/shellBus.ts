@@ -1,4 +1,4 @@
-// Owner: F1. Shell-side handling of module → shell requests (src/shared/shellBus.ts), `island://open-settings` and `island://summoned`.
+// Owner: F1. Shell-side handling of module → shell requests (src/shared/shellBus.ts) and `island://summoned`.
 import { useEffect } from "react";
 import { listen } from "../ipc";
 import { onShellRequest, type ShellRequest } from "../shared/shellBus";
@@ -41,12 +41,6 @@ export function handleShellRequest(req: ShellRequest, deps: ShellBusDeps): void 
   }
 }
 
-/** Opens the settings view and expands the island (tray «Настройки»). */
-export function openSettings(controls: HoverControls): void {
-  useIslandStore.getState().setView("settings");
-  controls.expandNow();
-}
-
 /** Toggles the island when `island://summoned` arrives from the global hotkey: expand if collapsed, collapse if expanded. */
 export function handleSummoned(controls: HoverControls, releaseKeyboard: () => Promise<void>): void | Promise<void> {
   if (useIslandStore.getState().mode === "expanded") {
@@ -57,7 +51,7 @@ export function handleSummoned(controls: HoverControls, releaseKeyboard: () => P
   controls.summon();
 }
 
-/** Subscribes once to the shell bus, `island://open-settings` and `island://summoned`. All arguments must be referentially stable. */
+/** Subscribes once to the shell bus and `island://summoned`. All arguments must be referentially stable. */
 export function useShellBus(controls: HoverControls, releaseKeyboard: () => Promise<void>, tabs: readonly IslandModule[], prepareExpand: () => Promise<void>): void {
   useHotkeyFallbackToast(controls);
   useEffect(() => {
@@ -81,20 +75,9 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
     });
 
     let disposed = false;
-    let unlistenSettings: () => void = noop;
     let unlistenSummoned: () => void = noop;
     let unlistenCmdOpen: () => void = noop;
     let unlistenFocus: () => void = noop;
-    listen("island://open-settings", () => {
-      cancelSummon();
-      openSettings(controls);
-    }).then(
-      (u) => {
-        if (disposed) u();
-        else unlistenSettings = u;
-      },
-      noop,
-    );
     listen("cmd://open", () => {
       cancelSummon();
       const state = useIslandStore.getState();
@@ -150,7 +133,6 @@ export function useShellBus(controls: HoverControls, releaseKeyboard: () => Prom
       cancelSummon();
       offBus();
       offMode();
-      unlistenSettings();
       unlistenSummoned();
       unlistenCmdOpen();
       unlistenFocus();

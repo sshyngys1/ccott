@@ -1,10 +1,24 @@
 import { useEffect } from "react";
 import { listen } from "../ipc";
-import { deferredTabs } from "../modules/registry";
+import type { deferredScreen } from "../lib/deferredScreen";
+import { isFeatureEnabled } from "../lib/features";
+import { deferredTabEntries, deferredTabs } from "../modules/registry";
+import type { FeatureId } from "../shared/types";
 import { useIslandStore } from "../store";
-import { settingsScreen } from "./settings/deferred";
 
-export const backgroundScreens = [...deferredTabs, settingsScreen];
+type DeferredScreen = ReturnType<typeof deferredScreen>;
+
+export const backgroundScreens = [...deferredTabs];
+
+export function getEnabledBackgroundScreens(
+  disabledFeatures: readonly FeatureId[] = useIslandStore.getState().settings.disabledFeatures,
+): DeferredScreen[] {
+  return [
+    ...deferredTabEntries
+      .filter((entry) => isFeatureEnabled(entry.feature, disabledFeatures))
+      .map((entry) => entry.screen),
+  ];
+}
 
 /** Import one screen per idle turn, after the first paint and outside island transitions. */
 export function scheduleScreenPreload(screens = backgroundScreens): () => void {
@@ -76,5 +90,10 @@ export function scheduleScreenPreload(screens = backgroundScreens): () => void {
 }
 
 export function useScreenPreload(): void {
-  useEffect(() => scheduleScreenPreload(), []);
+  const disabledFeatures = useIslandStore((s) => s.settings.disabledFeatures);
+  useEffect(() => {
+    const pending = getEnabledBackgroundScreens(disabledFeatures).filter((screen) => !screen.isLoaded());
+    if (pending.length === 0) return;
+    return scheduleScreenPreload(pending);
+  }, [disabledFeatures]);
 }

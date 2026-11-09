@@ -1,4 +1,12 @@
-import { QUICK_TILE_CELLS, QUICK_TILE_ROW_CELLS_3, type TileId, type TileSize, type TileSlot } from "../../shared/types";
+import {
+  QUICK_TILE_CELLS,
+  QUICK_TILE_ROW_CELLS_3,
+  type FeatureId,
+  type TileId,
+  type TileSize,
+  type TileSlot,
+} from "../../shared/types";
+import { isFeatureEnabled } from "../features";
 import { getTileDefinition, isKnownTileId, TILE_IDS } from "./registry";
 
 /**
@@ -9,9 +17,28 @@ export function countCells(slots: readonly TileSlot[]): number {
   return slots.reduce((sum, slot) => sum + (slot.size === "2x1" ? 2 : 1), 0);
 }
 
-/** Unknown IDs and invalid/oversized layouts use the same normalization as Home. */
-export function needsTallPanel(slots: readonly TileSlot[]): boolean {
-  return countCells(normalizeLayout(slots)) > QUICK_TILE_ROW_CELLS_3;
+/**
+ * Filters out tiles whose target feature is currently disabled, without mutating `quickTiles`.
+ */
+export function filterEnabledTiles(
+  slots: readonly TileSlot[],
+  disabledFeatures: readonly FeatureId[] = [],
+): TileSlot[] {
+  if (!disabledFeatures.length) {
+    return [...slots];
+  }
+  return slots.filter((slot) => {
+    const def = getTileDefinition(slot.id);
+    return !def?.feature || isFeatureEnabled(def.feature, disabledFeatures);
+  });
+}
+
+/** Unknown IDs, disabled-feature tiles and invalid/oversized layouts use the same normalization as Home. */
+export function needsTallPanel(
+  slots: readonly TileSlot[],
+  disabledFeatures: readonly FeatureId[] = [],
+): boolean {
+  return countCells(filterEnabledTiles(normalizeLayout(slots), disabledFeatures)) > QUICK_TILE_ROW_CELLS_3;
 }
 
 /**
@@ -81,11 +108,18 @@ export function canExpandTo2x1(slots: readonly TileSlot[], id: TileId): boolean 
 }
 
 /**
- * Returns a list of available tile IDs that are currently not in the layout.
+ * Returns a list of available tile IDs that are currently not in the layout (and whose feature is enabled).
  */
-export function getHiddenTiles(slots: readonly TileSlot[]): TileId[] {
+export function getHiddenTiles(
+  slots: readonly TileSlot[],
+  disabledFeatures: readonly FeatureId[] = [],
+): TileId[] {
   const present = new Set(slots.map((s) => s.id));
-  return TILE_IDS.filter((id) => !present.has(id));
+  return TILE_IDS.filter((id) => {
+    if (present.has(id)) return false;
+    const def = getTileDefinition(id);
+    return !def?.feature || isFeatureEnabled(def.feature, disabledFeatures);
+  });
 }
 
 /**

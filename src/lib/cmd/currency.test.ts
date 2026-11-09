@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   calculateCurrencyConversion,
   clearRatesCache,
+  fetchRatesForBase,
+  findCurrency,
+  setCachedRates,
   getDefaultCurrency,
   parseCurrencyQuery,
   type CurrencyRates,
 } from "./currency";
+import * as ipc from "../../ipc";
 
 const currencyForms: [string, string[]][] = [
   ["USD", ["доллар", "доллара", "доллару", "долларом", "долларе", "доллары", "долларов", "долларам", "долларами", "долларах"]],
@@ -27,6 +31,20 @@ const currencyForms: [string, string[]][] = [
 
 describe("currency words and locale defaults", () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it.each(["100 usd", "100доллар", "$100", "100 долларов", "100 евро"])("uses the configured target for %s", query => {
+    expect(parseCurrencyQuery(query, "ru-RU", "KZT")?.toCode).toBe("KZT");
+  });
+
+  it.each(["100 kzt", "₸100", "100 тенге"])("keeps the legacy fallback when the source equals the configured target: %s", query => {
+    expect(parseCurrencyQuery(query, "ru-RU", "KZT")).toEqual(parseCurrencyQuery(query, "ru-RU"));
+  });
+
+  it("preserves the empty setting and explicit target", () => {
+    expect(parseCurrencyQuery("100 usd", "ru-RU", "")).toEqual(parseCurrencyQuery("100 usd", "ru-RU"));
+    expect(parseCurrencyQuery("100 usd to eur", "ru-RU", "KZT")?.toCode).toBe("EUR");
+    expect(parseCurrencyQuery("100 NZD to KZT", "ru-RU", "KZT")).toMatchObject({ fromCode: "NZD", toCode: "KZT" });
+  });
 
   it.each([
     ["100 долларов в тенге", "USD", "KZT", 100],
@@ -179,6 +197,39 @@ describe("currency converter", () => {
   beforeEach(() => {
     clearRatesCache();
   });
+  afterEach(() => { vi.restoreAllMocks(); clearRatesCache(); });
+
+  it.each(["success", "failure"])("releases the shared request after %s so a later fetch can retry", async outcome => {
+    const rates = { base: "USD", rates: { KZT: 500 }, stale: false, updatedAt: 1 };
+    let resolve!: (rates: CurrencyRates) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<CurrencyRates>((done, fail) => { resolve = done; reject = fail; });
+    const spy = vi.spyOn(ipc, "invoke").mockReturnValueOnce(pending).mockResolvedValue(rates);
+    const first = fetchRatesForBase("usd");
+    const second = fetchRatesForBase("USD");
+    expect(first).toBe(second);
+    expect(spy).toHaveBeenCalledExactlyOnceWith("cmd_currency_rates", { base: "USD" });
+    if (outcome === "success") {
+      resolve(rates);
+      await expect(first).resolves.toEqual(rates);
+      clearRatesCache();
+    } else {
+      reject(new Error("offline"));
+      await expect(first).rejects.toThrow("offline");
+    }
+    await expect(fetchRatesForBase("USD")).resolves.toEqual(rates);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns expired session rates as stale when fetching fails offline", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1);
+    const saved = { base: "USD", rates: { KZT: 500, NZD: 1.6 }, stale: false, updatedAt: 1 };
+    setCachedRates("USD", saved);
+    vi.spyOn(Date, "now").mockReturnValue(13 * 60 * 60 * 1000);
+    vi.spyOn(ipc, "invoke").mockRejectedValue(new Error("offline"));
+    await expect(fetchRatesForBase("USD")).resolves.toEqual({ ...saved, stale: true });
+    await expect(fetchRatesForBase("EUR")).rejects.toThrow("offline");
+  });
 
   it("parses currency queries with codes and symbols", () => {
     const q1 = parseCurrencyQuery("100 usd в kzt");
@@ -255,5 +306,28 @@ describe("currency converter", () => {
   it("rejects invalid syntax or unknown currencies", () => {
     expect(parseCurrencyQuery("100 foo to bar")).toBeNull();
     expect(parseCurrencyQuery("hello")).toBeNull();
+  });
+
+  it("clears pendingRates along with ratesCache", () => {
+    let resolve!: (rates: CurrencyRates) => void;
+    const pending = new Promise<CurrencyRates>(done => { resolve = done; });
+    const spy = vi.spyOn(ipc, "invoke").mockReturnValueOnce(pending);
+    const p1 = fetchRatesForBase("EUR");
+    expect(spy).toHaveBeenCalledTimes(1);
+    clearRatesCache();
+    spy.mockResolvedValueOnce({ base: "EUR", rates: { USD: 1.1 }, stale: false, updatedAt: 2 });
+    const p2 = fetchRatesForBase("EUR");
+    expect(p2).not.toBe(p1);
+    expect(spy).toHaveBeenCalledTimes(2);
+    resolve({ base: "EUR", rates: { USD: 1.0 }, stale: false, updatedAt: 1 });
+  });
+
+  it.each(["arm", "pes", "kro", "bad", "std", "xxx"])("does not recognize historic/dead currency code %s", (code) => {
+    expect(findCurrency(code)).toBeUndefined();
+    expect(parseCurrencyQuery(`1 ${code}`)).toBeNull();
+  });
+
+  it.each(["1 bad", "2 std", "100 xxx"])("rejects dead currency query %s", (query) => {
+    expect(parseCurrencyQuery(query)).toBeNull();
   });
 });

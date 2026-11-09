@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ISLAND_WINDOW } from "../shared/types";
-import { DEFAULT_GEOMETRY, hoveredPill, islandShape, parsePx } from "./geometry";
+import { DEFAULT_GEOMETRY, hoveredPill, islandShape, panelBox, panelHeight, parsePx } from "./geometry";
 
 const css = readFileSync(fileURLToPath(new URL("./tokens.css", import.meta.url).href), "utf8");
 const token = (name: string) => {
@@ -34,12 +34,23 @@ describe("tokens.css ↔ DEFAULT_GEOMETRY", () => {
     expect(token("--ig-radius-pill")).toBe(DEFAULT_GEOMETRY.pill.radius);
     expect(token("--ig-pill-width-activity")).toBe(DEFAULT_GEOMETRY.pillActivity.width);
     expect(token("--ig-pill-width-toast")).toBe(DEFAULT_GEOMETRY.pillToast.width);
+    expect(token("--ig-pill-width-lyrics")).toBe(DEFAULT_GEOMETRY.pillLyrics.width);
     expect(token("--ig-pill-hover-grow")).toBe(DEFAULT_GEOMETRY.pillHoverGrow);
     expect(token("--ig-panel-width")).toBe(DEFAULT_GEOMETRY.panel.width);
     expect(token("--ig-panel-height")).toBe(DEFAULT_GEOMETRY.panel.height);
     expect(token("--ig-panel-height-tall")).toBe(DEFAULT_GEOMETRY.panelTall.height);
     expect(DEFAULT_GEOMETRY.panelTall.height - DEFAULT_GEOMETRY.panel.height).toBe(token("--ig-quick-tile-row-height") + token("--ig-space-2"));
     expect(token("--ig-quick-tile-row-step")).toBe(token("--ig-quick-tile-row-height") + token("--ig-space-2"));
+    expect(token("--ig-quick-tile-row-step")).toBe(DEFAULT_GEOMETRY.tallRowStep);
+    expect(token("--ig-dock-row-step")).toBe(DEFAULT_GEOMETRY.dockRowStep);
+    expect(token("--ig-dock-row-step")).toBe(token("--ig-dock-height") + token("--ig-space-3"));
+    expect(token("--ig-head-compact-step")).toBe(DEFAULT_GEOMETRY.headCompactStep);
+    expect(token("--ig-head-compact-step")).toBe(
+      token("--ig-panel-padding") +
+        token("--ig-tabbar-height") +
+        token("--ig-space-3") -
+        (token("--ig-space-2") + token("--ig-control-height-sm") + token("--ig-space-1")),
+    );
     expect(token("--ig-radius-panel")).toBe(DEFAULT_GEOMETRY.panel.radius);
     expect(token("--ig-cmd-width")).toBe(DEFAULT_GEOMETRY.cmd.width);
     expect(token("--ig-cmd-height")).toBe(DEFAULT_GEOMETRY.cmd.height);
@@ -103,5 +114,27 @@ describe("hoveredPill", () => {
   it("grows and stays a capsule", () => {
     const h = hoveredPill({ width: 224, height: 36, radius: 18 }, 12);
     expect(h).toEqual({ width: 236, height: 38, radius: 19 });
+  });
+});
+
+describe("panelHeight / panelBox (all 8 dock × tabBar × tall combinations)", () => {
+  const g = DEFAULT_GEOMETRY;
+
+  it.each([
+    [{ dock: true, tabBar: true, tall: false }, 396],
+    [{ dock: false, tabBar: true, tall: false }, 324],
+    [{ dock: true, tabBar: false, tall: false }, 372],
+    [{ dock: false, tabBar: false, tall: false }, 300],
+    [{ dock: true, tabBar: true, tall: true }, 468],
+    [{ dock: false, tabBar: true, tall: true }, 396],
+    [{ dock: true, tabBar: false, tall: true }, 444],
+    [{ dock: false, tabBar: false, tall: true }, 372],
+  ] as const)("computes exact height for %j → %dpx and fits the 800×520 window", (flags, expectedHeight) => {
+    expect(panelHeight(g, flags)).toBe(expectedHeight);
+    const box = panelBox(g, flags);
+    expect(box).toEqual({ width: g.panel.width, height: expectedHeight, radius: g.panel.radius });
+    expect((ISLAND_WINDOW.width - box.width) / 2).toBeGreaterThanOrEqual(18);
+    expect(g.top + box.height + 30).toBeLessThanOrEqual(ISLAND_WINDOW.height);
+    expect(box.height).toBeGreaterThan(g.pill.height);
   });
 });

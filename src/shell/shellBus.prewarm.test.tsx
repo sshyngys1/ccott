@@ -33,13 +33,11 @@ it("summon waits for the wake-up frame before expanding", async () => {
   expect(test.controls.summon).toHaveBeenCalledOnce();
 });
 
-it.each(["second hotkey", "settings", "unmount"])("%s cancels a deferred summon", async (cancel) => {
+it.each(["second hotkey", "unmount"])("%s cancels a deferred summon", async (cancel) => {
   const test = await harness();
   act(() => mockEmit("island://summoned", null));
   if (cancel === "second hotkey") act(() => mockEmit("island://summoned", null));
-  else if (cancel === "settings") act(() => mockEmit("island://open-settings", null));
   else test.view.unmount();
   await act(async () => test.ready());
   expect(test.controls.summon).not.toHaveBeenCalled();
-  if (cancel === "settings") expect(useIslandStore.getState().view).toBe("settings");
 });

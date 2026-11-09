@@ -1,7 +1,7 @@
 // Owner: F1 (Frontend-Shell) / F2. Production Command Bar component (spec §6.10, contracts §20).
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { t, useT } from "../../i18n";
+import { getLanguage, t, useT } from "../../i18n";
 import { invoke, mockUrlParams } from "../../ipc";
 import { durations, easings, springs } from "../../design/motion";
 import {
@@ -25,11 +25,14 @@ import {
   IconWarning,
 } from "../../design/icons";
 import type { CmdItem } from "../../shared/types";
+import { useIslandStore } from "../../store";
 import {
   calculateCurrencyConversion,
+  cachedCurrencyCatalog,
   fetchRatesForBase,
   type CurrencyRates,
 } from "../../lib/cmd/currency";
+import { currencyCompletion, currencyName, currencySuggestions } from "../../lib/cmd/currencyCompletion";
 import {
   evaluateLocalFeatures,
   getQuickHints,
@@ -42,6 +45,11 @@ import {
 
 import { resultDelay } from "../../design/fx/commandMotion";
 import "./commandMotion.css";
+import { isReminderCommand, parseReminder } from "../../lib/reminders/parse";
+import { reminderPreview } from "../../lib/reminders/format";
+import { isFeatureEnabled } from "../../lib/features";
+import { primeAudio } from "../../lib/timer/chime";
+import { showToast } from "../toast";
 
 export interface CommandBarProps {
   onClose: () => void;
@@ -190,7 +198,37 @@ export function CommandBar({
   }, [autoFocus]);
 
   // Handle local synchronous features
-  const local = useMemo(() => evaluateLocalFeatures(query), [query, t]);
+  const disabledFeatures = useIslandStore((s) => s.settings.disabledFeatures);
+  const reminderQuery = !disabledFeatures.includes("notes") && isReminderCommand(query);
+  const reminder = useMemo(() => reminderQuery ? parseReminder(query) : null, [query, reminderQuery]);
+  const reminderBusy = useRef(false);
+  const defaultCurrency = useIslandStore((s) => s.settings.defaultCurrency);
+  const [catalog, setCatalog] = useState<CurrencyRates | null>(cachedCurrencyCatalog);
+  const local = useMemo(() => evaluateLocalFeatures(query, undefined, defaultCurrency), [query, t, disabledFeatures, defaultCurrency, catalog]);
+  const completion = useMemo(() => currencyCompletion(query), [query, catalog]);
+  const [currencyIndex, setCurrencyIndex] = useState(0);
+  const suggestions = useMemo(() => completion ? currencySuggestions(completion.fragment, catalog) : [], [completion, catalog, t]);
+  const activeCurrency = suggestions[Math.min(currencyIndex, suggestions.length - 1)];
+  const completionOpen = suggestions.length > 0;
+  const completeCurrency = (code: string) => {
+    if (!completion) return;
+    setQuery(`${completion.prefix}${code}`);
+    setCurrencyIndex(0);
+    inputRef.current?.focus();
+  };
+  useEffect(() => {
+    if (!completion) return;
+    let cancelled = false;
+    setCurrencyIndex(0);
+    setCatalog(cachedCurrencyCatalog());
+    void fetchRatesForBase(completion.base).then(rates => {
+      if (!cancelled) setCatalog(rates);
+    }, () => { /* The last cached provider catalog remains available offline. */ });
+    return () => { cancelled = true; };
+  }, [completion?.base]);
+  useEffect(() => {
+    if (completionOpen) document.getElementById(`cmd-currency-${activeCurrency}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [completionOpen, activeCurrency]);
 
   // Currency rates fetching with debounce / caching
   useEffect(() => {
@@ -222,7 +260,7 @@ export function CommandBar({
   // Debounce cmd_search IPC call (~80ms)
   useEffect(() => {
     const q = query.trim();
-    if (!q) {
+    if (!q || reminderQuery) {
       setBackendItems([]);
       return;
     }
@@ -245,7 +283,7 @@ export function CommandBar({
     return () => {
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, reminderQuery]);
 
   const copyToClipboard = useCallback((text: string) => {
     void navigator.clipboard.writeText(text);
@@ -313,6 +351,23 @@ export function CommandBar({
   // Combine items into unified items list
   const unifiedItems: UnifiedCmdItem[] = useMemo(() => {
     const list: UnifiedCmdItem[] = [];
+    if (reminder) {
+      list.push({ id: "reminder-create", kind: "command", group: "commands", title: reminderPreview(reminder),
+        subtitle: t("reminders.new"), icon: null, actionHint: t("reminders.create"),
+        onExecute: async () => {
+          if (reminderBusy.current || !isFeatureEnabled("notes")) return;
+          reminderBusy.current = true;
+          primeAudio();
+          try {
+            await invoke("reminders_add", reminder);
+            if (isFeatureEnabled("notes")) showToast({ label: t("reminders.created") });
+            onClose();
+          } catch { showToast({ label: t("reminders.error") }); }
+          finally { reminderBusy.current = false; }
+        },
+      });
+      return list;
+    }
 
     // 1) Backend items (apps & files)
     for (const b of backendItems) {
@@ -337,7 +392,7 @@ export function CommandBar({
     }
 
     return list;
-  }, [backendItems, local.commands, onClose]);
+  }, [backendItems, local.commands, onClose, reminder, t]);
 
   // Group items
   const groupedItems: GroupedResults[] = useMemo(() => {
@@ -379,12 +434,12 @@ export function CommandBar({
   const currentHeight = useMemo(() => {
     return calcCmdBarHeight({
       query,
-      itemsCount: flatItems.length,
-      groupsCount: groupedItems.length,
+      itemsCount: completionOpen ? suggestions.length : flatItems.length,
+      groupsCount: completionOpen ? 1 : groupedItems.length,
       hasHero: Boolean(heroAnswer),
       hasBanner,
     });
-  }, [query, flatItems.length, groupedItems.length, heroAnswer, hasBanner]);
+  }, [query, flatItems.length, groupedItems.length, heroAnswer, hasBanner, completionOpen, suggestions.length]);
 
   useEffect(() => {
     onHeightChange?.(currentHeight);
@@ -443,6 +498,19 @@ export function CommandBar({
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
+    if (completionOpen && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setCurrencyIndex(prev => (prev + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        completeCurrency(activeCurrency);
+        return;
+      }
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIndex((prev) => (flatItems.length ? (prev + 1) % flatItems.length : 0));
@@ -495,13 +563,14 @@ export function CommandBar({
           role="combobox"
           aria-expanded={true}
           aria-autocomplete="list"
-          aria-controls={listboxId}
-          aria-activedescendant={selectedItemId}
+          aria-controls={completionOpen ? `${listboxId}-currencies` : listboxId}
+          aria-activedescendant={completionOpen ? `cmd-currency-${activeCurrency}` : selectedItemId}
           placeholder={t("cmdPlaceholder")}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setSelectedIndex(0);
+            setCurrencyIndex(0);
           }}
           onKeyDown={handleKeyDown}
         />
@@ -589,7 +658,19 @@ export function CommandBar({
       )}
 
       {/* Body: Hints or Results */}
-      {hasBodyContent && (
+      {completionOpen && <div id={`${listboxId}-currencies`} className="ig-cmd-body ig-scroll" role="listbox" aria-label={t("cmdCurrencies")}>
+        <div className="ig-cmd-section-label">{t("cmdCurrencies")}</div>
+        {suggestions.map(code => <div key={code} id={`cmd-currency-${code}`} className="ig-cmd-row"
+          role="option" aria-selected={code === activeCurrency} data-currency-selected={code === activeCurrency}
+          onMouseDown={event => event.preventDefault()} onClick={() => completeCurrency(code)}
+          onMouseEnter={() => setCurrencyIndex(suggestions.indexOf(code))}>
+          <span className="ig-cmd-row__lead"><IconConverter size={18} /></span>
+          <span className="ig-cmd-row__body"><span className="ig-cmd-row__title">{code}</span>
+            <span className="ig-cmd-row__meta">{currencyName(code, getLanguage())}</span></span>
+          <span className="ig-cmd-row__action"><kbd className="ig-kbd">Tab</kbd><span>{t("cmdCompleteCurrency")}</span></span>
+        </div>)}
+      </div>}
+      {!completionOpen && hasBodyContent && (
         <div
           ref={bodyRef}
           id={listboxId}
@@ -706,7 +787,7 @@ export function CommandBar({
             <span>{t("cmdHintNavigate")}</span>
           </span>
 
-          {(heroAnswer && flatItems.length === 0) || selectedItem?.kind === "calc" || selectedItem?.kind === "convert" ? (
+          {completionOpen ? <span className="ig-cmd-hint-item"><kbd className="ig-kbd">Tab</kbd><kbd className="ig-kbd">Enter</kbd><span>{t("cmdCompleteCurrency")}</span></span> : (heroAnswer && flatItems.length === 0) || selectedItem?.kind === "calc" || selectedItem?.kind === "convert" ? (
             <>
               <span className="ig-cmd-hint-item">
                 <kbd className="ig-kbd">Enter</kbd>

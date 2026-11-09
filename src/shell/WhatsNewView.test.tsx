@@ -1,11 +1,39 @@
 import { act, render, screen, fireEvent, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WhatsNewView } from "./WhatsNewView";
 import { getLastAcknowledgedVersion, getWhatsNewForVersion } from "../lib/whatsNew/catalog";
 import { setLanguage, t } from "../i18n";
 import * as i18n from "../i18n";
+import { readFileSync } from "node:fs";
+const shellCss = readFileSync("src/shell/shell.css", "utf8");
+const settingsCss = readFileSync("src/shell/settings/window.css", "utf8");
 
 describe("WhatsNewView component", () => {
+  let style: HTMLStyleElement;
+  beforeEach(() => {
+    style = document.createElement("style");
+    style.textContent = `${shellCss}\n${settingsCss}`;
+    document.head.append(style);
+  });
+  afterEach(() => style.remove());
+
+  it.each([316, 388])("fills a %i px island body without a height cap while settings stays bounded", bodyHeight => {
+    const { container } = render(<>
+      <div className="ig-panel-body" style={{ height: bodyHeight }}>
+        <WhatsNewView version="0.3.0" />
+      </div>
+      <div className="ig-settings-window"><WhatsNewView version="0.3.0" /></div>
+    </>);
+    const island = container.querySelector<HTMLElement>(".ig-panel-body .ig-whats-new-container")!;
+    const settings = container.querySelector<HTMLElement>(".ig-settings-window .ig-whats-new-container")!;
+    expect(getComputedStyle(island.parentElement!).height).toBe(`${bodyHeight}px`);
+    expect(getComputedStyle(island).height).toBe("100%");
+    // jsdom exposes the cascade, but does not resolve percentage/calc layout into pixels.
+    expect(["", "none"]).toContain(getComputedStyle(island).maxHeight);
+    expect(getComputedStyle(settings).maxHeight).not.toBe("");
+    expect(getComputedStyle(settings).maxHeight).not.toBe("none");
+  });
+
   it.each(["ru", "en"] as const)("renders every 0.3.0 step and keyboard hint in %s", language => {
     setLanguage(language);
     const { container } = render(<WhatsNewView version="0.3.0" />);
@@ -34,6 +62,9 @@ describe("WhatsNewView component", () => {
     expect(list.querySelectorAll(".ig-whats-new-card")).toHaveLength(6);
     expect(list).not.toContainElement(screen.getByText(t("whatsNew.version", { version: "0.3.0" })));
     expect(list).not.toContainElement(screen.getByRole("button", { name: t("whatsNew.gotIt") }));
+    expect(getComputedStyle(list).overflowY).toBe("auto");
+    expect(getComputedStyle(list).minHeight).toBe("0px");
+    expect(getComputedStyle(list.querySelector(".ig-whats-new-card")!).flexShrink).toBe("0");
   });
 
   it.each(["0.2.2", "0.2.3"])("keeps %s cards free of steps and keyboard hints", version => {

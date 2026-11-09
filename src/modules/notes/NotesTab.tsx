@@ -6,17 +6,21 @@ import { FolderChips } from "./FolderChips";
 import { NoteEditor } from "./NoteEditor";
 import { NoteList } from "./NoteList";
 import { TimerCard } from "./TimerCard";
+import { Reminders } from "./Reminders";
+import { useFeatureEnabled } from "../../lib/features";
 import "./notes.css";
 
 export function NotesTab() {
   useT();
+  const enabled = useFeatureEnabled("notes");
   useEffect(() => {
+    if (!enabled) return;
     void useNotesStore.getState().load();
     // Unsaved typing must not be lost when the panel collapses or another tab opens.
     return () => {
       void useNotesStore.getState().flush();
     };
-  }, []);
+  }, [enabled]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
@@ -25,13 +29,14 @@ export function NotesTab() {
     }
   };
 
+  if (!enabled) return null;
   return (
     <div className="nt-root" onKeyDown={onKeyDown}>
       <h2 className="mod-sr-only">{t("notes")}</h2>
       <FolderChips />
       <NoteList />
       <NoteEditor />
-      <TimerCard />
+      <div className="nt-side ig-scroll"><Reminders /><TimerCard /></div>
     </div>
   );
 }

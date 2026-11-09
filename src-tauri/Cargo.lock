@@ -1960,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "island-win"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -1981,8 +1981,11 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "thiserror 2.0.21",
+ "tokio",
+ "toml_edit 0.25.17+spec-1.1.0",
  "window-vibrancy",
  "windows",
+ "windows-collections",
  "windows-core",
 ]
 
@@ -4656,6 +4659,7 @@ dependencies = [
  "indexmap 2.14.2",
  "toml_datetime 1.1.2+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.4",
 ]
 

@@ -7,8 +7,13 @@
 //! (main-thread round trips). Writers are serialized with `write_lock`, which only command /
 //! worker threads take, never the main thread.
 
+#[cfg(test)]
+mod lyrics_tests;
 pub mod model;
 pub mod store;
+#[cfg(test)]
+mod weather_tests;
+pub mod window;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -169,6 +174,21 @@ pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Settings, String> {
 
     if new.downloads_monitor != old.downloads_monitor {
         crate::downloads::set_enabled(app, new.downloads_monitor);
+    }
+    if new.disabled_features != old.disabled_features {
+        crate::clipboard::set_enabled(
+            app,
+            !new.disabled_features.iter().any(|id| id == "clipboard"),
+        );
+        crate::system::set_enabled(app, !new.disabled_features.iter().any(|id| id == "battery"));
+    }
+    if new.weather_location != old.weather_location
+        || new.disabled_features != old.disabled_features
+    {
+        crate::weather::configure(app);
+    }
+    if new.theme != old.theme || new.language != old.language {
+        window::sync(app);
     }
 
     if new.lite_mode != old.lite_mode || new.vibrancy != old.vibrancy {

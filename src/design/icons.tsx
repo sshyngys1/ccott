@@ -342,11 +342,28 @@ export const IconMusic = makeIcon(
     <circle cx="13.75" cy="12.5" r="2" />
   </>,
 );
+/** v0.4/0.5: synced lyrics — three text lines of falling length + a note stem (player card button, lyrics view). */
+export const IconLyrics = makeIcon(
+  "Lyrics",
+  <>
+    <path d="M3.5 5h8.5M3.5 9h6.25M3.5 13h4" />
+    <path d="M15.25 13.75V5.25l2.25-.75" />
+    <circle cx="13.25" cy="13.75" r="2" />
+  </>,
+);
 export const IconVolumeMute = makeIcon(
   "VolumeMute",
   <>
     <path d="M3.5 8v4h2.75L10 15V5L6.25 8Z" />
     <path d="m13 8 4 4M17 8l-4 4" />
+  </>,
+);
+export const IconHeadphones = makeIcon(
+  "Headphones",
+  <>
+    <path d="M4.25 11.5V9a5.75 5.75 0 0 1 11.5 0v2.5" />
+    <rect x="2.5" y="10.5" width="3.5" height="5.5" rx="1.5" />
+    <rect x="14" y="10.5" width="3.5" height="5.5" rx="1.5" />
   </>,
 );
 

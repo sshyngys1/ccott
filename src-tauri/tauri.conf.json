@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-agent-hook.ps1",
     "frontendDist": "../dist"
   },
   "app": {
@@ -36,6 +36,7 @@
     }
   },
   "bundle": {
+    "externalBin": ["binaries/ccott-hook"],
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",

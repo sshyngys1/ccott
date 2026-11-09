@@ -104,12 +104,17 @@
 
 /* ── Panel ── */
 .ig-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--ig-space-3);
   height: 100%;
   box-sizing: border-box;
   padding: var(--ig-panel-padding);
+}
+.ig-panel[data-compact-head="true"] {
+  padding-top: var(--ig-space-2);
+  gap: var(--ig-space-1);
 }
 .ig-panel-head {
   display: flex;
@@ -118,10 +123,20 @@
   height: var(--ig-tabbar-height);
   flex: none;
 }
+.ig-panel[data-compact-head="true"] > .ig-panel-head {
+  height: var(--ig-control-height-sm);
+  padding-right: var(--ig-space-0-5);
+}
+.ig-panel[data-compact-head="true"] .ig-glass-control--round {
+  border-radius: var(--ig-radius-pill);
+}
 .ig-panel-head-right {
   display: flex;
   align-items: center;
   gap: var(--ig-space-1-5);
+}
+.ig-panel[data-compact-head="true"] .ig-panel-head-right {
+  gap: var(--ig-space-1);
 }
 .ig-head-clock {
   display: flex;
@@ -129,6 +144,13 @@
   align-items: flex-end;
   margin-right: var(--ig-space-1-5);
   line-height: var(--ig-leading-tight);
+}
+.ig-panel[data-compact-head="true"] .ig-head-clock {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--ig-space-1-5);
+  margin-right: var(--ig-space-1);
+  line-height: 1;
 }
 .ig-head-time {
   font-size: var(--ig-text-sm);
@@ -307,6 +329,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
   padding: var(--ig-space-1) var(--ig-space-3) var(--ig-space-2);
   gap: var(--ig-space-2);
@@ -333,6 +356,7 @@
   padding-right: var(--ig-space-1);
 }
 .ig-whats-new-card {
+  flex: none;
   display: flex;
   flex-shrink: 0;
   align-items: flex-start;
@@ -409,6 +433,13 @@
 .ig-shelf-drop { justify-content: center; gap: var(--ig-space-2); color: var(--ig-accent-on-strong); font-size: var(--ig-text-sm); }
 .ig-island[data-shelf-drop="true"] { box-shadow: inset 0 0 0 var(--ig-outline-width) var(--ig-accent-on-strong); }
 
+/* Headset connect pill: live activity shown when default audio device switches to headphones. */
+.ig-headset-pill { position: relative; min-width: 0; }
+.ig-headset-symbol { color: var(--ig-accent-on-strong); }
+.ig-headset-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: var(--ig-leading-tight); }
+.ig-headset-copy b { font-size: var(--ig-text-xs); font-weight: var(--ig-weight-medium); }
+.ig-headset-copy > span { font-size: var(--ig-text-xs); color: var(--ig-text-secondary); }
+
 /* Charge colour is a second plate: only its opacity changes. */
 .ig-battery-fill { transform-origin: 0 0; transition: transform var(--ig-dur-slow) var(--ig-ease-out); }
 .ig-battery-charge-fill { fill: var(--ig-battery-charging); opacity: 0; transition: opacity var(--ig-dur-slow) var(--ig-ease-out); }
@@ -434,3 +465,236 @@
 
 .ig-head-battery .ig-battery-symbol { width: var(--ig-space-6); height: var(--ig-space-4); }
 .ig-head-battery .ig-battery-number { display: none; }
+
+/* ── Tab customize mode (contracts §23, no scale / no shadow transitions) ── */
+.ig-tabs-head {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.ig-tabs-root {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.ig-tabs-root[data-icons-only="true"] .ig-tab-label { display: none; }
+.ig-tabs-root[data-icons-only="true"] .ig-tab { padding-inline: var(--ig-space-2); gap: 0; }
+.ig-tabs-root[data-icons-only="true"] .ig-tab-entry[data-removable="true"] > .ig-tab { padding-right: calc(var(--ig-space-4) + var(--ig-space-1)); }
+.ig-tabs-root .ig-tabbar { min-width: 0; flex-shrink: 1; }
+.ig-tabs-root .ig-tab { white-space: nowrap; flex-shrink: 0; }
+.ig-tabs-root .ig-tabbar[data-measuring="true"] .ig-tab { padding-inline: var(--ig-space-3); gap: var(--ig-space-1-5); }
+.ig-tabs-root .ig-tabbar[data-measuring="true"][data-editing="true"] .ig-tab { padding-inline: var(--ig-space-1-5); gap: var(--ig-space-1); }
+.ig-tabs-root .ig-tabbar[data-measuring="true"] .ig-tab-entry[data-removable="true"] > .ig-tab { padding-right: calc(var(--ig-space-4) + var(--ig-space-1)); }
+.ig-panel-head-right { flex-shrink: 0; }
+.ig-tabs-root--single {
+  flex: 1;
+}
+.ig-tabs-root[data-editing="true"] {
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--ig-space-1-5);
+}
+.ig-panel-head[data-editing-tabs="true"] {
+  gap: var(--ig-space-1-5);
+}
+.ig-panel-head[data-editing-tabs="true"] > .ig-panel-head-right {
+  flex: none;
+  gap: var(--ig-space-1);
+}
+.ig-panel-head[data-editing-tabs="true"] .ig-head-clock,
+.ig-panel-head[data-editing-tabs="true"] .ig-head-battery {
+  display: none;
+}
+.ig-tabbar-slot {
+  flex: 1;
+  height: 100%;
+  min-width: var(--ig-control-height-lg);
+}
+.ig-tabs-edit-left {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--ig-space-1);
+  min-width: 0;
+  height: 100%;
+}
+.ig-tabbar[data-editing="true"] {
+  gap: var(--ig-space-0-5);
+  min-width: 0;
+}
+.ig-tab-entry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  border-radius: var(--ig-radius-pill);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ig-tab-entry[data-reordering="true"] {
+  opacity: 0.5;
+}
+.ig-tab-entry[data-drop-target="true"] {
+  outline: var(--ig-space-0-5) solid var(--ig-accent);
+  outline-offset: 0;
+}
+.ig-tab-entry > .ig-tab {
+  min-width: 0;
+  padding: 0 var(--ig-space-1-5);
+  gap: var(--ig-space-1);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ig-tab-entry > .ig-tab > span:not(.ig-tab-thumb) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ig-tab-entry[data-removable="true"] > .ig-tab {
+  padding-right: calc(var(--ig-space-4) + var(--ig-space-1));
+}
+.ig-tab-entry[data-reordering="true"] > .ig-tab {
+  cursor: grabbing;
+}
+.ig-glass-control.ig-tab-remove {
+  position: absolute;
+  right: var(--ig-space-0-5);
+  inset-block: 0;
+  margin-block: auto;
+  width: var(--ig-space-4);
+  height: var(--ig-space-4);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: var(--ig-radius-pill);
+  z-index: 2;
+}
+.ig-glass-control.ig-tab-add {
+  flex: none;
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+  border-radius: var(--ig-radius-pill);
+}
+.ig-tabs-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+  flex: none;
+}
+.ig-tabs-edit-actions > .ig-glass-control--sm {
+  padding: 0 var(--ig-space-2);
+  gap: var(--ig-space-1);
+}
+.ig-tabs-menu,
+.ig-tabs-menu:active {
+  transform: none;
+  transition: none;
+}
+.ig-tabs-root .ig-glass-control,
+.ig-tabs-root .ig-glass-control:active,
+.ig-tabs-root .ig-glass-control[data-pressed="true"],
+.ig-tabs-menu .ig-glass-control,
+.ig-tabs-menu .ig-glass-control:active,
+.ig-tabs-menu .ig-glass-control[data-pressed="true"] {
+  transform: none;
+  transition:
+    background-color var(--ig-dur-fast) var(--ig-ease-out),
+    color var(--ig-dur-fast) var(--ig-ease-out),
+    opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+
+/* ── Lyrics view (design-spec §6.11): header title block, loading caption, state action. No scale anywhere. ── */
+.ig-lyrics-head-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-0-5);
+  min-width: 0;
+}
+.ig-lyrics-head-title .ig-view-title {
+  line-height: var(--ig-leading-tight);
+}
+.ig-lyrics-loading {
+  margin: 0;
+  padding: var(--ig-space-4) 10px 0;
+}
+.ig-lyrics-state__action {
+  align-self: flex-start;
+  margin-top: var(--ig-space-2);
+}
+/* The narrow art column: the timeline gets the whole width (a big hit area), the times sit under it. */
+.ig-lyrics-side .hm-seek {
+  flex-wrap: wrap;
+  gap: 0 var(--ig-space-2);
+  margin-top: var(--ig-space-2);
+}
+.ig-lyrics-side .hm-seek > input {
+  order: -1;
+  flex: 1 0 100%;
+  height: 24px;
+  cursor: pointer;
+}
+.ig-lyrics-side .hm-seek > .hm-time {
+  flex: 1;
+  width: auto;
+}
+.ig-lyrics-side .hm-seek > .hm-time:last-child {
+  text-align: right;
+}
+
+/* ── Lyrics pill: adaptive width, long lines scroll (translateX only) ── */
+.ig-pill-row--lyrics {
+  position: relative;
+}
+/* Hidden twin of the line: its width decides the pill width. */
+.ig-pill-lyric__twin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  overflow: visible;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* While the pill is still growing the text is clipped, never shown with an ellipsis. */
+.ig-pill-row--lyrics .ig-pill-lyric__text {
+  text-overflow: clip;
+}
+.ig-pill-row--lyrics .ig-pill-lyric__text[data-truncate="true"] {
+  text-overflow: ellipsis;
+}
+/* Wider than the widest pill: hold, scroll slowly to the end, hold. Starts afresh with every line (new element). */
+.ig-pill-row--lyrics .ig-pill-lyric__text[data-marquee="true"] {
+  flex: none;
+  overflow: visible;
+  width: max-content;
+  animation: ig-lyric-marquee var(--ly-dur, 6s) linear forwards;
+}
+@keyframes ig-lyric-marquee {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  85%,
+  100% {
+    transform: translateX(var(--ly-shift, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ig-pill-row--lyrics .ig-pill-lyric__text[data-marquee="true"] {
+    animation: none;
+  }
+}
+:root[data-lite="true"] .ig-pill-row--lyrics .ig-pill-lyric__text[data-marquee="true"] {
+  animation: none;
+}

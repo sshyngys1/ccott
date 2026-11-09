@@ -59,9 +59,9 @@ describe("pill activity click → openTab", () => {
     expect(await screen.findByRole("tab", { name: "Заметки" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("works from the settings view and with the pointer already over the island", async () => {
+  it("works from another view and with the pointer already over the island", async () => {
     await mountOnTab("notes");
-    act(() => useIslandStore.getState().setView("settings"));
+    act(() => useIslandStore.getState().setView("whatsNew"));
     const pill = await screen.findByRole("button", { name: /Открыть плеер/ });
     act(() => useIslandStore.getState().setHoverInside(true)); // hover-grown pill under the cursor
     fireEvent.click(pill);

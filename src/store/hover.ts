@@ -12,6 +12,8 @@ export interface HoverMachineOptions {
   initialMode?: IslandMode;
   /** Called only when the mode actually changes. */
   onChange: (mode: IslandMode) => void;
+  /** Called when post-collapse hover suppression toggles (`collapseNow` while cursor is inside → cleared on leave/expand). */
+  onSuppressChange?: (suppressed: boolean) => void;
 }
 
 export class HoverMachine {
@@ -19,6 +21,7 @@ export class HoverMachine {
   private expandDelayMs: number;
   private collapseDelayMs: number;
   private readonly onChange: (mode: IslandMode) => void;
+  private readonly onSuppressChange?: (suppressed: boolean) => void;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pending: IslandMode | null = null;
   /** Last reported cursor state; re-applied when a hold is released. */
@@ -28,16 +31,23 @@ export class HoverMachine {
   /** Summoned by the global hotkey: stays open until the cursor visits it once, or until the summon hold expires. */
   private summonHeld = false;
   private summonTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Latched when explicitly collapsed while the cursor is inside; ignores `inside=true` until cursor leaves or `expandNow`. */
+  private suppressExpand = false;
 
   constructor(opts: HoverMachineOptions) {
     this._mode = opts.initialMode ?? "collapsed";
     this.expandDelayMs = opts.expandDelayMs ?? DEFAULT_EXPAND_DELAY_MS;
     this.collapseDelayMs = opts.collapseDelayMs ?? DEFAULT_COLLAPSE_DELAY_MS;
     this.onChange = opts.onChange;
+    this.onSuppressChange = opts.onSuppressChange;
   }
 
   get mode(): IslandMode {
     return this._mode;
+  }
+
+  get expandSuppressed(): boolean {
+    return this.suppressExpand;
   }
 
   setDelays(expandDelayMs: number, collapseDelayMs: number): void {
@@ -58,10 +68,17 @@ export class HoverMachine {
   /** Cursor entered (`true`) or left (`false`) the island. Repeated identical calls do not restart timers. */
   setInside(inside: boolean): void {
     this.inside = inside;
+    if (!inside) {
+      this.setSuppressExpand(false);
+    }
     // The cursor reached the summoned island: from now on it behaves like a hover-opened one.
-    if (inside) this.endSummon();
+    if (inside && !this.suppressExpand) this.endSummon();
     const target: IslandMode = inside ? "expanded" : "collapsed";
-    if (target === this._mode || ((this.held || this.summonHeld) && target === "collapsed")) {
+    if (
+      target === this._mode ||
+      (this.suppressExpand && target === "expanded") ||
+      ((this.held || this.summonHeld) && target === "collapsed")
+    ) {
       // Cursor came back (or left again) while the opposite change was pending: cancel it.
       this.cancel();
       return;
@@ -79,6 +96,7 @@ export class HoverMachine {
 
   /** Change the mode immediately (keyboard focus, Escape). */
   expandNow(): void {
+    this.setSuppressExpand(false);
     this.cancel();
     this.apply("expanded");
   }
@@ -86,6 +104,7 @@ export class HoverMachine {
   collapseNow(): void {
     this.endSummon();
     this.cancel();
+    if (this.inside) this.setSuppressExpand(true);
     this.apply("collapsed");
   }
 
@@ -104,6 +123,13 @@ export class HoverMachine {
   dispose(): void {
     this.endSummon();
     this.cancel();
+    this.setSuppressExpand(false);
+  }
+
+  private setSuppressExpand(next: boolean): void {
+    if (this.suppressExpand === next) return;
+    this.suppressExpand = next;
+    this.onSuppressChange?.(next);
   }
 
   private endSummon(): void {

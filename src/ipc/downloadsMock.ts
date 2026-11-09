@@ -16,12 +16,16 @@ export function resetMockDownloads(): void {
 }
 
 /** Explicit entry point also lets tests drive the complete simulation with fake timers. */
-export function startMockDownload(emit: Emit): void {
+export function startMockDownload(emit: Emit, options?: { percent?: number | null }): void {
   resetMockDownloads();
   started = true;
   const now = Date.now();
+  const search = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const paramPct = options?.percent !== undefined ? options.percent : search?.get("downloadPercent");
+  const knownTotal = paramPct !== null && paramPct !== undefined ? 100 * 1024 ** 2 : null;
+  const initialReceived = knownTotal !== null ? (Number(paramPct) / 100) * knownTotal : 12.4 * 1024 ** 2;
   items = [{ id: `mock-download-${++sequence}`, name: "CCOTT-demo.zip", state: "active",
-    receivedBytes: 12.4 * 1024 ** 2, totalBytes: null, bytesPerSec: 3.1 * 1024 ** 2, startedAt: now, updatedAt: now }];
+    receivedBytes: initialReceived, totalBytes: knownTotal, bytesPerSec: 3.1 * 1024 ** 2, startedAt: now, updatedAt: now }];
   emit(items);
   let ticks = 0;
   const tick = () => {

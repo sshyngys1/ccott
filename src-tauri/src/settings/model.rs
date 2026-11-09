@@ -6,7 +6,40 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::hotkeys::{DEFAULT_COMMAND_HOTKEY, DEFAULT_SUMMON_HOTKEY, parse_hotkey};
+use crate::weather::model::WeatherLocation;
 use crate::window::VibrancyMode;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WeatherUnits {
+    #[default]
+    C,
+    F,
+}
+
+/// §30: synced lyrics preferences. Mirror of `LyricsSettings` in `src/shared/types.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LyricsSettings {
+    pub enabled: bool,
+    pub in_pill: bool,
+    pub announce: bool,
+    pub offset_ms: i32,
+}
+
+impl Default for LyricsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            in_pill: true,
+            announce: false,
+            offset_ms: 0,
+        }
+    }
+}
+
+/// Bound of `LyricsSettings::offset_ms`.
+pub const LYRICS_OFFSET_MAX_MS: i32 = 5000;
 
 /// Upper bound of both hover delays, in milliseconds.
 pub const MAX_DELAY_MS: u32 = 2000;
@@ -97,6 +130,48 @@ fn default_downloads_monitor() -> bool {
     true
 }
 
+pub fn default_tab_order() -> Vec<String> {
+    [
+        "home",
+        "clipboard",
+        "text",
+        "notes",
+        "shelf",
+        "weather",
+        "control",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn valid_ids(ids: &[String]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    ids.len() <= 16
+        && ids
+            .iter()
+            .all(|id| (1..=32).contains(&id.chars().count()) && seen.insert(id))
+}
+
+fn take_ids(
+    map: &Map<String, Value>,
+    key: &str,
+    target: &mut Vec<String>,
+    rejected: &mut Vec<String>,
+) {
+    if let Some(value) = map.get(key) {
+        match serde_json::from_value::<Vec<String>>(value.clone()) {
+            Ok(ids) if valid_ids(&ids) => *target = ids,
+            _ => rejected.push(key.into()),
+        }
+    }
+}
+
+fn normalized_currency(value: &str) -> Option<String> {
+    (value.is_empty() || (value.len() == 3 && value.bytes().all(|c| c.is_ascii_alphabetic())))
+        .then(|| value.to_ascii_uppercase())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ThemeMode {
@@ -115,9 +190,21 @@ pub enum LanguageMode {
     En,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default)]
+    pub weather_location: Option<WeatherLocation>,
+    #[serde(default)]
+    pub weather_units: WeatherUnits,
+    #[serde(default)]
+    pub lyrics: LyricsSettings,
+    #[serde(default = "default_tab_order")]
+    pub tab_order: Vec<String>,
+    #[serde(default)]
+    pub disabled_features: Vec<String>,
+    #[serde(default)]
+    pub default_currency: String,
     #[serde(default = "default_ocr_language")]
     pub ocr_language: String,
     #[serde(default)]
@@ -156,6 +243,12 @@ fn default_command_hotkey() -> String {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            weather_location: None,
+            weather_units: WeatherUnits::C,
+            lyrics: LyricsSettings::default(),
+            tab_order: default_tab_order(),
+            disabled_features: Vec::new(),
+            default_currency: String::new(),
             ocr_language: default_ocr_language(),
             language: LanguageMode::Auto,
             theme: ThemeMode::Auto,
@@ -244,6 +337,50 @@ fn take_quick_tiles(
     *target = parsed;
 }
 
+/// `lyrics`: an object whose known fields are merged one by one; the whole field is rejected
+/// (previous value kept) when any present known field is invalid.
+fn take_lyrics(
+    map: &Map<String, Value>,
+    key: &str,
+    target: &mut LyricsSettings,
+    rejected: &mut Vec<String>,
+) {
+    let Some(value) = map.get(key) else { return };
+    let Some(obj) = value.as_object() else {
+        rejected.push(key.to_string());
+        return;
+    };
+    let mut next = *target;
+    for (name, slot) in [
+        ("enabled", &mut next.enabled),
+        ("inPill", &mut next.in_pill),
+        ("announce", &mut next.announce),
+    ] {
+        if let Some(v) = obj.get(name) {
+            match v.as_bool() {
+                Some(b) => *slot = b,
+                None => {
+                    rejected.push(key.to_string());
+                    return;
+                }
+            }
+        }
+    }
+    if let Some(v) = obj.get("offsetMs") {
+        match v
+            .as_i64()
+            .filter(|n| n.abs() <= i64::from(LYRICS_OFFSET_MAX_MS))
+        {
+            Some(n) => next.offset_ms = n as i32,
+            None => {
+                rejected.push(key.to_string());
+                return;
+            }
+        }
+    }
+    *target = next;
+}
+
 fn take_hotkey(
     map: &Map<String, Value>,
     key: &str,
@@ -273,6 +410,18 @@ pub fn normalize_allowlist(items: Vec<String>) -> Vec<String> {
 impl Settings {
     /// Brings every field into its valid range.
     pub fn clamp(&mut self) {
+        if !valid_ids(&self.tab_order) {
+            self.tab_order = default_tab_order();
+        }
+        if !valid_ids(&self.disabled_features) {
+            self.disabled_features.clear();
+        }
+        self.disabled_features.retain(|id| id != "home");
+        self.lyrics.offset_ms = self
+            .lyrics
+            .offset_ms
+            .clamp(-LYRICS_OFFSET_MAX_MS, LYRICS_OFFSET_MAX_MS);
+        self.default_currency = normalized_currency(&self.default_currency).unwrap_or_default();
         if !SHELF_RETENTION_HOURS.contains(&self.shelf_retention_hours) {
             self.shelf_retention_hours = default_shelf_retention();
         }
@@ -321,6 +470,29 @@ impl Settings {
             return vec!["<root>".to_string()];
         };
         let mut rejected = Vec::new();
+        if let Some(value) = map.get("weatherLocation") {
+            match serde_json::from_value::<Option<WeatherLocation>>(value.clone()) {
+                Ok(location) if location.as_ref().is_none_or(WeatherLocation::valid) => {
+                    self.weather_location = location
+                }
+                _ => rejected.push("weatherLocation".into()),
+            }
+        }
+        take(map, "weatherUnits", &mut self.weather_units, &mut rejected);
+        take_lyrics(map, "lyrics", &mut self.lyrics, &mut rejected);
+        take_ids(map, "tabOrder", &mut self.tab_order, &mut rejected);
+        take_ids(
+            map,
+            "disabledFeatures",
+            &mut self.disabled_features,
+            &mut rejected,
+        );
+        if let Some(value) = map.get("defaultCurrency") {
+            match value.as_str().and_then(normalized_currency) {
+                Some(code) => self.default_currency = code,
+                None => rejected.push("defaultCurrency".into()),
+            }
+        }
         take(
             map,
             "shelfKeepAfterDrag",
@@ -402,6 +574,99 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v04_defaults_old_files_and_round_trip() {
+        let defaults = Settings::default();
+        assert_eq!(defaults.tab_order, default_tab_order());
+        assert!(defaults.disabled_features.is_empty());
+        assert!(defaults.default_currency.is_empty());
+        let mut old = serde_json::to_value(&defaults).unwrap();
+        for key in ["tabOrder", "disabledFeatures", "defaultCurrency"] {
+            old.as_object_mut().unwrap().remove(key);
+        }
+        assert_eq!(
+            serde_json::from_value::<Settings>(old.clone()).unwrap(),
+            defaults
+        );
+        assert_eq!(Settings::from_json_lossy(&old), defaults);
+        let mut settings = defaults;
+        assert!(settings.merge_json(&json!({"tabOrder": ["future", "home"], "disabledFeatures": ["home", "clipboard", "future"], "defaultCurrency": "rUb"})).is_empty());
+        assert_eq!(settings.tab_order, ["future", "home"]);
+        assert_eq!(settings.disabled_features, ["clipboard", "future"]);
+        assert_eq!(settings.default_currency, "RUB");
+        assert_eq!(
+            serde_json::from_value::<Settings>(serde_json::to_value(&settings).unwrap()).unwrap(),
+            settings
+        );
+    }
+
+    #[test]
+    fn v04_id_arrays_validate_without_losing_previous_value() {
+        for key in ["tabOrder", "disabledFeatures"] {
+            for value in [
+                json!(null),
+                json!("home"),
+                json!([1]),
+                json!([""]),
+                json!(["x".repeat(33)]),
+                json!(["x", "x"]),
+                json!((0..17).map(|i| i.to_string()).collect::<Vec<_>>()),
+            ] {
+                let mut settings = Settings::default();
+                let before = settings.clone();
+                assert_eq!(settings.merge_json(&json!({key: value})), [key]);
+                assert_eq!(settings, before);
+            }
+            let mut settings = Settings::default();
+            assert!(
+                settings
+                    .merge_json(
+                        &json!({key: (0..16).map(|i| format!("{i:032}")).collect::<Vec<_>>()})
+                    )
+                    .is_empty()
+            );
+            assert!(settings.merge_json(&json!({key: []})).is_empty());
+            assert!(
+                settings
+                    .merge_json(&json!({key: ["ю".repeat(32)]}))
+                    .is_empty()
+            );
+        }
+        let mut settings = Settings::default();
+        assert_eq!(
+            settings.merge_json(&json!({"disabledFeatures": ["home", "home"]})),
+            ["disabledFeatures"]
+        );
+    }
+
+    #[test]
+    fn v04_currency_validation() {
+        let mut settings = Settings::default();
+        for value in [
+            json!(null),
+            json!(3),
+            json!("US"),
+            json!("USDD"),
+            json!("U1D"),
+            json!(" usd"),
+            json!("руб"),
+        ] {
+            assert_eq!(
+                settings.merge_json(&json!({"defaultCurrency": value})),
+                ["defaultCurrency"]
+            );
+            assert_eq!(settings.default_currency, "");
+        }
+        for code in ["usd", "KzT", "ZZZ", ""] {
+            assert!(
+                settings
+                    .merge_json(&json!({"defaultCurrency": code}))
+                    .is_empty()
+            );
+            assert_eq!(settings.default_currency, code.to_ascii_uppercase());
+        }
+    }
 
     #[test]
     fn shelf_defaults_old_settings_and_retention_validation() {
@@ -545,6 +810,11 @@ mod tests {
             v,
             json!({
                 "language": "auto",
+                "tabOrder": ["home", "clipboard", "text", "notes", "shelf", "weather", "control"],
+                "disabledFeatures": [],
+                "defaultCurrency": "",
+                "weatherLocation": null, "weatherUnits": "c",
+                "lyrics": {"enabled": true, "inPill": true, "announce": false, "offsetMs": 0},
                 "ocrLanguage": "auto",
                 "theme": "auto", "vibrancy": "none", "monitor": "primary",
                 "liteMode": false,

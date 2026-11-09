@@ -3,9 +3,12 @@ import { getLanguage, t, type Language, type TranslationKey } from "../../i18n";
 import { ru } from "../../i18n/ru";
 import { en } from "../../i18n/en";
 import { runCapture } from "../capture/store";
+import { isFeatureEnabled } from "../features";
 import { useTimerStore } from "../timer/store";
 import { useIslandStore } from "../../store";
 import { showToast } from "../../shell/toast";
+import { requestShell } from "../../shared/shellBus";
+import { openSettingsWindow } from "../../shell/settings/openWindow";
 
 export interface CommandItem {
   id: string;
@@ -114,7 +117,7 @@ export function evaluateCommands(query: string, lang: Language = getLanguage()):
   const results: CommandItem[] = [];
 
   // Check timer command: «таймер 10 мин», «timer 90s», etc.
-  const timerMatch = /^(?:таймер|timer)(?:\s+(.*))?$/iu.exec(trimmed);
+  const timerMatch = isFeatureEnabled("notes") ? /^(?:таймер|timer)(?:\s+(.*))?$/iu.exec(trimmed) : null;
   if (timerMatch) {
     const durationStr = timerMatch[1] ?? "";
     const parsed = durationStr
@@ -159,7 +162,7 @@ export function evaluateCommands(query: string, lang: Language = getLanguage()):
   }
 
   // Clipboard
-  if (/^(?:буфер|буфер\s+обмена|клип|clipboard)$/iu.test(q)) {
+  if (isFeatureEnabled("clipboard") && /^(?:буфер|буфер\s+обмена|клип|clipboard)$/iu.test(q)) {
     results.push({
       id: "cmd-clipboard",
       kind: "command",
@@ -175,7 +178,7 @@ export function evaluateCommands(query: string, lang: Language = getLanguage()):
   }
 
   // Notes
-  if (/^(?:заметка|заметки|note|notes)$/iu.test(q)) {
+  if (isFeatureEnabled("notes") && /^(?:заметка|заметки|note|notes)$/iu.test(q)) {
     results.push({
       id: "cmd-notes",
       kind: "command",
@@ -201,8 +204,9 @@ export function evaluateCommands(query: string, lang: Language = getLanguage()):
       subtitle: t("cmdSettingsSubtitle"),
       actionHint: t("cmdActionOpen"),
       iconType: "settings",
-      execute: () => {
-        useIslandStore.getState().setView("settings");
+      execute: async () => {
+        await requestShell({ type: "collapse" });
+        await openSettingsWindow();
       },
     });
   }

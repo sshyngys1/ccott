@@ -76,6 +76,13 @@ const CURRENCIES: CurrencyInfo[] = [
   currency("BYN", "Br", "byn", `${after(/белорусск/, ADJECTIVE_ENDING)}${SPACE}${RUBLE}`),
 ];
 
+/** Common currencies named in Settings; command completion uses the provider's catalog. */
+export const CURRENCY_CODES: readonly string[] = CURRENCIES.map(({ code }) => code);
+
+const localCurrencyCodes = new Set(
+  (Intl as typeof Intl & { supportedValuesOf?: (key: "currency") => string[] }).supportedValuesOf?.("currency") ?? CURRENCY_CODES,
+);
+
 const SYMBOL_PREFIXES: Record<string, string> = {
   $: "USD",
   "€": "EUR",
@@ -114,13 +121,23 @@ export function getDefaultCurrency(locale: string): string {
 
 export function findCurrency(str: string): CurrencyInfo | undefined {
   const clean = str.trim().toLowerCase();
-  return CURRENCIES.find((c) => c.pattern.test(clean));
+  const known = CURRENCIES.find((c) => c.pattern.test(clean));
+  if (known) return known;
+  // Provider currencies outside the short alias table remain usable by ISO code.
+  if (/^[a-z]{3}$/i.test(clean)) {
+    const code = clean.toUpperCase();
+    if (getActiveCurrencyCodes().has(code)) {
+      return { code, symbol: code, pattern: new RegExp(`^${code}$`, "i") };
+    }
+  }
+  return undefined;
 }
 
 /** Parse an amount and currency, optionally followed by a separator and target. */
 export function parseCurrencyQuery(
   query: string,
   locale: string = typeof navigator === "undefined" ? "en-US" : navigator.language,
+  defaultCurrency = "",
 ): CurrencyQuery | null {
   const trimmed = query.trim().replace(/\s+/gu, " ");
   if (!trimmed) return null;
@@ -147,7 +164,7 @@ export function parseCurrencyQuery(
 
   let target = parts[1];
   if (!target) {
-    target = getDefaultCurrency(locale);
+    target = defaultCurrency && defaultCurrency !== fromInfo.code ? defaultCurrency : getDefaultCurrency(locale);
     if (target === fromInfo.code) target = target === "USD" ? "EUR" : "USD";
   }
   const toInfo = findCurrency(target);
@@ -164,26 +181,57 @@ export function parseCurrencyQuery(
 
 // In-memory cache for session
 const ratesCache = new Map<string, { rates: CurrencyRates; fetchedAt: number }>();
+const pendingRates = new Map<string, Promise<CurrencyRates>>();
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+export function getActiveCurrencyCodes(): Set<string> {
+  const codes = new Set(localCurrencyCodes);
+  for (const { rates } of ratesCache.values()) {
+    codes.add(rates.base);
+    for (const code of Object.keys(rates.rates)) {
+      codes.add(code);
+    }
+  }
+  return codes;
+}
 
 export function clearRatesCache(): void {
   ratesCache.clear();
+  pendingRates.clear();
 }
 
 export function setCachedRates(base: string, rates: CurrencyRates): void {
   ratesCache.set(base.toUpperCase(), { rates, fetchedAt: Date.now() });
 }
 
-export async function fetchRatesForBase(base: string): Promise<CurrencyRates> {
+export function fetchRatesForBase(base: string): Promise<CurrencyRates> {
   const normBase = base.toUpperCase();
   const cached = ratesCache.get(normBase);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.rates;
+    return Promise.resolve(cached.rates);
   }
 
-  const res = await invoke("cmd_currency_rates", { base: normBase });
-  ratesCache.set(normBase, { rates: res, fetchedAt: Date.now() });
-  return res;
+  const pending = pendingRates.get(normBase);
+  if (pending) return pending;
+
+  const request = invoke("cmd_currency_rates", { base: normBase })
+    .then(res => {
+      ratesCache.set(normBase, { rates: res, fetchedAt: Date.now() });
+      return res;
+    })
+    .catch(error => {
+      if (cached) return { ...cached.rates, stale: true };
+      throw error;
+    })
+    .finally(() => { pendingRates.delete(normBase); });
+  pendingRates.set(normBase, request);
+  return request;
+}
+
+/** A cached table in any base still describes the provider's available currencies. */
+export function cachedCurrencyCatalog(): CurrencyRates | null {
+  const values = [...ratesCache.values()];
+  return values[values.length - 1]?.rates ?? null;
 }
 
 export function formatCurrencyValue(amount: number, symbol: string, lang: Language = getLanguage()): string {

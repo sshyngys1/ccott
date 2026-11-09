@@ -11,6 +11,7 @@ import {
   useBatteryStore,
 } from "./batteryStore";
 import { durations } from "../../design/motion";
+import { useFeatureEnabled } from "../features";
 import { chargeTransition } from "./chargeTransition";
 
 interface BatteryIndicatorProps {
@@ -18,12 +19,15 @@ interface BatteryIndicatorProps {
 }
 
 export function BatteryIndicator({ variant }: BatteryIndicatorProps) {
+  const enabled = useFeatureEnabled("battery");
   const battery = useBatteryStore((s) => s.battery);
 
   useEffect(() => {
+    if (!enabled) return;
     return initBatteryStore();
-  }, []);
+  }, [enabled]);
 
+  if (!enabled) return null;
   return <BatteryIndicatorView variant={variant} battery={battery} />;
 }
 

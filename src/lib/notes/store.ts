@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { invoke } from "../../ipc";
 import type { Note } from "../../shared/types";
+import { useIslandStore } from "../../store";
+import { isFeatureEnabled } from "../features";
 import { ALL_FOLDERS, DEFAULT_FOLDER, deriveTitle, filterNotes, findFolder, folderList, isEmptyBody, normalizeFolderName, sortNotes, type FolderFilter } from "./model";
 import { sanitizeNoteHtml } from "./sanitize";
 
@@ -48,11 +50,16 @@ interface Pending {
   dueAt: number;
 }
 
+type DrainMode = "due" | "force" | "unattempted";
+
 const pending = new Map<string, Pending>();
 const pendingKey = (p: Pick<Pending, "selection" | "token">) => p.selection === "new" ? `draft:${p.token}` : `note:${p.selection}`;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let draining: Promise<void> | null = null;
+let deactivating: Promise<void> | null = null;
+let notesEnabled = isFeatureEnabled("notes");
+let listenersAttached = false;
 let generation = 0;
 /** Bumped by newNote(): ties a "new" selection to the draft that created it. */
 let draftToken = 0;
@@ -72,17 +79,20 @@ function clearRetry(): void {
 
 function scheduleRetry(): void {
   clearRetry();
-  if (!pending.size) return;
+  if (!notesEnabled || !pending.size) return;
   const at = Math.min(...[...pending.values()].map((p) => p.dueAt));
-  retryTimer = setTimeout(() => { retryTimer = null; void startDrain(false); }, Math.max(0, at - Date.now()));
+  retryTimer = setTimeout(() => { retryTimer = null; void startDrain("due"); }, Math.max(0, at - Date.now()));
 }
 
-function startDrain(force: boolean): Promise<void> {
+function startDrain(mode: DrainMode): Promise<void> {
   if (draining) return draining;
   if (!pending.size) return Promise.resolve();
+  if (!notesEnabled && ![...pending.values()].some((p) => p.failures === 0)) {
+    return Promise.resolve();
+  }
   clearRetry();
   const gen = generation;
-  draining = drain(force, gen).finally(() => {
+  draining = drain(mode, gen).finally(() => {
     if (gen !== generation) return;
     draining = null;
     scheduleRetry();
@@ -159,12 +169,16 @@ export const useNotesStore = create<NotesStore>()((set, get) => ({
     const edit = { selection: selected, token: draftToken, folder: noteFolder, html, failures: 0, dueAt: Date.now() + AUTOSAVE_DEBOUNCE_MS };
     pending.set(pendingKey(edit), edit);
     clearDebounce();
-    debounce = setTimeout(() => { debounce = null; void startDrain(false); }, AUTOSAVE_DEBOUNCE_MS);
+    if (!notesEnabled) return;
+    debounce = setTimeout(() => { debounce = null; void startDrain("due"); }, AUTOSAVE_DEBOUNCE_MS);
   },
 
   flush: () => {
     clearDebounce();
-    return startDrain(true);
+    if (!notesEnabled) {
+      return deactivating ?? Promise.resolve();
+    }
+    return startDrain("force");
   },
 
   remove: async () => {
@@ -197,11 +211,15 @@ export const useNotesStore = create<NotesStore>()((set, get) => ({
   bodyOf: (id) => unsaved.get(id) ?? get().notes.find((n) => n.id === id)?.body ?? "",
 }));
 
-async function drain(force: boolean, gen: number): Promise<void> {
+async function drain(mode: DrainMode, gen: number): Promise<void> {
   const { setState: set, getState: get } = useNotesStore;
   const attempted = new Set<string>();
   while (gen === generation) {
-    const entry = [...pending.entries()].find(([key, p]) => !attempted.has(key) && (force || p.dueAt <= Date.now()));
+    const entry = [...pending.entries()].find(([key, p]) => {
+      if (attempted.has(key)) return false;
+      if (!notesEnabled || mode === "unattempted") return p.failures === 0;
+      return mode === "force" || p.dueAt <= Date.now();
+    });
     if (!entry) break;
     const [key, p] = entry;
     attempted.add(key);
@@ -246,6 +264,52 @@ async function drain(force: boolean, gen: number): Promise<void> {
   }
 }
 
+const onPageExit = () => { void useNotesStore.getState().flush(); };
+const onVisibility = () => { if (document.visibilityState === "hidden") onPageExit(); };
+
+function attachLifecycleListeners(): void {
+  if (listenersAttached || typeof window === "undefined" || typeof document === "undefined") return;
+  window.addEventListener("pagehide", onPageExit);
+  window.addEventListener("beforeunload", onPageExit);
+  document.addEventListener("visibilitychange", onVisibility);
+  listenersAttached = true;
+}
+
+function detachLifecycleListeners(): void {
+  if (!listenersAttached || typeof window === "undefined" || typeof document === "undefined") return;
+  window.removeEventListener("pagehide", onPageExit);
+  window.removeEventListener("beforeunload", onPageExit);
+  document.removeEventListener("visibilitychange", onVisibility);
+  listenersAttached = false;
+}
+
+async function deactivateNotes(): Promise<void> {
+  const gen = generation;
+  clearDebounce();
+  clearRetry();
+  detachLifecycleListeners();
+  if (draining) {
+    await draining.catch(() => {});
+  }
+  if (gen !== generation || notesEnabled) return;
+  if ([...pending.values()].some((p) => p.failures === 0)) {
+    await startDrain("unattempted");
+  }
+  if (gen !== generation || notesEnabled) return;
+  clearDebounce();
+  clearRetry();
+}
+
+function resumePendingSaves(): void {
+  if (!notesEnabled || !pending.size) return;
+  const earliest = Math.min(...[...pending.values()].map((p) => p.dueAt));
+  if (earliest <= Date.now()) {
+    void startDrain("due");
+  } else {
+    scheduleRetry();
+  }
+}
+
 /** Tests. */
 export function resetNotesStore(): void {
   generation++;
@@ -253,9 +317,13 @@ export function resetNotesStore(): void {
   clearRetry();
   pending.clear();
   draining = null;
+  deactivating = null;
   loading = null;
   draftToken = 0;
   unsaved.clear();
+  notesEnabled = isFeatureEnabled("notes");
+  if (notesEnabled) attachLifecycleListeners();
+  else detachLifecycleListeners();
   useNotesStore.setState({ notes: [], loaded: false, folder: ALL_FOLDERS, extraFolders: [], selected: null, save: { state: "idle", at: null }, timerFocusRequested: false });
 }
 
@@ -264,18 +332,36 @@ export function hasPendingEdit(): boolean {
   return pending.size > 0;
 }
 
-// Flush while the WebView still has an opportunity to send IPC (also when the tab is not mounted).
-if (typeof window !== "undefined" && typeof document !== "undefined") {
-  const flush = () => { void useNotesStore.getState().flush(); };
-  const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
-  window.addEventListener("pagehide", flush);
-  window.addEventListener("beforeunload", flush);
-  document.addEventListener("visibilitychange", onVisibility);
-  import.meta.hot?.dispose(() => {
-    window.removeEventListener("pagehide", flush);
-    window.removeEventListener("beforeunload", flush);
-    document.removeEventListener("visibilitychange", onVisibility);
-    clearRetry();
-    clearDebounce();
-  });
+// Flush while the WebView still has an opportunity to send IPC (only while the notes feature is enabled).
+if (notesEnabled) {
+  attachLifecycleListeners();
 }
+
+const unsubscribeIsland = useIslandStore.subscribe((state, prev) => {
+  const enabled = isFeatureEnabled("notes", state.settings.disabledFeatures);
+  const wasEnabled = isFeatureEnabled("notes", prev.settings.disabledFeatures);
+  if (enabled === wasEnabled) return;
+  notesEnabled = enabled;
+  if (!enabled) {
+    const task = deactivateNotes().finally(() => {
+      if (deactivating === task) deactivating = null;
+    });
+    deactivating = task;
+    return;
+  }
+  attachLifecycleListeners();
+  if (deactivating) {
+    void deactivating.finally(() => {
+      if (notesEnabled) resumePendingSaves();
+    });
+  } else {
+    resumePendingSaves();
+  }
+});
+
+import.meta.hot?.dispose(() => {
+  unsubscribeIsland();
+  detachLifecycleListeners();
+  clearRetry();
+  clearDebounce();
+});

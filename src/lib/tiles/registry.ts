@@ -16,7 +16,7 @@ import {
 import { runCapture, runPickColor } from "../capture/store";
 import { captureOpenFolder } from "../../ipc/capture";
 import { useIslandStore } from "../../store";
-import type { TileId, TileSize } from "../../shared/types";
+import type { FeatureId, TileId, TileSize } from "../../shared/types";
 import { requestShell } from "../../shared/shellBus";
 
 export interface TileDefinition {
@@ -25,6 +25,7 @@ export interface TileDefinition {
   hintKey?: TranslationKey;
   icon: ComponentType<IconProps>;
   allowedSizes: readonly TileSize[];
+  feature?: FeatureId;
   action: (event: { shiftKey?: boolean }) => void | Promise<void>;
 }
 
@@ -88,6 +89,7 @@ export const TILE_REGISTRY: Record<TileId, TileDefinition> = {
     titleKey: "clipboard",
     icon: IconClipboard,
     allowedSizes: ["1x1", "2x1"],
+    feature: "clipboard",
     action: () => useIslandStore.getState().setActiveTab("clipboard"),
   },
   note: {
@@ -95,6 +97,7 @@ export const TILE_REGISTRY: Record<TileId, TileDefinition> = {
     titleKey: "newNote",
     icon: IconNote,
     allowedSizes: ["1x1", "2x1"],
+    feature: "notes",
     action: async () => {
       const { useNotesStore } = await import("../notes/store");
       useNotesStore.getState().newNote(true);
@@ -106,6 +109,7 @@ export const TILE_REGISTRY: Record<TileId, TileDefinition> = {
     titleKey: "timer",
     icon: IconTimer,
     allowedSizes: ["1x1", "2x1"],
+    feature: "notes",
     action: async () => {
       const { useNotesStore } = await import("../notes/store");
       useNotesStore.getState().requestTimerFocus();

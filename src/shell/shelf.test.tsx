@@ -63,6 +63,7 @@ it("clicking the shelf count opens the shelf tab", async () => {
 });
 
 it("collapsed drop highlights the pill, resists hover expansion and adds to shelf without touching the dock", async () => {
+  await ipc.invoke("settings_set", { patch: { disabledFeatures: ["dock"] } });
   render(<Island modules={[]} />);
   await screen.findByLabelText(t("shelf.count", { count: 4 }));
   act(() => window.dispatchEvent(new CustomEvent("ccott:dock-drop", { detail: { type: "enter" } })));
@@ -101,7 +102,7 @@ it("hit-tests physical drop positions: only the dock zone or shelf tab accepts f
   expect(dropZone(p(50, 120))).toBe("dock");
   expect(dropZone(p(50, 20))).toBe("shelf");
   expect(dropZone(p(500, 250))).toBeNull();
-  useIslandStore.setState({ view: "settings" });
+  useIslandStore.setState({ view: "cmd" });
   expect(dropZone(p(50, 120))).toBeNull();
   dock.remove(); tab.remove();
 });

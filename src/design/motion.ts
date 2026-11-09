@@ -131,6 +131,31 @@ export const attachWave = {
   highlight: { duration: 0.15, ease: easings.out },
 } as const;
 
+/**
+ * v0.4/0.5 synced lyrics (spec §6.11). Line scrolling is a CSS transition of `transform: translateY` on each line
+ * (one shared offset, staggered delays), so it costs no JS per frame and retargets from the current value when the
+ * next line comes early. CSS mirrors: --ig-lyrics-scroll-dur / -stagger / -level-dur / -focus-dur / -bg-dur.
+ * No scale anywhere: the active line is emphasised by opacity and a static blur step on its neighbours.
+ */
+export const lyricsMotion = {
+  /** Lines are switched this many ms BEFORE their timestamp, so the scroll lands on the beat, not after it. */
+  leadMs: 150,
+  scroll: { duration: 0.56, ease: easings.out },
+  /** Delay per line below the active one ("liquid" follow-through), capped at `maxStaggerSteps`. */
+  stagger: 0.028,
+  maxStaggerSteps: 6,
+  level: { duration: 0.24, ease: easings.out },
+  /** Pill: the current line swaps with a short vertical slide + cross-fade. */
+  pillLine: { duration: 0.22, ease: easings.out, shift: 8 },
+  /** Palette cross-fade on track change and tint on/off. */
+  background: { duration: 0.4, ease: easings.inOut },
+  tintIn: { duration: 0.26, ease: easings.out },
+  /** After the user scrolls the lyrics by hand, auto-follow resumes after this pause. */
+  browseResumeMs: 3000,
+  /** A pause between lines longer than this shows the "• • •" interlude line. */
+  interludeMs: 6000,
+} as const;
+
 /** Scale under the pointer for controls (use with springs.press). */
 export const pressScale = 0.96;
 

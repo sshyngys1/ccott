@@ -3,30 +3,39 @@
 //!
 //! All unsafe code here is Win32 FFI; every block says why it is sound.
 
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, SyncSender};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{
-    CloseHandle, GlobalFree, HANDLE, HGLOBAL, HWND, LPARAM, LRESULT, WPARAM,
+    CloseHandle, ERROR_SUCCESS, GetLastError, GlobalFree, HANDLE, HGLOBAL, HWND, LPARAM, LRESULT,
+    SetLastError, WPARAM,
+};
+use windows::Win32::Graphics::Gdi::{CopyEnhMetaFileW, HENHMETAFILE};
+use windows::Win32::System::Com::{
+    STGMEDIUM, STGMEDIUM_0, TYMED_ENHMF, TYMED_GDI, TYMED_HGLOBAL, TYMED_MFPICT,
 };
 use windows::Win32::System::DataExchange::{
-    AddClipboardFormatListener, CloseClipboard, EmptyClipboard, GetClipboardData,
-    GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard,
-    RegisterClipboardFormatW, SetClipboardData,
+    AddClipboardFormatListener, CloseClipboard, EmptyClipboard, EnumClipboardFormats,
+    GetClipboardData, GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
+    OpenClipboard, RegisterClipboardFormatW, RemoveClipboardFormatListener, SetClipboardData,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Memory::{
     GMEM_MOVEABLE, GMEM_ZEROINIT, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock,
 };
-use windows::Win32::System::Ole::{CF_DIB, CF_DIBV5, CF_HDROP, CF_UNICODETEXT};
+use windows::Win32::System::Ole::{
+    CF_DIB, CF_DIBV5, CF_HDROP, CF_UNICODETEXT, CLIPBOARD_FORMAT, OleDuplicateData,
+    ReleaseStgMedium,
+};
 use windows::Win32::System::Threading::{
     AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32,
     PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
-use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook};
+use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT,
     KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LSHIFT, VK_RCONTROL,
@@ -34,10 +43,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::Shell::DragQueryFileW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, CreateWindowExW, DefWindowProcW, DispatchMessageW, GA_ROOT, GetAncestor,
-    GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId, HWND_MESSAGE,
-    IsIconic, IsWindow, IsWindowVisible, MSG, RegisterClassW, SW_RESTORE, SetForegroundWindow,
-    ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLIPBOARDUPDATE, WNDCLASSW,
+    BringWindowToTop, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GA_ROOT,
+    GetAncestor, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
+    HWND_MESSAGE, IsIconic, IsWindow, IsWindowVisible, MSG, PostMessageW, PostQuitMessage,
+    RegisterClassW, SW_RESTORE, SetForegroundWindow, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_CLIPBOARDUPDATE, WM_CLOSE, WM_DESTROY, WNDCLASSW,
 };
 use windows::core::{PCWSTR, PWSTR, w};
 
@@ -62,15 +72,15 @@ pub struct Captured {
 /// Raw DIB bytes above this are ignored (≈ 4K screenshot); the encoded PNG is capped separately.
 const MAX_RAW_IMAGE_BYTES: usize = 48 * 1024 * 1024;
 
-static SENDER: OnceLock<Sender<Captured>> = OnceLock::new();
+thread_local! {
+    static SENDER: RefCell<Option<Sender<Captured>>> = const { RefCell::new(None) };
+}
 /// Clipboard sequence number right after our own last write (0 = none).
 static SELF_SEQ: AtomicU32 = AtomicU32::new(0);
 /// Sequence number of the last update we processed (drops duplicate messages).
 static LAST_SEQ: AtomicU32 = AtomicU32::new(0);
 /// Last foreground window that does not belong to our process.
 static LAST_EXTERNAL_FG: AtomicIsize = AtomicIsize::new(0);
-/// Our message-only listener window (owner for clipboard writes).
-static LISTENER_HWND: AtomicIsize = AtomicIsize::new(0);
 
 fn hwnd_from(v: isize) -> HWND {
     HWND(v as *mut c_void)
@@ -364,12 +374,28 @@ fn on_clipboard_update(hwnd: HWND) {
     let Some(raw) = read_clipboard(hwnd) else {
         return;
     };
-    if let Some(tx) = SENDER.get() {
-        let _ = tx.send(Captured { raw, source_app });
-    }
+    SENDER.with_borrow(|sender| {
+        if let Some(tx) = sender
+            && tx.send(Captured { raw, source_app }).is_err()
+        {
+            log::error!("clipboard: capture worker disconnected");
+        }
+    });
 }
 
 unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if msg == WM_CLOSE {
+        // SAFETY: unsubscribe our own live message-only window before destroying it.
+        let _ = unsafe { RemoveClipboardFormatListener(hwnd) };
+        // SAFETY: destroy our message-only window on its owning thread.
+        let _ = unsafe { DestroyWindow(hwnd) };
+        return LRESULT(0);
+    }
+    if msg == WM_DESTROY {
+        // SAFETY: end this dedicated thread's message loop.
+        unsafe { PostQuitMessage(0) };
+        return LRESULT(0);
+    }
     if msg == WM_CLIPBOARDUPDATE {
         on_clipboard_update(hwnd);
         return LRESULT(0);
@@ -390,11 +416,18 @@ unsafe extern "system" fn foreground_hook(
     remember_foreground(hwnd);
 }
 
-/// Runs the listener (message-only window + foreground hook) on the current thread forever.
-pub fn run_listener(tx: Sender<Captured>) {
-    let _ = SENDER.set(tx);
+/// Stops on WM_CLOSE, releasing the hook, subscription and sender before the worker is joined.
+pub fn stop_listener(hwnd: isize) {
+    if hwnd != 0 {
+        // SAFETY: posting to a borrowed HWND; a stale handle reports an error.
+        let _ = unsafe { PostMessageW(Some(HWND(hwnd as *mut _)), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    }
+}
+
+pub fn run_listener(tx: Sender<Captured>, ready: SyncSender<isize>) {
+    SENDER.with_borrow_mut(|sender| *sender = Some(tx));
     // SAFETY: standard window-class/window creation and message loop on this dedicated thread;
-    // the window and hook live until the process ends.
+    // the window and hook are released before this dedicated thread returns.
     unsafe {
         let Ok(hinst) = GetModuleHandleW(None) else {
             log::error!("clipboard: GetModuleHandleW failed");
@@ -407,7 +440,8 @@ pub fn run_listener(tx: Sender<Captured>) {
             lpszClassName: class,
             ..Default::default()
         };
-        if RegisterClassW(&wc) == 0 {
+        static CLASS: OnceLock<bool> = OnceLock::new();
+        if !*CLASS.get_or_init(|| RegisterClassW(&wc) != 0) {
             log::error!("clipboard: RegisterClassW failed");
             return;
         }
@@ -431,9 +465,9 @@ pub fn run_listener(tx: Sender<Captured>) {
                 return;
             }
         };
-        LISTENER_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
         if let Err(e) = AddClipboardFormatListener(hwnd) {
             log::error!("clipboard: AddClipboardFormatListener failed: {e}");
+            let _ = DestroyWindow(hwnd);
             return;
         }
 
@@ -455,12 +489,17 @@ pub fn run_listener(tx: Sender<Captured>) {
             log::warn!("clipboard: SetWinEventHook failed, paste target tracking disabled");
         }
         log::info!("clipboard: listener started");
+        let _ = ready.send(hwnd.0 as isize);
 
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+        while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        if !hook.0.is_null() {
+            let _ = UnhookWinEvent(hook);
+        }
+        SENDER.with_borrow_mut(|sender| *sender = None);
     }
 }
 
@@ -515,26 +554,174 @@ fn text_payload(text: &str) -> Vec<u8> {
     out
 }
 
-/// Puts `bytes` on the (open) clipboard as format `fmt`. Ownership of the memory passes to the system.
-unsafe fn set_format(fmt: u32, bytes: &[u8]) -> Result<(), String> {
-    // SAFETY: clipboard open (caller). The block is allocated, filled and locked by us; on success
-    // the system owns it, on failure we free it.
-    unsafe {
-        let h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes.len().max(1))
-            .map_err(|e| format!("GlobalAlloc: {e}"))?;
-        let p = GlobalLock(h) as *mut u8;
-        if p.is_null() {
-            let _ = GlobalFree(Some(h));
-            return Err("GlobalLock failed".into());
-        }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
-        let _ = GlobalUnlock(h);
-        if let Err(e) = SetClipboardData(fmt, Some(HANDLE(h.0))) {
-            let _ = GlobalFree(Some(h));
-            return Err(format!("SetClipboardData: {e}"));
+/// An unpublished format. Its memory/GDI resource is released unless ownership passes to Windows.
+struct OwnedFormat {
+    fmt: u32,
+    handle: HANDLE,
+    medium: u32,
+}
+
+impl OwnedFormat {
+    fn allocate(fmt: u32, bytes: &[u8]) -> Result<Self, String> {
+        // SAFETY: allocate and fill our own global-memory block before opening/emptying the clipboard.
+        unsafe {
+            let h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes.len().max(1))
+                .map_err(|e| format!("GlobalAlloc: {e}"))?;
+            let p = GlobalLock(h) as *mut u8;
+            if p.is_null() {
+                let _ = GlobalFree(Some(h));
+                return Err("GlobalLock failed".into());
+            }
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
+            let _ = GlobalUnlock(h);
+            Ok(Self {
+                fmt,
+                handle: HANDLE(h.0),
+                medium: TYMED_HGLOBAL.0 as u32,
+            })
         }
     }
-    Ok(())
+
+    fn publish(&mut self) -> Result<(), String> {
+        // SAFETY: caller holds the clipboard open with a live owner; this handle is owned by us.
+        unsafe { SetClipboardData(self.fmt, Some(self.handle)) }
+            .map_err(|e| format!("SetClipboardData: {e}"))?;
+        self.handle = HANDLE::default();
+        Ok(())
+    }
+}
+
+impl Drop for OwnedFormat {
+    fn drop(&mut self) {
+        if !self.handle.0.is_null() {
+            let mut medium = STGMEDIUM {
+                tymed: self.medium,
+                u: STGMEDIUM_0 {
+                    hGlobal: HGLOBAL(self.handle.0),
+                },
+                ..Default::default()
+            };
+            // SAFETY: the union holds our owned handle; tymed selects its matching destructor.
+            unsafe { ReleaseStgMedium(&mut medium) };
+        }
+    }
+}
+
+/// Snapshot every format before EmptyClipboard, including GDI formats. If a private handle cannot
+/// be safely duplicated, abort without modifying the original clipboard.
+fn backup_formats() -> Result<Vec<OwnedFormat>, String> {
+    let mut backup = Vec::new();
+    let mut fmt = 0;
+    // SAFETY: caller holds the clipboard open. Copies are owned independently of clipboard data.
+    unsafe {
+        loop {
+            SetLastError(ERROR_SUCCESS);
+            fmt = EnumClipboardFormats(fmt);
+            if fmt == 0 {
+                return if GetLastError() == ERROR_SUCCESS {
+                    Ok(backup)
+                } else {
+                    Err("cannot enumerate clipboard formats".into())
+                };
+            }
+            if fmt == 0x80 || (0x200..=0x3ff).contains(&fmt) {
+                return Err("cannot preserve private clipboard handles".into());
+            }
+            let source = GetClipboardData(fmt).map_err(|e| format!("backup clipboard: {e}"))?;
+            let (canonical, medium) = match fmt {
+                2 | 0x82 => (2, TYMED_GDI), // bitmap / display bitmap
+                9 => (9, TYMED_GDI),        // palette
+                3 | 0x83 => (3, TYMED_MFPICT),
+                14 | 0x8e => (14, TYMED_ENHMF),
+                _ => (fmt, TYMED_HGLOBAL),
+            };
+            let handle = if canonical == 14 {
+                HANDLE(CopyEnhMetaFileW(HENHMETAFILE(source.0), None).0)
+            } else {
+                OleDuplicateData(source, CLIPBOARD_FORMAT(canonical as u16), GMEM_MOVEABLE)
+            };
+            if handle.0.is_null() {
+                return Err(format!("cannot preserve clipboard format {fmt}"));
+            }
+            backup.push(OwnedFormat {
+                fmt,
+                handle,
+                medium: medium.0 as u32,
+            });
+        }
+    }
+}
+
+/// A temporary window belongs to this write's thread and lives through CloseClipboard. It never
+/// subscribes to history and cannot be destroyed concurrently by disabling the listener.
+struct WriteWindow(HWND);
+
+impl WriteWindow {
+    fn new() -> Result<Self, String> {
+        // SAFETY: built-in STATIC class, message-only parent, no borrowed pointers or user data.
+        unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("STATIC"),
+                w!(""),
+                WINDOW_STYLE(0),
+                0,
+                0,
+                0,
+                0,
+                Some(HWND_MESSAGE),
+                None,
+                None,
+                None,
+            )
+            .map(Self)
+            .map_err(|e| format!("clipboard write window: {e}"))
+        }
+    }
+}
+
+impl Drop for WriteWindow {
+    fn drop(&mut self) {
+        // SAFETY: this window was created on the current thread and never shared.
+        let _ = unsafe { DestroyWindow(self.0) };
+    }
+}
+
+struct OpenClipboardGuard;
+impl Drop for OpenClipboardGuard {
+    fn drop(&mut self) {
+        // SAFETY: this guard is created only after OpenClipboard succeeds on this thread.
+        let _ = unsafe { CloseClipboard() };
+    }
+}
+
+fn replace_clipboard(
+    mut prepared: Vec<OwnedFormat>,
+    ignore_echo: bool,
+    mut publish: impl FnMut(&mut OwnedFormat) -> Result<(), String>,
+) -> Result<(), String> {
+    let owner = WriteWindow::new()?;
+    if !open_clipboard(Some(owner.0)) {
+        return Err("clipboard is busy".into());
+    }
+    let _open = OpenClipboardGuard;
+    let mut backup = backup_formats()?;
+    // SAFETY: clipboard open, with our live temporary owner for the entire transaction.
+    unsafe {
+        EmptyClipboard().map_err(|e| format!("EmptyClipboard: {e}"))?;
+        let result = prepared.iter_mut().try_for_each(&mut publish);
+        if result.is_err() {
+            // Remove any partially published formats and restore the snapshot while still locked.
+            EmptyClipboard().map_err(|e| format!("clipboard rollback: {e}"))?;
+            for saved in &mut backup {
+                saved.publish()?;
+            }
+        }
+        if ignore_echo || result.is_err() {
+            SELF_SEQ.store(GetClipboardSequenceNumber(), Ordering::SeqCst);
+        }
+        result
+    }
 }
 
 /// Replaces the clipboard content with `content` and remembers the resulting sequence number so the
@@ -565,25 +752,11 @@ fn write_clipboard(content: &Content, ignore_echo: bool) -> Result<(), String> {
             ]
         }
     };
-    let owner = hwnd_from(LISTENER_HWND.load(Ordering::SeqCst));
-    if !open_clipboard((!owner.0.is_null()).then_some(owner)) {
-        return Err("clipboard is busy".into());
-    }
-    // SAFETY: the clipboard is open for the whole block and closed at the end.
-    unsafe {
-        let r = EmptyClipboard().map_err(|e| format!("EmptyClipboard: {e}"));
-        let r = r.and_then(|()| {
-            prepared
-                .iter()
-                .try_for_each(|(fmt, bytes)| set_format(*fmt, bytes))
-        });
-        // Taken while we still own the clipboard, so nobody can slip in between.
-        if ignore_echo {
-            SELF_SEQ.store(GetClipboardSequenceNumber(), Ordering::SeqCst);
-        }
-        let _ = CloseClipboard();
-        r
-    }
+    let prepared = prepared
+        .iter()
+        .map(|(fmt, bytes)| OwnedFormat::allocate(*fmt, bytes))
+        .collect::<Result<_, _>>()?;
+    replace_clipboard(prepared, ignore_echo, OwnedFormat::publish)
 }
 
 // ───────────────────────────── paste ─────────────────────────────
@@ -736,8 +909,216 @@ pub fn paste_into_last_window() -> Result<(), String> {
 }
 
 #[cfg(test)]
+pub(super) mod test_support {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static CLIPBOARD: Mutex<()> = Mutex::new(());
+
+    /// Serialize native tests and restore the desktop clipboard after each test.
+    pub struct Session {
+        owner: WriteWindow,
+        saved: Vec<OwnedFormat>,
+        restored: bool,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl Session {
+        pub fn new() -> Self {
+            let lock = CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner());
+            let owner = WriteWindow::new().unwrap();
+            assert!(open_clipboard(Some(owner.0)));
+            let open = OpenClipboardGuard;
+            let saved = backup_formats().unwrap();
+            drop(open);
+            Self {
+                owner,
+                saved,
+                restored: false,
+                _lock: lock,
+            }
+        }
+
+        pub fn read(&self) -> Option<Raw> {
+            read_clipboard(self.owner.0)
+        }
+
+        pub fn restore(&mut self) -> Result<(), String> {
+            if !self.restored {
+                restore_snapshot(self.owner.0, &self.saved)?;
+                self.restored = true;
+            }
+            Ok(())
+        }
+
+        pub fn flush_listener(&self, hwnd: isize) {
+            // SAFETY: synchronous message to the live test listener, after closing the writer.
+            unsafe {
+                windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                    hwnd_from(hwnd),
+                    WM_CLIPBOARDUPDATE,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(0)),
+                );
+            }
+        }
+
+        pub fn window_exists(&self, hwnd: isize) -> bool {
+            // SAFETY: only querying the borrowed test HWND.
+            unsafe { IsWindow(Some(hwnd_from(hwnd))).as_bool() }
+        }
+    }
+
+    impl Drop for Session {
+        fn drop(&mut self) {
+            if let Err(error) = self.restore() {
+                eprintln!("native clipboard test: emergency restoration failed: {error}");
+            }
+        }
+    }
+
+    fn restore_snapshot(owner: HWND, saved: &[OwnedFormat]) -> Result<(), String> {
+        let mut last_error = String::from("clipboard is busy during restoration");
+        for _ in 0..8 {
+            if open_clipboard(Some(owner)) {
+                let _open = OpenClipboardGuard;
+                let attempt = (|| {
+                    // Preserve the master snapshot across partial publication and retries.
+                    let mut copies = saved
+                        .iter()
+                        .map(|format| {
+                            let canonical = match format.fmt {
+                                0x82 => 2,
+                                0x83 => 3,
+                                0x8e => 14,
+                                fmt => fmt,
+                            };
+                            // SAFETY: snapshot owns each live handle and medium describes its resource.
+                            let handle = unsafe {
+                                if format.medium == TYMED_ENHMF.0 as u32 {
+                                    HANDLE(CopyEnhMetaFileW(HENHMETAFILE(format.handle.0), None).0)
+                                } else {
+                                    OleDuplicateData(
+                                        format.handle,
+                                        CLIPBOARD_FORMAT(canonical as u16),
+                                        GMEM_MOVEABLE,
+                                    )
+                                }
+                            };
+                            if handle.0.is_null() {
+                                return Err(format!(
+                                    "cannot duplicate saved format {}",
+                                    format.fmt
+                                ));
+                            }
+                            Ok(OwnedFormat {
+                                fmt: format.fmt,
+                                handle,
+                                medium: format.medium,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, String>>()?;
+                    // SAFETY: open clipboard, live owner, independently owned snapshots.
+                    unsafe { EmptyClipboard() }
+                        .map_err(|error| format!("restore EmptyClipboard: {error}"))?;
+                    for format in &mut copies {
+                        format.publish()?;
+                    }
+                    Ok(())
+                })();
+                match attempt {
+                    Ok(()) => return Ok(()),
+                    Err(error) => last_error = error,
+                }
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        Err(last_error)
+    }
+
+    #[test]
+    fn restoration_retries_busy_clipboard_and_preserves_all_saved_formats() {
+        let mut session = Session::new();
+        let custom = format_id(w!("IslandWinRestoreTest"));
+        let payloads = [
+            (CF_UNICODETEXT.0 as u32, text_payload("restore text")),
+            (custom, vec![7, 8, 9, 0]),
+        ];
+        replace_clipboard(
+            payloads
+                .iter()
+                .map(|(fmt, bytes)| OwnedFormat::allocate(*fmt, bytes).unwrap())
+                .collect(),
+            true,
+            OwnedFormat::publish,
+        )
+        .unwrap();
+        assert!(open_clipboard(Some(session.owner.0)));
+        let saved = backup_formats().unwrap();
+        drop(OpenClipboardGuard);
+        set_clipboard(&Content::Text("temporary test value".into())).unwrap();
+        let (ready, blocked) = std::sync::mpsc::channel();
+        let blocker = std::thread::spawn(move || {
+            let owner = WriteWindow::new().unwrap();
+            assert!(open_clipboard(Some(owner.0)));
+            let _open = OpenClipboardGuard;
+            ready.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(350));
+        });
+        blocked.recv_timeout(Duration::from_secs(2)).unwrap();
+        restore_snapshot(session.owner.0, &saved).unwrap();
+        blocker.join().unwrap();
+        assert!(open_clipboard(Some(session.owner.0)));
+        let open = OpenClipboardGuard;
+        for (fmt, expected) in payloads {
+            // SAFETY: clipboard is open; both expected formats are HGLOBAL payloads.
+            let actual = unsafe { read_global(GetClipboardData(fmt).unwrap()) }.unwrap();
+            assert_eq!(actual, expected);
+        }
+        let restored = backup_formats().unwrap();
+        assert_eq!(
+            restored.iter().map(|f| f.fmt).collect::<Vec<_>>(),
+            saved.iter().map(|f| f.fmt).collect::<Vec<_>>()
+        );
+        drop(open);
+        session
+            .restore()
+            .expect("restore original desktop clipboard");
+        session.restore().expect("restoration is idempotent");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_image_preparation_and_partial_publication_preserve_previous_clipboard() {
+        let mut session = test_support::Session::new();
+        set_clipboard(&Content::Text("keep original".into())).unwrap();
+        assert!(write_capture(&Content::Image(vec![0, 1, 2])).is_err());
+        assert!(matches!(session.read(), Some(Raw::Text(text)) if text == "keep original"));
+
+        let prepared = vec![
+            OwnedFormat::allocate(CF_UNICODETEXT.0 as u32, &text_payload("partial new value"))
+                .unwrap(),
+            OwnedFormat::allocate(format_id(w!("IslandWinClipboardFailureTest")), &[1, 2, 3])
+                .unwrap(),
+        ];
+        let mut calls = 0;
+        let result = replace_clipboard(prepared, false, |format| {
+            calls += 1;
+            if calls == 2 {
+                Err("injected SetClipboardData failure".into())
+            } else {
+                format.publish()
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(calls, 2);
+        assert!(matches!(session.read(), Some(Raw::Text(text)) if text == "keep original"));
+        session.restore().expect("restore desktop clipboard");
+    }
 
     #[test]
     fn early_foreground_event_is_remembered_but_hidden_window_is_not_pasteable() {

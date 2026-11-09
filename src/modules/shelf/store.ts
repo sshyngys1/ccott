@@ -29,13 +29,15 @@ const sync = createEventSync({
 });
 function stopSync() { snapshotGeneration++; sync.reset(); }
 let consumers = 0;
-export function useShelfCount() {
+export function useShelfCount(enabled = true) {
   useEffect(() => {
+    if (!enabled) return;
     consumers++;
     void sync.init();
     return () => { if (--consumers === 0) stopSync(); };
-  }, []);
-  return useShelfStore(s => s.items.length);
+  }, [enabled]);
+  const count = useShelfStore(s => s.items.length);
+  return enabled ? count : 0;
 }
 export function resetShelfStore() {
   stopSync();

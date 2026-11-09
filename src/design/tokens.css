@@ -32,6 +32,8 @@
   /* Fourth quick-tools row: 64px + 8px gap. 8 + 468 + 30px shadow = 506px. */
   --ig-quick-tile-row-height: 64px;
   --ig-quick-tile-row-step: 72px;
+  --ig-dock-row-step: 72px; /* --ig-dock-height (60px) + --ig-space-3 (12px) */
+  --ig-head-compact-step: 24px; /* normal head zone (16 + 36 + 12 = 64px) minus compact head zone (8 + 28 + 4 = 40px) */
   --ig-panel-height-tall: 468px;
   --ig-panel-padding: 16px;
   --ig-tabbar-height: 36px;
@@ -393,4 +395,55 @@
   --ig-battery-track: rgba(255, 255, 255, 0.14);
   --ig-battery-border: rgba(255, 255, 255, 0.28);
   --ig-battery-unfilled-text: #ffffff;
+}
+
+/* ───────────────────────── v0.4/0.5: synced lyrics (design-spec §6.11) ───────────────────────── */
+/* Cover tint. JS (src/design/lyrics.ts → lyricsPaletteStyle) writes the three colours on the island element;
+   these are the fallbacks (no artwork / artwork not decoded yet): deep meniscus teal → ink. White text on every
+   stop is ≥ 4.5:1 (checked in lyrics.test.ts). */
+:root {
+  --ig-lyrics-bg-a: #0f5c55;
+  --ig-lyrics-bg-b: #173f66;
+  --ig-lyrics-bg-c: #121a2e;
+  --ig-lyrics-ink: #ffffff;
+  --ig-lyrics-bg-dur: 400ms; /* cross-fade between two palettes (track change): opacity of a layer, not filter */
+  --ig-lyrics-tint-in: 260ms; /* tint appears/disappears when the lyrics view or the lyrics pill turns on/off */
+
+  /* Expanded view: [art column] gap [lines viewport] inside the 688-wide panel body. */
+  --ig-lyrics-art-size: 176px; /* = clamp(112px, body height − 136px, 176px); body 312 → 176 */
+  --ig-lyrics-column-gap: 28px;
+  --ig-lyrics-font: var(--ig-font-display);
+  --ig-lyrics-weight: var(--ig-weight-bold);
+  --ig-lyrics-size: 22px;
+  --ig-lyrics-leading: 1.25;
+  --ig-lyrics-line-gap: 8px;
+  --ig-lyrics-line-pad: 4px 10px; /* hit area for click-to-seek; hover plate r = --ig-radius-md */
+  --ig-lyrics-anchor: 30%; /* where the active line's top sits inside the viewport */
+  --ig-lyrics-fade-top: 28px; /* static mask, never animated */
+  --ig-lyrics-fade-bottom: 56px;
+  --ig-lyrics-plain-size: 17px; /* unsynced lyrics: plain scrolling text */
+
+  /* Levels by distance from the active line. Blur is STATIC per level (no per-frame filter animation). */
+  --ig-lyrics-op-0: 1;
+  --ig-lyrics-op-1: 0.5;
+  --ig-lyrics-op-2: 0.34;
+  --ig-lyrics-op-3: 0.24;
+  --ig-lyrics-op-far: 0.18;
+  --ig-lyrics-past: 0.8; /* past lines: level opacity × this */
+  --ig-lyrics-blur-1: 1px;
+  --ig-lyrics-blur-2: 2px;
+  --ig-lyrics-blur-3: 3px;
+
+  /* Motion (mirrors lyricsMotion in motion.ts). */
+  --ig-lyrics-scroll-dur: 560ms;
+  --ig-lyrics-scroll-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ig-lyrics-stagger: 28ms; /* per line below the active one, max 6 steps */
+  --ig-lyrics-level-dur: 240ms; /* opacity between levels */
+  --ig-lyrics-focus-dur: 160ms; /* short filter transition, only lines that land on level 0/1 (≤ 3 lines) */
+
+  /* Collapsed pill with the current line. */
+  --ig-pill-width-lyrics: 384px;
+  --ig-lyrics-pill-size: 13px;
+  --ig-lyrics-pill-weight: var(--ig-weight-bold);
+  --ig-lyrics-pill-shift: 8px; /* line swap: old goes up −8, new comes from +8 */
 }

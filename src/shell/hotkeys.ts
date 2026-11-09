@@ -4,6 +4,7 @@ import { invoke, listen } from "../ipc";
 import type { HotkeyStatus } from "../shared/types";
 import { useIslandStore } from "../store";
 import type { HoverControls } from "../store/useHoverSync";
+import { openSettingsWindow } from "./settings/openWindow";
 import { showToast } from "./toast";
 
 /** Subscribe before reading, so a late initial response cannot overwrite a newer event. */
@@ -72,8 +73,8 @@ export function useHotkeyFallbackToast(controls: HoverControls): void {
           }
         },
         actions: [{ label: t("settings"), icon: "settings", onClick: () => {
-          useIslandStore.getState().setView("settings");
-          controls.expandNow();
+          controls.collapseNow();
+          void openSettingsWindow();
         } }],
       });
     }).catch(() => {});

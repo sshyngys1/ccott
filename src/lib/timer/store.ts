@@ -1,6 +1,8 @@
 // The timer lives here (not in the tab component): it keeps running when the tab unmounts or the island collapses,
 // and the pill activity reads the same state. Time is always derived from timestamps (see machine.ts).
 import { create } from "zustand";
+import { useIslandStore } from "../../store";
+import { isFeatureEnabled, useFeatureEnabled } from "../features";
 import { playChime, primeAudio } from "./chime";
 import * as machine from "./machine";
 import type { TimerState } from "./machine";
@@ -32,6 +34,7 @@ function clearWake(): void {
 /** One precisely aimed timeout instead of an accumulating interval. */
 function schedule(): void {
   clearWake();
+  if (!isFeatureEnabled("notes")) return;
   const { timer, doneDismissed } = useTimerStore.getState();
   const delay = machine.nextWakeMs(timer, Date.now(), doneDismissed);
   if (delay === null) return;
@@ -98,5 +101,32 @@ export function useTimerRemaining(): number {
 
 /** `compact.useIsActive` of the timer activity. */
 export function useIsTimerActive(): boolean {
-  return useTimerStore((s) => machine.isPillActive(s.timer, s.now, s.doneDismissed));
+  const notesEnabled = useFeatureEnabled("notes");
+  const active = useTimerStore((s) => machine.isPillActive(s.timer, s.now, s.doneDismissed));
+  return notesEnabled && active;
 }
+
+const unsubscribeIsland = useIslandStore.subscribe((state, prev) => {
+  const enabled = isFeatureEnabled("notes", state.settings.disabledFeatures);
+  const wasEnabled = isFeatureEnabled("notes", prev.settings.disabledFeatures);
+  if (enabled === wasEnabled) return;
+  if (!enabled) {
+    clearWake();
+    return;
+  }
+  const now = Date.now();
+  const current = useTimerStore.getState();
+  const next = machine.tick(current.timer, now);
+  const expiredWhileDisabled = next !== current.timer;
+  useTimerStore.setState({
+    timer: next,
+    now,
+    doneDismissed: expiredWhileDisabled ? true : current.doneDismissed,
+  });
+  schedule();
+});
+
+import.meta.hot?.dispose(() => {
+  unsubscribeIsland();
+  clearWake();
+});

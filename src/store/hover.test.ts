@@ -189,4 +189,58 @@ describe("HoverMachine", () => {
       expect(changes).toEqual(["expanded", "collapsed"]);
     });
   });
+
+  describe("collapseNow while cursor is inside (regression: Collapse button)", () => {
+    it("stays collapsed when Rust re-emits inside=true or hold releases, until cursor leaves and re-enters", () => {
+      const suppressions: boolean[] = [];
+      machine.dispose();
+      machine = new HoverMachine({
+        expandDelayMs: 120,
+        collapseDelayMs: 350,
+        onChange: (m) => changes.push(m),
+        onSuppressChange: (s) => suppressions.push(s),
+      });
+
+      machine.setInside(true);
+      vi.advanceTimersByTime(120);
+      expect(machine.mode).toBe("expanded");
+
+      // Simulate active edit-mode / focus hold while cursor is inside, then clicking Collapse
+      machine.setHold(true);
+      machine.collapseNow();
+      expect(machine.mode).toBe("collapsed");
+      expect(machine.expandSuppressed).toBe(true);
+      expect(suppressions).toEqual([true]);
+
+      // Rust `resync_on_mode` re-emits inside=true and edit mode releases its hold
+      machine.setInside(true);
+      machine.setHold(false);
+      vi.advanceTimersByTime(5000);
+      expect(machine.mode).toBe("collapsed");
+      expect(changes).toEqual(["expanded", "collapsed"]);
+
+      // Cursor finally leaves the pill → suppression clears; re-entering expands after expandDelayMs
+      machine.setInside(false);
+      expect(machine.expandSuppressed).toBe(false);
+      expect(suppressions).toEqual([true, false]);
+      machine.setInside(true);
+      vi.advanceTimersByTime(119);
+      expect(machine.mode).toBe("collapsed");
+      vi.advanceTimersByTime(1);
+      expect(machine.mode).toBe("expanded");
+      expect(changes).toEqual(["expanded", "collapsed", "expanded"]);
+    });
+
+    it("explicit expandNow / summon clears suppression immediately without requiring cursor leave", () => {
+      machine.setInside(true);
+      vi.advanceTimersByTime(120);
+      machine.collapseNow();
+      expect(machine.mode).toBe("collapsed");
+      expect(machine.expandSuppressed).toBe(true);
+
+      machine.summon(8000);
+      expect(machine.mode).toBe("expanded");
+      expect(machine.expandSuppressed).toBe(false);
+    });
+  });
 });

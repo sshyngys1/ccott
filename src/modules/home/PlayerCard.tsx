@@ -2,10 +2,13 @@ import { t, useT } from "../../i18n";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { CoverFlip } from "../../design/fx/CoverFlip";
 import { noteSkip } from "../../design/fx/flip";
-import { IconNext, IconPause, IconPlay, IconPrevious } from "../../design/icons";
+import { IconLyrics, IconNext, IconPause, IconPlay, IconPrevious } from "../../design/icons";
 import { durations, easings, pressScale, springs, tabSlide } from "../../design/motion";
+import { useFeatureEnabled } from "../../lib/features";
+import { useCurrentLyrics } from "../../lib/lyrics/store";
 import { sourceAppLabel } from "../../lib/media/progress";
 import { useMedia, useMediaStore } from "../../lib/media/store";
+import { useIslandStore } from "../../store";
 import { PlayerSeek } from "./PlayerSeek";
 
 const tap = { whileTap: { scale: pressScale }, transition: springs.press } as const;
@@ -16,6 +19,8 @@ export function PlayerCard() {
   const reduce = useReducedMotion();
   const { playPause, next, previous } = useMediaStore.getState();
 
+  const lyricsEnabled = useFeatureEnabled("lyrics");
+  const lyricsStatus = useCurrentLyrics().status;
   const has = media.hasSession;
   const playing = media.status === "playing";
 
@@ -86,6 +91,19 @@ export function PlayerCard() {
         >
           <IconNext size={18} />
         </motion.button>
+        {lyricsEnabled && (
+          <button
+            type="button"
+            className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost ig-lyrics-toggle"
+            data-available={lyricsStatus === "synced" ? "synced" : undefined}
+            disabled={!has}
+            onClick={() => useIslandStore.getState().setView("lyrics")}
+            aria-label={t("lyrics.title")}
+            title={lyricsStatus === "synced" ? t("lyrics.buttonSynced") : t("lyrics.title")}
+          >
+            <IconLyrics size={18} />
+          </button>
+        )}
       </div>
       <PlayerSeek />
     </motion.section>

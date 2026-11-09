@@ -1,6 +1,6 @@
 //! Command bar backend (§20): background application index, local search and opaque launches.
 mod automation;
-mod currency;
+pub(crate) mod currency;
 mod model;
 mod native;
 

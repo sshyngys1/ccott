@@ -1,6 +1,8 @@
 // Owner: F1 (Frontend-Shell). Browser mock of the Tauri backend: plausible, mutable data + event emitter.
 // Used automatically by src/ipc/index.ts when `window.__TAURI_INTERNALS__` is absent (npm run dev in a browser, vitest).
 import type {
+  AgentSession,
+  ControlState,
   AudioDevice,
   AudioSpectrum,
   AudioState,
@@ -23,7 +25,7 @@ import type {
   ShelfItem,
   UpdateInfo,
 } from "../shared/types";
-import { COMMAND_HOTKEY_FALLBACKS, DEFAULT_QUICK_TILES, SHELF_RETENTION_HOURS } from "../shared/types";
+import { COMMAND_HOTKEY_FALLBACKS, DEFAULT_QUICK_TILES, DEFAULT_TAB_ORDER, SHELF_RETENTION_HOURS } from "../shared/types";
 import {
   DEFAULT_AUTO_HIDE_APPS,
   normalizeAccelerator,
@@ -31,10 +33,24 @@ import {
   normalizeFullscreenAllowlist,
 } from "../shell/settings/hotkey";
 import { t } from "../i18n";
+import { getMockWeather, searchMockWeather, locateMockWeather, resetWeatherMock, weatherMockConfig, validWeatherLocation } from "./weatherMock";
+export { weatherMockConfig } from "./weatherMock";
+import { createReminderMock } from "./remindersMock";
+import { mockAgentChange, mockAgentConfig, mockAgentDismiss, mockAgentsList, mockHooksStatus, mockSetHooks, resetMockAgents } from "./agentsMock";
+export { mockAgentConfig, mockSetAgentTool } from "./agentsMock";
+export function mockAgentEvent(session: AgentSession): void {
+  if (!state.settings.disabledFeatures.includes("agents")) mockAgentChange(session, items => mockEmit("agents://changed", items));
+}
+import { mockLyricsGet, lyricsMockConfig } from "./lyricsMock";
 import { listMockDownloads, openMockDownload, resetMockDownloads, setMockDownloadsEnabled, startMockDownload } from "./downloadsMock";
 export { mockDownloadOpens } from "./downloadsMock";
 
-export const mockStartDownload = () => startMockDownload((items) => mockEmit("downloads://changed", items));
+export const mockStartDownload = (percent?: number | null) =>
+  startMockDownload((items) => mockEmit("downloads://changed", items), { percent });
+export const mockResetDownloads = () => {
+  resetMockDownloads();
+  mockEmit("downloads://changed", []);
+};
 
 // ───────────────────────────── helpers ─────────────────────────────
 /** Gradient cover as a `data:` URL of a generated SVG. */
@@ -47,6 +63,16 @@ export function makeCover(from: string, to: string, accent = "rgba(255,255,255,0
     `<circle cx="92" cy="40" r="34" fill="${accent}"/>` +
     `<circle cx="36" cy="100" r="22" fill="rgba(0,0,0,0.18)"/></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/** Mirrors the Rust validation of `Settings.lyrics`: booleans and an integer `offsetMs` in −5000…5000. */
+function validLyricsSettings(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    (["enabled", "inPill", "announce"] as const).every((k) => v[k] === undefined || typeof v[k] === "boolean") &&
+    (v.offsetMs === undefined || (Number.isInteger(v.offsetMs) && Math.abs(v.offsetMs as number) <= 5000))
+  );
 }
 
 const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value));
@@ -64,12 +90,17 @@ export function mockListen<E extends EventName>(event: E, cb: Listener<E>): () =
   }
   const fn = cb as Listener<EventName>;
   set.add(fn);
+  const stopReminders = event === "reminders://due" ? reminders.subscribe() : undefined;
   return () => {
     set.delete(fn);
+    stopReminders?.();
   };
 }
 
 export function mockEmit<E extends EventName>(event: E, payload: Events[E]): void {
+  if (event === "island://hover") {
+    state.hoverInside = (payload as Events["island://hover"]).inside;
+  }
   const set = listeners.get(event);
   if (!set) return;
   for (const cb of [...set]) cb(clone(payload));
@@ -78,6 +109,8 @@ export function mockEmit<E extends EventName>(event: E, payload: Events[E]): voi
 export function mockListenerCount(event: EventName): number {
   return listeners.get(event)?.size ?? 0;
 }
+
+const reminders = createReminderMock(mockEmit, item => mockEmit("reminders://due", item));
 
 /**
  * Mock for the Rust cursor poller: `island://hover` is generated from pointerenter/pointerleave of the island element.
@@ -138,6 +171,8 @@ export const mockConfig = {
   qrText: "https://example.com/ccott",
   dockOpenError: false,
   shelfDragOutcome: "drop" as "drop" | "cancel" | "error",
+  weather: weatherMockConfig,
+  lyrics: lyricsMockConfig,
   currencyOffline: false,
   currencyStale: false,
   currencyFail: false,
@@ -161,6 +196,12 @@ export interface MockHelpers {
   setUpdate: (update: UpdateInfo | null, emit?: boolean) => void;
   /** Replaces the list returned by `window_recent_fullscreen_apps`. */
   setFullscreenApps: (apps: FullscreenApp[]) => void;
+  /** Simulates switching the default output device to a headset. */
+  connectHeadset: (name?: string) => void;
+  /** Starts or simulates an active download with an optional progress percentage. */
+  startDownload: (percent?: number | null) => void;
+  /** Clears all active mock downloads. */
+  resetDownloads: () => void;
   config: typeof mockConfig;
 }
 
@@ -218,6 +259,7 @@ interface MockState {
   battery: BatteryState;
   spectrum: AudioSpectrum;
   visualizerEnabled: boolean;
+  hoverInside: boolean;
   update: UpdateInfo | null;
   clips: ClipItem[];
   notes: Note[];
@@ -457,9 +499,15 @@ function createState(): MockState {
       quickTiles: DEFAULT_QUICK_TILES.map((tile) => ({ ...tile })),
       liteMode: initialLite,
       commandHotkey: "Ctrl+Alt+Space",
-      downloadsMonitor: true,
+      downloadsMonitor: urlParams?.get("downloads") === "0" ? false : true,
       shelfKeepAfterDrag: false,
       shelfRetentionHours: 24,
+      tabOrder: [...DEFAULT_TAB_ORDER],
+      disabledFeatures: [],
+      defaultCurrency: "",
+      weatherLocation: null,
+      weatherUnits: "c",
+      lyrics: { enabled: true, inPill: true, announce: false, offsetMs: 0 },
     },
     fullscreenApps: [
       { exe: "chrome.exe", title: "YouTube — Google Chrome", lastSeen: now - 60_000 },
@@ -482,6 +530,7 @@ function createState(): MockState {
       sampledAt: now,
     } as AudioSpectrum,
     visualizerEnabled: false,
+    hoverInside: false,
     update: null,
     clips,
     notes,
@@ -520,9 +569,16 @@ export function mockHotkeysStartup(occupied: readonly string[], settings: Partia
 
 /** Reset all mutable mock data and counters (tests). Listeners stay registered. */
 export function resetMock(): void {
+  reminders.reset();
+  resetMockAgents();
+  mockAgentConfig.foreignCodexNotify = false;
+  mockAgentConfig.invalidClaudeJson = false;
+  mockControlSettingsOpens.length = 0;
+  resetWeatherMock();
   mockConfig.shelfDragOutcome = "drop";
   resetMockDownloads();
   state = createState();
+  controlState = mockControlState();
   hotkeyStatus = { summon: "ok", command: "ok", commandFallbackFrom: null };
   pendingSettingsSave = false;
   mockConfig.failSettingsSave = false;
@@ -546,6 +602,7 @@ export function resetMock(): void {
   mockConfig.currencyOffline = false;
   mockConfig.currencyStale = false;
   mockConfig.currencyFail = false;
+  lyricsMockConfig.fail = false;
   clearTimeout(artworkTimer);
   artworkTimer = undefined;
   scheduleTrackEnd();
@@ -604,11 +661,76 @@ function sortClips(items: ClipItem[]): ClipItem[] {
 }
 
 // ───────────────────────────── command handlers ─────────────────────────────
+function mockControlState(): ControlState {
+  return {
+    wifi: { kind: "wifi", state: "on" },
+    bluetooth: { kind: "bluetooth", state: "on" },
+    wifiInfo: { connected: true, ssid: "Home", signal: 80 },
+    btDevices: [],
+    darkMode: true,
+    powerMode: "balanced",
+  };
+}
+
+let controlState = mockControlState();
+export const mockControlSettingsOpens: ("wifi" | "bluetooth" | "power" | "colors")[] = [];
+/** External system changes and unavailable-adapter fixtures for control tests. */
+export function mockSetControl(patch: Partial<ControlState>): void {
+  controlState = { ...controlState, ...clone(patch) };
+  mockEmit("control://changed", controlState);
+}
+function changedControl(): ControlState {
+  mockEmit("control://changed", controlState);
+  return clone(controlState);
+}
+function requireControl(): void {
+  if (state.settings.disabledFeatures.includes("control")) throw new Error("Control center is disabled");
+}
+
 type Handlers = {
   [C in CommandName]: (args: CommandArgs<C>) => CommandResult<C> | Promise<CommandResult<C>>;
 };
 
 const handlers: Handlers = {
+  // v0.4 §30: mock lyrics (invented lines only); same gate as Rust (setting / feature off → notFound).
+  lyrics_get: ({ title }) =>
+    mockLyricsGet(
+      TRACKS.findIndex((t) => t.title === title),
+      state.settings.lyrics.enabled && !state.settings.disabledFeatures.includes("lyrics"),
+    ),
+  // v0.4 wave 3 contract stubs (§26–29); the executor replaces them with full mock behaviour.
+  weather_get: ({ force }) => {
+    const report = getMockWeather(state.settings.weatherLocation, state.settings.disabledFeatures.includes("weather"), force);
+    if (report) mockEmit("weather://changed", report);
+    return report;
+  },
+  weather_search_location: ({ query, lang }) => searchMockWeather(query, lang),
+  weather_locate: () => locateMockWeather(),
+  control_get: () => { requireControl(); return clone(controlState); },
+  control_set_radio: ({ kind, on }) => {
+    requireControl();
+    if (controlState[kind].state === "unavailable") throw new Error(t("control.radioError"));
+    controlState[kind] = { kind, state: on ? "on" : "off" };
+    if (kind === "wifi") controlState.wifiInfo = on ? { connected: true, ssid: "Home", signal: 80 } : { connected: false, ssid: null, signal: null };
+    if (kind === "bluetooth" && !on) controlState.btDevices = controlState.btDevices.map(device => ({ ...device, connected: false }));
+    return changedControl();
+  },
+  control_set_dark_mode: ({ dark }) => { requireControl(); controlState.darkMode = dark; return changedControl(); },
+  control_set_power_mode: ({ mode }) => {
+    requireControl();
+    if (controlState.powerMode === null) throw new Error("Power mode is unavailable on this PC");
+    controlState.powerMode = mode;
+    return changedControl();
+  },
+  control_open_settings: ({ page }) => { requireControl(); mockControlSettingsOpens.push(page); },
+  reminders_list: () => reminders.list(),
+  reminders_add: args => reminders.add(args),
+  reminders_update: args => reminders.update(args),
+  reminders_delete: args => reminders.delete(args),
+  agents_list: () => mockAgentsList(!state.settings.disabledFeatures.includes("agents")),
+  agents_dismiss: ({ id }) => mockAgentDismiss(id, items => mockEmit("agents://changed", items)),
+  agents_hooks_status: () => mockHooksStatus(),
+  agents_set_hooks: ({ tool, installed }) => mockSetHooks(tool, installed),
   dock_list: () => {
     mockEmit("dock://changed", state.dock);
     return state.dock;
@@ -737,6 +859,10 @@ const handlers: Handlers = {
   island_set_mode: ({ mode }) => {
     mockStats.modeCalls += 1;
     mockStats.lastMode = mode;
+    // Mirror Rust `hover::resync_on_mode`: mode changes re-emit the active hover state.
+    if (state.hoverInside) {
+      mockEmit("island://hover", { inside: true });
+    }
   },
   window_set_vibrancy: ({ mode }) => ({
     requested: mode,
@@ -773,11 +899,18 @@ const handlers: Handlers = {
   window_recent_fullscreen_apps: () => state.fullscreenApps,
   window_recent_maximized_apps: () => mockRecentMaximizedApps(),
   settings_get: () => state.settings,
+  // v0.4 §25: no second window in the browser mock; the settings window is exercised in `tauri dev`.
+  settings_window_open: () => null,
   settings_set: ({ patch }) => {
+    if (patch.weatherLocation !== undefined && !validWeatherLocation(patch.weatherLocation)) throw new Error("Invalid weatherLocation");
+    if (patch.weatherUnits !== undefined && !["c", "f"].includes(patch.weatherUnits)) throw new Error("Invalid weatherUnits");
     if (patch.shelfKeepAfterDrag !== undefined && typeof patch.shelfKeepAfterDrag !== "boolean") throw new Error("Invalid shelfKeepAfterDrag");
     if (patch.shelfRetentionHours !== undefined && !SHELF_RETENTION_HOURS.includes(patch.shelfRetentionHours)) throw new Error("Invalid shelfRetentionHours");
     if (patch.downloadsMonitor !== undefined && typeof patch.downloadsMonitor !== "boolean") throw new Error("Invalid downloadsMonitor");
+    if (patch.lyrics !== undefined && !validLyricsSettings(patch.lyrics)) throw new Error("Invalid lyrics");
     const next: Settings = { ...state.settings, ...patch };
+    // Like Rust: a partial `lyrics` object is merged field by field.
+    if (patch.lyrics !== undefined) next.lyrics = { ...state.settings.lyrics, ...patch.lyrics };
     if (JSON.stringify(next) === JSON.stringify(state.settings)) {
       if (pendingSettingsSave && mockConfig.failSettingsSave) throw new Error(t("hotkey.sessionOnly"));
       pendingSettingsSave = false;
@@ -814,7 +947,17 @@ const handlers: Handlers = {
       hotkeyStatus.command = next.commandHotkey ? "ok" : "off";
       hotkeyStatus.commandFallbackFrom = null;
     }
+    const weatherChanged = JSON.stringify(next.weatherLocation) !== JSON.stringify(state.settings.weatherLocation)
+      || next.disabledFeatures.includes("weather") !== state.settings.disabledFeatures.includes("weather");
     state.settings = next;
+    if (weatherChanged) {
+      try {
+        const report = getMockWeather(next.weatherLocation, next.disabledFeatures.includes("weather"));
+        if (report) mockEmit("weather://changed", report);
+      } catch { /* Background refresh failures do not reject settings. */ }
+    }
+    reminders.setEnabled(!next.disabledFeatures.includes("notes"));
+    if (next.disabledFeatures.includes("agents")) { mockAgentsList(false); mockEmit("agents://changed", []); }
     if (downloadsChanged) setMockDownloadsEnabled(next.downloadsMonitor, (items) => mockEmit("downloads://changed", items));
     mockEmit("settings://changed", state.settings);
     if (summonChanged || commandChanged) mockEmit("hotkeys://status", hotkeyStatus);
@@ -1041,6 +1184,9 @@ if (typeof window !== "undefined") {
     setMedia: mockSetMedia,
     setUpdate: mockSetUpdate,
     setFullscreenApps: mockSetFullscreenApps,
+    connectHeadset: (name) => mockConnectHeadset(name),
+    startDownload: (percent) => mockStartDownload(percent),
+    resetDownloads: () => mockResetDownloads(),
     config: mockConfig,
   };
   // The stats object stays the one on `window` (older checks read `__ISLAND_MOCK__.shapeCalls` etc.), helpers are added to it.
@@ -1060,6 +1206,16 @@ export async function mockInvoke<C extends CommandName>(cmd: C, args?: CommandAr
 export function mockSetBattery(patch: Partial<BatteryState>): void {
   state.battery = { ...state.battery, ...patch };
   mockEmit("system://battery", state.battery);
+}
+
+/** Switch the default audio output to a headset. */
+export function mockConnectHeadset(name = "AirPods Pro"): void {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const device = state.devices.find((d) => /bluetooth|\bbt\b|airpods|buds|headset|headphones|hands[ -]?free|наушники|гарнитура|\b(?:wh|wf)-|\bjbl\b/i.test(d.name))
+    ?? { id: "dev-headphones", name, isDefault: true };
+  const id = slug ? `dev-${slug}` : device.id;
+  state.audio = { ...state.audio, device: { ...device, id, name: name || device.name, isDefault: true } };
+  mockEmit("audio://changed", state.audio);
 }
 
 export function mockSetSpectrum(patch: Partial<AudioSpectrum>): void {
@@ -1084,6 +1240,9 @@ if (typeof window !== "undefined") {
 
   if (import.meta.env.MODE !== "test") {
     const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("headset") === "1") {
+      setTimeout(() => mockConnectHeadset(), 1500);
+    }
     const shouldOpenCmd = urlParams.get("cmd") === "1" || urlParams.has("cmdQuery");
     if (shouldOpenCmd) {
       mockStats.keyboardFocus = true;

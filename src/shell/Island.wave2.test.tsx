@@ -1,8 +1,10 @@
 // Wave 2 behaviour of the shell: keyboard focus, shell bus, settings view, DND, live activities in the pill.
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { create } from "zustand";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "../ipc";
+import * as ipc from "../ipc";
+import { t } from "../i18n";
 import { mockConfig, mockCopy, mockEmit, mockListenerCount, mockLoseKeyboardFocus, mockOpenSettings, mockStats, mockSummon, resetMock } from "../ipc/mock";
 import { requestShell } from "../shared/shellBus";
 import type { IslandModule, ModuleId } from "../shared/types";
@@ -53,7 +55,7 @@ const ACTIVITY_MODULES: readonly IslandModule[] = [
 async function mountIsland(modules?: readonly IslandModule[]) {
   const utils = render(<Island modules={modules} />);
   await waitFor(() => {
-    for (const ev of ["island://hover", "island://focus-changed", "island://open-settings", "settings://changed", "clipboard://added"] as const) {
+    for (const ev of ["island://hover", "island://focus-changed", "settings://changed", "clipboard://added"] as const) {
       expect(mockListenerCount(ev)).toBeGreaterThan(0);
     }
   });
@@ -76,6 +78,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetIslandStore();
+  vi.restoreAllMocks();
 });
 
 it("unmounts the outgoing tab before mounting the next heavy screen, including rapid navigation", async () => {
@@ -92,7 +95,7 @@ it("unmounts the outgoing tab before mounting the next heavy screen, including r
     expect(screen.queryByText("Другая вкладка")).toBeNull();
     await screen.findByText("Другая вкладка");
     expect(screen.queryByLabelText("Поиск")).toBeNull();
-    act(() => useIslandStore.getState().setView("settings"));
+    act(() => useIslandStore.getState().setView("whatsNew"));
     act(() => useIslandStore.getState().setView("tabs"));
     act(() => useIslandStore.getState().setActiveTab("text"));
     await screen.findByLabelText("Поиск");
@@ -298,7 +301,7 @@ describe("shell bus", () => {
   it("openTab leaves the settings view; an unknown tab keeps the current one", async () => {
     await mountIsland(FIELD_MODULES);
     act(() => {
-      useIslandStore.getState().setView("settings");
+      useIslandStore.getState().setView("whatsNew");
       requestShell({ type: "openTab", tab: "weather" });
     });
     expect(useIslandStore.getState().view).toBe("tabs");
@@ -325,68 +328,22 @@ describe("shell bus", () => {
   });
 });
 
-describe("settings view", () => {
-  it("hover reopens on Home after collapse, while the tray can still open Settings", async () => {
-    await mountIsland(FIELD_MODULES);
-    await expandAndShow("notes");
-    expect(useIslandStore.getState().activeTab).toBe("notes");
-    act(() => { void requestShell({ type: "collapse" }); });
-    act(() => mockEmit("island://hover", { inside: true }));
-    await waitFor(() => expect(useIslandStore.getState().mode).toBe("expanded"));
-    expect(useIslandStore.getState().activeTab).toBe("home");
-    act(() => { void requestShell({ type: "collapse" }); });
-    act(() => mockOpenSettings());
-    expect(useIslandStore.getState().mode).toBe("expanded");
-    expect(useIslandStore.getState().view).toBe("settings");
-  });
-
-  it("the gear opens the view inside the panel, the back button and a second click on the gear return", async () => {
+describe("settings window entry", () => {
+  it("the gear opens the separate window and collapses the island", async () => {
+    const spy = vi.spyOn(ipc, "invoke");
     await mountIsland(FIELD_MODULES);
     await expandAndShow();
-    const gear = screen.getByRole("button", { name: "Настройки" });
-    expect(gear).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(gear);
-    expect(await screen.findByRole("heading", { name: "Настройки" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Настройки" })).toBeInTheDocument();
-    expect(screen.queryByRole("tablist")).toBeNull();
-    expect(screen.getByRole("button", { name: "Настройки" })).toHaveAttribute("aria-pressed", "true");
-
-    fireEvent.click(screen.getByRole("button", { name: "Назад" }));
-    expect(await screen.findByRole("tablist")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Настройки" }));
-    await screen.findByRole("heading", { name: "Настройки" });
-    fireEvent.click(screen.getByRole("button", { name: "Настройки", pressed: true }));
-    expect(await screen.findByRole("tablist")).toBeInTheDocument();
-  });
-
-  it("returns to the tab it came from", async () => {
-    await mountIsland(FIELD_MODULES);
-    await expandAndShow("notes");
-    fireEvent.click(screen.getByRole("button", { name: "Настройки" }));
-    await screen.findByRole("heading", { name: "Настройки" });
-    fireEvent.click(screen.getByRole("button", { name: "Назад" }));
-    expect(await screen.findByText("Другая вкладка")).toBeInTheDocument();
-  });
-
-  it("Escape goes back from the settings view; the next Escape collapses", async () => {
-    await mountIsland(FIELD_MODULES);
-    await expandAndShow();
-    fireEvent.click(screen.getByRole("button", { name: "Настройки" }));
-    const region = await screen.findByRole("region", { name: "Настройки" });
-    fireEvent.keyDown(await within(region).findByRole("switch", { name: /Не беспокоить/ }), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: t("settings") }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith("settings_window_open"));
+    expect(useIslandStore.getState().mode).toBe("collapsed");
     expect(useIslandStore.getState().view).toBe("tabs");
-    expect(useIslandStore.getState().mode).toBe("expanded");
-    fireEvent.keyDown(await screen.findByRole("tablist"), { key: "Escape" });
-    expect(useIslandStore.getState().mode).toBe("collapsed");
   });
 
-  it("island://open-settings expands the island and opens the view", async () => {
+  it("ignores the legacy open-settings event", async () => {
     await mountIsland(FIELD_MODULES);
-    expect(useIslandStore.getState().mode).toBe("collapsed");
     act(() => mockOpenSettings());
-    expect(useIslandStore.getState().mode).toBe("expanded");
-    expect(await screen.findByRole("heading", { name: "Настройки" })).toBeInTheDocument();
+    expect(useIslandStore.getState().mode).toBe("collapsed");
+    expect(mockListenerCount("island://open-settings")).toBe(0);
   });
 
   it("island://summoned expands when collapsed and collapses (releasing keyboard focus) when expanded", async () => {
@@ -404,30 +361,6 @@ describe("settings view", () => {
     act(() => mockSummon());
     expect(useIslandStore.getState().mode).toBe("collapsed");
     await waitFor(() => expect(mockStats.keyboardFocusCalls).toEqual([true, false]));
-  });
-
-  it("clicking the summon-hotkey field requests native keyboard focus, and Escape while recording cancels without collapsing", async () => {
-    await mountIsland(FIELD_MODULES);
-    act(() => mockOpenSettings());
-    const hotkeyInput = await screen.findByLabelText("Вызов острова");
-
-    fireEvent.click(hotkeyInput);
-    expect(hotkeyInput).toHaveValue("Нажмите сочетание…");
-    await waitFor(() => expect(mockStats.keyboardFocusCalls).toEqual([true]));
-
-    // First Escape cancels recording while keeping Settings and the island open.
-    fireEvent.keyDown(hotkeyInput, { key: "Escape" });
-    expect(hotkeyInput).toHaveValue("Ctrl+Alt+I");
-    expect(useIslandStore.getState().mode).toBe("expanded");
-    expect(useIslandStore.getState().view).toBe("settings");
-  });
-
-  it("collapsing resets the view, so the next expand shows the tabs", async () => {
-    await mountIsland(FIELD_MODULES);
-    act(() => mockOpenSettings());
-    await screen.findByRole("heading", { name: "Настройки" });
-    act(() => { void requestShell({ type: "collapse" }); });
-    expect(useIslandStore.getState().view).toBe("tabs");
   });
 
   it("loads the saved settings: theme from settings://changed reaches <html data-theme>", async () => {

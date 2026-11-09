@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { compareSemver, parseSemver } from "./semver";
+import { en } from "../../i18n/en";
+import { ru } from "../../i18n/ru";
 import {
   acknowledgeWhatsNew,
   getLastAcknowledgedVersion,
@@ -39,6 +41,33 @@ describe("semver", () => {
 });
 
 describe("WhatsNew catalog & auto-show logic", () => {
+  it("lists eight 0.4.0 highlights in release order with translated copy", () => {
+    const items = getWhatsNewForVersion("0.4.0")!;
+    expect(items.map(item => item.id)).toEqual(["lyrics", "control", "weather", "reminders", "agents", "settings", "files", "currency"]);
+    expect(getWhatsNewForVersion("v0.4.0")).toEqual(items);
+    for (const item of items) {
+      expect(item.titleKey).toBe(`whatsNew.v040.${item.id}.title`);
+      expect(item.descKey).toBe(`whatsNew.v040.${item.id}.desc`);
+      expect(item.stepKeys?.length ?? 0).toBeLessThanOrEqual(4);
+      for (const key of [item.titleKey, item.descKey, ...item.stepKeys ?? []]) {
+        expect(en[key]?.trim()).toBeTruthy();
+        expect(ru[key]?.trim()).toBeTruthy();
+      }
+    }
+  });
+
+  it("shows 0.4.0 once on install or upgrade and preserves the release marker", () => {
+    expect(shouldAutoShowWhatsNew("0.4.0", null)).toBe(true);
+    expect(shouldAutoShowWhatsNew("0.4.0", "0.3.0")).toBe(true);
+    acknowledgeWhatsNew("0.4.0");
+    expect(shouldAutoShowWhatsNew("0.4.0")).toBe(false);
+    expect(shouldAutoShowWhatsNew("0.3.0")).toBe(false);
+    acknowledgeWhatsNew("0.3.0");
+    expect(getLastAcknowledgedVersion()).toBe("0.4.0");
+    expect(getWhatsNewForVersion("0.4.0-preview.1")).toBeNull();
+    expect(shouldAutoShowWhatsNew("0.4.0-preview.1", null)).toBe(false);
+  });
+
   it("lists the six 0.3.0 features in release order with at most four steps each", () => {
     const items = getWhatsNewForVersion("0.3.0")!;
     expect(items.map(item => item.id)).toEqual(["command", "shelf", "downloads", "tiles", "lite", "motion"]);

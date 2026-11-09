@@ -18,12 +18,12 @@ it("prepares Home atomically with collapse and keeps user tab changes while expa
   expect(observed).toEqual(["collapsed:home", "expanded:home"]);
 });
 
-it("preserves explicit settings and module destinations when opening from the pill", () => {
+it("preserves explicit command and module destinations when opening from the pill", () => {
   const store = useIslandStore.getState();
   store.setMode("collapsed");
-  store.setView("settings");
+  store.setView("cmd");
   store.setMode("expanded");
-  expect(useIslandStore.getState().view).toBe("settings");
+  expect(useIslandStore.getState().view).toBe("cmd");
   store.setMode("collapsed");
   store.setActiveTab("notes");
   store.setMode("expanded");

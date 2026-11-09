@@ -11,10 +11,12 @@ import {
 } from "../../design/icons";
 import { durations, easings, pressScale, springs } from "../../design/motion";
 import { useCaptureStore } from "../../lib/capture/store";
+import { useFeatureEnabled } from "../../lib/features";
 import {
   addTile,
   canExpandTo2x1,
   countCells,
+  filterEnabledTiles,
   getHiddenTiles,
   normalizeLayout,
   needsTallPanel,
@@ -39,7 +41,10 @@ const tap = { whileTap: { scale: pressScale }, transition: springs.press } as co
 export function HomeTab() {
   useT();
   const rawTiles = useIslandStore((s) => s.settings.quickTiles);
-  const tiles = useMemo(() => normalizeLayout(rawTiles), [rawTiles]);
+  const disabledFeatures = useIslandStore((s) => s.settings.disabledFeatures);
+  const dockEnabled = useFeatureEnabled("dock");
+  const allTiles = useMemo(() => normalizeLayout(rawTiles), [rawTiles]);
+  const tiles = useMemo(() => filterEnabledTiles(allTiles, disabledFeatures), [allTiles, disabledFeatures]);
   const busy = useCaptureStore((s) => s.busy);
   const { editing, setEditing } = useTilesEditStore();
   const mode = useIslandStore((s) => s.mode);
@@ -101,17 +106,18 @@ export function HomeTab() {
     if (drag.moved) {
       suppressClick.current = true;
       if (!cancel && drag.id !== drag.target) {
-        const next = reorderTiles(tiles, drag.id, drag.target);
+        const next = reorderTiles(allTiles, drag.id, drag.target);
         void patchSettings({ quickTiles: next });
       }
     }
   };
 
-  const hiddenTiles = useMemo(() => getHiddenTiles(tiles), [tiles]);
-  const cells = countCells(tiles);
-  const canAdd = cells < QUICK_TILE_CELLS && hiddenTiles.length > 0;
+  const hiddenTiles = useMemo(() => getHiddenTiles(allTiles, disabledFeatures), [allTiles, disabledFeatures]);
+  const visibleCells = countCells(tiles);
+  const totalCells = countCells(allTiles);
+  const canAdd = totalCells < QUICK_TILE_CELLS && hiddenTiles.length > 0;
   // At six cells the panel remains ordinary. Keep + in the footer until adding cell seven.
-  const addInFooter = cells === QUICK_TILE_ROW_CELLS_3;
+  const addInFooter = visibleCells === QUICK_TILE_ROW_CELLS_3;
 
   const tileMotion = {
     initial: { opacity: 0, y: reduce ? 0 : 2 },
@@ -121,7 +127,12 @@ export function HomeTab() {
   };
 
   return (
-    <div ref={homeRoot} className={`hm-home${withTools ? " hm-home--with-tools" : ""}`} data-tall={needsTallPanel(tiles)}>
+    <div
+      ref={homeRoot}
+      className={`hm-home${withTools ? " hm-home--with-tools" : ""}`}
+      data-tall={needsTallPanel(allTiles, disabledFeatures)}
+      data-dock={dockEnabled}
+    >
       <h2 className="mod-sr-only">{t("home")}</h2>
       <div
         className="hm-left"
@@ -146,7 +157,7 @@ export function HomeTab() {
           setMenu("context");
         }}
       >
-        <div className="hm-tools" data-rows={cells > QUICK_TILE_ROW_CELLS_3 ? 4 : 3}>
+        <div className="hm-tools" data-rows={visibleCells > QUICK_TILE_ROW_CELLS_3 ? 4 : 3}>
           <AnimatePresence mode="popLayout" initial={false}>
           {/* Keep hit-test cells stable during drag; only the committed order moves on pointerup. */}
           {tiles.map((slot) => {
@@ -155,7 +166,7 @@ export function HomeTab() {
               const Icon = def.icon;
               const title = t(def.titleKey);
               const hint = def.hintKey ? t(def.hintKey) : title;
-              const canExpand = canExpandTo2x1(tiles, slot.id);
+              const canExpand = canExpandTo2x1(allTiles, slot.id);
 
               if (editing) {
                 return (
@@ -217,7 +228,7 @@ export function HomeTab() {
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
-                        void patchSettings({ quickTiles: removeTile(tiles, slot.id) });
+                        void patchSettings({ quickTiles: removeTile(allTiles, slot.id) });
                       }}
                     >
                       <IconClose size={12} />
@@ -231,7 +242,7 @@ export function HomeTab() {
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
-                        void patchSettings({ quickTiles: toggleTileSize(tiles, slot.id) });
+                        void patchSettings({ quickTiles: toggleTileSize(allTiles, slot.id) });
                       }}
                     >
                       <IconSwap size={10} />
@@ -351,7 +362,7 @@ export function HomeTab() {
                     label: t(def.titleKey),
                     icon: <Icon size={16} />,
                     select: () => {
-                      void patchSettings({ quickTiles: addTile(tiles, hiddenId) });
+                      void patchSettings({ quickTiles: addTile(allTiles, hiddenId) });
                     },
                   };
                 })
@@ -359,7 +370,7 @@ export function HomeTab() {
         />
       )}
 
-      <Dock />
+      {dockEnabled && <Dock />}
     </div>
   );
 }

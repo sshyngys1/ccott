@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("../ipc", async () => ({ ...await vi.importActual<typeof import("../ipc")>("../ipc"), APP_VERSION: "0.2.2", getAppVersion: async () => "0.2.2" }));
+import { SettingsWindow } from "./settings/SettingsWindow";
 import { Island } from "./Island";
 import { resetMock } from "../ipc/mock";
 import { resetIslandStore, useIslandStore } from "../store";
@@ -33,10 +34,10 @@ it("waits for user expansion, collapse is not acknowledgment, explicit close per
 it("keeps manual settings entry after acknowledgment and never lowers a newer marker", async () => {
   await Promise.all(backgroundScreens.map(screen => screen.preload()));
   localStorage.setItem(WHATS_NEW_STORAGE_KEY, "0.3.0");
-  render(<Island />);
-  act(() => { useIslandStore.getState().setMode("expanded"); useIslandStore.getState().setView("settings"); });
+  render(<SettingsWindow />);
+  fireEvent.click(screen.getByRole("button", { name: "О программе" }));
   fireEvent.click(await screen.findByRole("button", { name: "Что нового" }));
-  expect(await screen.findByText("Версия 0.2.2")).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "\u0427\u0442\u043e \u043d\u043e\u0432\u043e\u0433\u043e \u0432 CCOTT" })).toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: "Понятно" }));
   expect(getLastAcknowledgedVersion()).toBe("0.3.0");
 });

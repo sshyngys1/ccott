@@ -92,7 +92,7 @@ export function mapBackendItem(
 /**
  * Synchronously checks instant local features: Calculator, Units, Currency (query parse), Commands.
  */
-export function evaluateLocalFeatures(query: string, lang: Language = getLanguage()): {
+export function evaluateLocalFeatures(query: string, lang: Language = getLanguage(), defaultCurrency = ""): {
   math: MathResult | null;
   units: UnitResult | null;
   currencyQuery: CurrencyQuery | null;
@@ -100,7 +100,7 @@ export function evaluateLocalFeatures(query: string, lang: Language = getLanguag
 } {
   const math = evaluateMath(query, lang);
   const units = evaluateUnits(query, lang);
-  const currencyQuery = parseCurrencyQuery(query);
+  const currencyQuery = parseCurrencyQuery(query, undefined, defaultCurrency);
   const commands = evaluateCommands(query, lang);
 
   return {

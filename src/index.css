@@ -2,6 +2,7 @@
 @import "tailwindcss";
 @import "./design/tokens.css";
 @import "./design/glass.css";
+@import "./design/lyrics.css";
 
 html,
 body,

@@ -9,11 +9,22 @@ export interface DockMenuItem {
 }
 
 /** Portal above the dock's clipped glass surface, constrained to the Home panel. */
-export function DockMenu({ anchor, container, items, close }: {
+export function DockMenu({
+  anchor,
+  container,
+  items,
+  close,
+  placement = "above",
+  point = null,
+  className,
+}: {
   anchor: HTMLElement;
   container: HTMLElement;
   items: DockMenuItem[];
   close: () => void;
+  placement?: "above" | "below";
+  point?: { x: number; y: number } | null;
+  className?: string;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
@@ -27,14 +38,25 @@ export function DockMenu({ anchor, container, items, close }: {
       const button = anchor.getBoundingClientRect();
       const bounds = node.getBoundingClientRect();
       const gap = parseFloat(getComputedStyle(node).getPropertyValue("--ig-space-2")) || 0;
+      const leftTarget = point
+        ? point.x - parent.left
+        : placement === "below"
+          ? button.left - parent.left
+          : button.right - parent.left - bounds.width;
+      const topTarget = placement === "below"
+        ? button.bottom - parent.top + gap
+        : button.top - parent.top - bounds.height - gap;
       setPosition({
-        left: Math.max(0, Math.min(button.right - parent.left - bounds.width, parent.width - bounds.width)),
-        top: Math.max(0, Math.min(button.top - parent.top - bounds.height - gap, parent.height - bounds.height)),
+        left: Math.max(0, Math.min(leftTarget, parent.width - bounds.width)),
+        top: Math.max(0, Math.min(topTarget, parent.height - bounds.height)),
       });
     };
     const outside = (event: PointerEvent) => {
-      if (!node.contains(event.target as Node) && !anchor.contains(event.target as Node))
+      if (!node.contains(event.target as Node) && !anchor.contains(event.target as Node)) {
+        if (node.contains(document.activeElement) && document.activeElement instanceof HTMLElement)
+          document.activeElement.blur();
         close();
+      }
     };
     place();
     node.querySelector<HTMLButtonElement>("button")?.focus();
@@ -44,17 +66,19 @@ export function DockMenu({ anchor, container, items, close }: {
       document.removeEventListener("pointerdown", outside, true);
       window.removeEventListener("resize", place);
     };
-  }, [anchor, container, close]);
+  }, [anchor, container, close, placement, point]);
   return createPortal(
     <div
       ref={menu}
       role="menu"
-      className="ig-glass-card hm-dock-menu"
+      className={className ? `ig-glass-card hm-dock-menu ${className}` : "ig-glass-card hm-dock-menu"}
       style={position}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
+          if (menu.current?.contains(document.activeElement) && document.activeElement instanceof HTMLElement)
+            document.activeElement.blur();
           close();
           anchor.focus();
           return;
@@ -76,7 +100,8 @@ export function DockMenu({ anchor, container, items, close }: {
         className="ig-glass-control ig-glass-control--sm ig-glass-control--ghost hm-dock-menu-item"
         tabIndex={index === active ? 0 : -1}
         onFocus={() => setActive(index)}
-        onClick={() => {
+        onClick={(event) => {
+          event.currentTarget.blur();
           close();
           item.select();
         }}

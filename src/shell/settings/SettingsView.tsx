@@ -1,11 +1,10 @@
 import { t, useT, localizeMessage } from "../../i18n";
-// Owner: F1. The «Настройки» view inside the expanded panel (spec §6.8). Changes apply immediately via `settings_set`.
+// Owner: F1. Settings window section content. Changes apply immediately via `settings_set`.
 // «Фон острова» (vibrancy) is intentionally absent: native blur is unavailable (wave 1 decision).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { IconChevronDown, IconTrash } from "../../design/icons";
 import { APP_VERSION, getAppVersion, invoke, invokeRecentMaximizedApps, listen } from "../../ipc";
-import { DEFAULT_QUICK_TILES, SHELF_RETENTION_HOURS, type FullscreenApp, type LanguageMode, type MonitorInfo, type OcrLanguage, type ThemeMode } from "../../shared/types";
-import { useTilesEditStore } from "../../lib/tiles/store";
+import { DEFAULT_QUICK_TILES, SHELF_RETENTION_HOURS, type FeatureId, type FullscreenApp, type LanguageMode, type MonitorInfo, type OcrLanguage, type ThemeMode } from "../../shared/types";
 import { getWhatsNewForVersion } from "../../lib/whatsNew/catalog";
 import { useIslandStore } from "../../store";
 import { announceUpdate } from "../toast";
@@ -20,11 +19,16 @@ import {
   toggleAutoHideApp,
   toggleFullscreenAllowlist,
 } from "./hotkey";
+import type { SettingsSection } from "./sections";
+import { WeatherSettings } from "./WeatherSettings";
+import { CurrencyPicker } from "./CurrencyPicker";
+import { WhatsNewView } from "../WhatsNewView";
 import { MonitorPicker } from "./MonitorPicker";
 import { OcrLanguagePicker } from "./OcrLanguagePicker";
 import { monitorOptions, selectedMonitor } from "./monitors";
 import { patchSettings } from "./patchSettings";
 import { useHotkeyStatus } from "../hotkeys";
+import { AgentsSettings } from "../../modules/agents/AgentsSettings";
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: "auto", get label() { return t("auto"); } },
@@ -120,11 +124,11 @@ function SwitchRow({ title, description, checked, onChange }: SwitchRowProps) {
   );
 }
 
-export function SettingsView() {
+/** Section content; omitting section renders the complete control inventory. */
+export function SettingsView({ section }: { section?: SettingsSection } = {}) {
   useT();
   const hotkeyStatus = useHotkeyStatus();
   const settings = useIslandStore((s) => s.settings);
-  const keyboardFocus = useIslandStore((s) => s.keyboardFocus);
   const availableUpdate = useIslandStore((s) => s.availableUpdate);
   const monitors = useMonitors();
   const fullscreenApps = useFullscreenApps();
@@ -180,18 +184,25 @@ export function SettingsView() {
   const [cmdRecording, setCmdRecording] = useState(false);
   const [cmdHotkeyError, setCmdHotkeyError] = useState<string | null>(null);
   const cmdHotkeyInputRef = useRef<HTMLInputElement>(null);
-  const hadKeyboardFocusRef = useRef(false);
-
-  // If the island loses native keyboard focus while recording, exit recording mode.
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   useEffect(() => {
-    if (keyboardFocus) {
-      hadKeyboardFocusRef.current = true;
-    } else if (hadKeyboardFocusRef.current) {
-      hadKeyboardFocusRef.current = false;
-      setRecording(false);
-      setCmdRecording(false);
+    setShowWhatsNew(false);
+    setRecording(false);
+    setCmdRecording(false);
+  }, [section]);
+  const whatsNewPanel = useRef<HTMLDivElement>(null);
+  const whatsNewButton = useRef<HTMLButtonElement>(null);
+  const closeWhatsNew = () => {
+    setShowWhatsNew(false);
+    whatsNewButton.current?.focus();
+  };
+  useEffect(() => {
+    if (showWhatsNew) {
+      whatsNewPanel.current?.focus();
+      whatsNewPanel.current?.scrollIntoView?.({ block: "start" });
     }
-  }, [keyboardFocus]);
+  }, [showWhatsNew]);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -328,49 +339,30 @@ export function SettingsView() {
   };
 
   return (
-    <div className="ig-settings">
-      <div className="ig-settings-columns">
-      <section className="ig-glass-card ig-settings-card ig-settings-column--left" aria-labelledby="ig-set-look">
-        <h4 id="ig-set-look" className="ig-section-label ig-settings-label">
-          {t("appearance")}</h4>
-        <div className="ig-setting-row">
-          <span className="ig-setting-row__label">
-            <span className="ig-setting-row__title">{t("theme")}</span>
-          </span>
-          <Segmented label={t("theme")} value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => void patchSettings({ theme })} />
-        </div>
-        <SwitchRow
-          title={t("liteMode.label")}
-          description={t("liteMode.hint")}
-          checked={settings.liteMode}
-          onChange={(liteMode) => void patchSettings({ liteMode })}
-        />
+    <div className="ig-settings" onKeyDown={event => {
+      if (showWhatsNew && event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeWhatsNew();
+      }
+    }}>
+      {saveError && <p role="alert" className="ig-settings-error">{localizeMessage(saveError)}</p>}
+      {(!section || section === "general") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-general">
+        <h4 id="ig-set-general" className="ig-section-label ig-settings-label">{t("settings.section.general")}</h4>
         <div className="ig-setting-row ig-setting-row--stacked">
           <span className="ig-setting-row__label">
             <span className="ig-setting-row__title">{t("language.label")}</span>
           </span>
           <Segmented label={t("language.label")} value={settings.language} options={LANGUAGE_OPTIONS} onChange={(language) => void patchSettings({ language })} />
         </div>
-        <div className="ig-setting-row ig-setting-row--stacked">
-          <label className="ig-setting-row__title" htmlFor="ig-ocr-language">{t("ocrLanguage.label")}</label>
-          <OcrLanguagePicker
-            value={settings.ocrLanguage}
-            languages={ocrLanguages}
-            onChange={(ocrLanguage) => void patchSettings({ ocrLanguage })}
-          />
-          <p id="ig-ocr-hint" className="ig-setting-row__desc">{t("ocrLanguage.hint")}</p>
-          {ocrLanguagesFailed && <p className="ig-setting-row__desc" role="status">{t("ocrLanguage.loadError")}</p>}
-        </div>
+        <SwitchRow
+          title={t("startWithWindows")}
+          checked={settings.autostart}
+          onChange={(autostart) => void patchSettings({ autostart })}
+        />
         <div className="ig-setting-row">
           <span className="ig-setting-row__label">
-            <span className="ig-setting-row__title">{t("monitor")}</span>
-            <span className="ig-setting-row__desc">{t("whereToShowTheIsland")}</span>
-          </span>
-          <MonitorPicker value={selectedMonitor(options, settings.monitor)} options={options} onChange={(monitor) => void patchSettings({ monitor })} />
-        </div>
-        <div className="ig-setting-row">
-          <span className="ig-setting-row__label">
-            <span className="ig-setting-row__title">{t("version", { p0: appVersion })}</span>
+            <span className="ig-setting-row__title">{t("settings.updates")}</span>
             {updateError ? (
               <span className="ig-setting-row__desc">{localizeMessage(updateError)}</span>
             ) : (
@@ -378,14 +370,6 @@ export function SettingsView() {
             )}
           </span>
           <div style={{ display: "flex", gap: "var(--ig-space-1-5)", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              disabled={!getWhatsNewForVersion(appVersion)}
-              onClick={() => useIslandStore.getState().setView("whatsNew")}
-            >
-              {t("whatsNew.openFromSettings")}
-            </button>
             <button
               type="button"
               className="ig-glass-control ig-glass-control--sm"
@@ -411,131 +395,38 @@ export function SettingsView() {
               {t("installAndRestart")}</button>
           </div>
         )}
+      </section>}
+      {(!section || section === "appearance") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-appearance">
+        <h4 id="ig-set-appearance" className="ig-section-label ig-settings-label">{t("appearance")}</h4>
+        <div className="ig-setting-row">
+          <span className="ig-setting-row__label">
+            <span className="ig-setting-row__title">{t("theme")}</span>
+          </span>
+          <Segmented label={t("theme")} value={settings.theme} options={THEME_OPTIONS} onChange={(theme) => void patchSettings({ theme })} />
+        </div>
+        <SwitchRow
+          title={t("liteMode.label")}
+          description={t("liteMode.hint")}
+          checked={settings.liteMode}
+          onChange={(liteMode) => void patchSettings({ liteMode })}
+        />
         <p className="ig-settings-foot">{t("autoFollowsYourWindowsThemeChangesApplyImmediately")}</p>
-      </section>
-
-      <div className="ig-settings-column--right">
-      <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-behaviour">
-        <h4 id="ig-set-behaviour" className="ig-section-label ig-settings-label">
-          {t("behavior")}</h4>
-        <SwitchRow
-          title={t("startWithWindows")}
-          checked={settings.autostart}
-          onChange={(autostart) => void patchSettings({ autostart })}
-        />
-        <SwitchRow
-          title={t("downloads.monitor")}
-          checked={settings.downloadsMonitor}
-          onChange={(downloadsMonitor) => void patchSettings({ downloadsMonitor })}
-        />
+      </section>}
+      {(!section || section === "island") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-island">
+        <h4 id="ig-set-island" className="ig-section-label ig-settings-label">{t("settings.section.island")}</h4>
+        <div className="ig-setting-row">
+          <span className="ig-setting-row__label">
+            <span className="ig-setting-row__title">{t("monitor")}</span>
+            <span className="ig-setting-row__desc">{t("whereToShowTheIsland")}</span>
+          </span>
+          <MonitorPicker value={selectedMonitor(options, settings.monitor)} options={options} onChange={(monitor) => void patchSettings({ monitor })} />
+        </div>
         <SwitchRow
           title={t("doNotDisturb")}
           description={t("hidePillNotifications")}
           checked={settings.doNotDisturb}
           onChange={(doNotDisturb) => void patchSettings({ doNotDisturb })}
         />
-        <div className="ig-setting-row ig-setting-row--stacked">
-          <span className="ig-setting-row__label">
-            <span className="ig-setting-row__title">{t("summonTheIsland")}</span>
-            <span className="ig-setting-row__desc">
-              {recording ? t("pressAShortcut") : settings.summonHotkey ? t("showOrCollapseTheIsland") : t("shortcutIsOff")}
-            </span>
-          </span>
-          <div className="ig-hotkey-controls">
-            <input
-              ref={hotkeyInputRef}
-              type="text"
-              readOnly
-              data-island-keyboard="true"
-              data-recording={recording}
-              className="ig-glass-input ig-hotkey-input"
-              aria-label={t("summonTheIsland")}
-              placeholder={t("off")}
-              value={recording ? t("pressAShortcut") : settings.summonHotkey}
-              onClick={(e) => {
-                e.currentTarget.focus();
-                setHotkeyError(null);
-                setRecording(true);
-              }}
-              onBlur={(e) => {
-                if (e.relatedTarget instanceof Node) {
-                  setRecording(false);
-                }
-              }}
-              onKeyDown={onHotkeyKeyDown}
-            />
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              onClick={() => void applySummonHotkey(DEFAULT_SUMMON_HOTKEY)}
-            >
-              {t("reset")}</button>
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              onClick={() => void applySummonHotkey("")}
-            >
-              {t("turnOff")}</button>
-          </div>
-          {hotkeyStatus?.summon === "busy" && <span className="ig-setting-row__desc ig-hotkey-error" role="status">{t("hotkey.busyHint")}</span>}
-          {hotkeyError && (
-            <span className="ig-setting-row__desc ig-hotkey-error" role="alert">
-              {localizeMessage(hotkeyError)}
-            </span>
-          )}
-        </div>
-        <div className="ig-setting-row ig-setting-row--stacked">
-          <span className="ig-setting-row__label">
-            <span className="ig-setting-row__title">{t("commandHotkey")}</span>
-            <span className="ig-setting-row__desc">
-              {cmdRecording ? t("pressAShortcut") : settings.commandHotkey ? t("commandHotkeyDesc") : t("shortcutIsOff")}
-            </span>
-          </span>
-          <div className="ig-hotkey-controls">
-            <input
-              ref={cmdHotkeyInputRef}
-              type="text"
-              readOnly
-              data-island-keyboard="true"
-              data-recording={cmdRecording}
-              className="ig-glass-input ig-hotkey-input"
-              aria-label={t("commandHotkey")}
-              placeholder={t("off")}
-              value={cmdRecording ? t("pressAShortcut") : settings.commandHotkey}
-              onClick={(e) => {
-                e.currentTarget.focus();
-                setCmdHotkeyError(null);
-                setCmdRecording(true);
-              }}
-              onBlur={(e) => {
-                if (e.relatedTarget instanceof Node) {
-                  setCmdRecording(false);
-                }
-              }}
-              onKeyDown={onCmdHotkeyKeyDown}
-            />
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              aria-label={`${t("reset")} — ${t("commandHotkey")}`}
-              onClick={() => void applyCommandHotkey(DEFAULT_COMMAND_HOTKEY)}
-            >
-              {t("reset")}</button>
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              aria-label={`${t("turnOff")} — ${t("commandHotkey")}`}
-              onClick={() => void applyCommandHotkey("")}
-            >
-              {t("turnOff")}</button>
-          </div>
-          {hotkeyStatus?.command === "busy" && <span className="ig-setting-row__desc ig-hotkey-error" role="status">{t("hotkey.busyHint")}</span>}
-          {cmdHotkeyError && (
-            <span className="ig-setting-row__desc ig-hotkey-error" role="alert">
-              {localizeMessage(cmdHotkeyError)}
-            </span>
-          )}
-        </div>
         <SliderRow
           title={t("expandDelay")}
           value={settings.hoverExpandDelayMs}
@@ -552,61 +443,9 @@ export function SettingsView() {
           step={50}
           onCommit={(hoverCollapseDelayMs) => void patchSettings({ hoverCollapseDelayMs })}
         />
-      </section>
-
-      <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-shelf">
-        <h4 id="ig-set-shelf" className="ig-section-label ig-settings-label">{t("shelf.title")}</h4>
-        <SwitchRow title={t("shelf.keepAfterDrag")} checked={settings.shelfKeepAfterDrag}
-          onChange={(shelfKeepAfterDrag) => void patchSettings({ shelfKeepAfterDrag })} />
-        <div className="ig-setting-row ig-setting-row--stacked">
-          <label className="ig-setting-row__title" htmlFor="ig-shelf-retention">{t("shelf.retention")}</label>
-          <span className="ig-select">
-            <select id="ig-shelf-retention" value={settings.shelfRetentionHours}
-              onChange={event => void patchSettings({ shelfRetentionHours: Number(event.target.value) })}>
-              {SHELF_RETENTION_HOURS.map(hours => <option key={hours} value={hours}>{t(hours === 0 ? "shelf.forever" : hours === 1 ? "shelf.hour" : hours === 24 ? "shelf.day" : hours === 72 ? "shelf.threeDays" : "shelf.week")}</option>)}
-            </select>
-            <IconChevronDown size={14} />
-          </span>
-        </div>
-      </section>
-      </div>
-
-      <section className="ig-glass-card ig-settings-card ig-settings-column--left" aria-labelledby="ig-set-tiles">
-        <h4 id="ig-set-tiles" className="ig-section-label ig-settings-label">
-          {t("tiles.title")}
-        </h4>
-        <div className="ig-setting-row">
-          <span className="ig-setting-row__label">
-            <span className="ig-setting-row__title">{t("tiles.title")}</span>
-            <span className="ig-setting-row__desc">{t("tiles.desc")}</span>
-          </span>
-          <div style={{ display: "flex", gap: "var(--ig-space-1-5)", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              onClick={() => {
-                useTilesEditStore.getState().setEditing(true);
-                useIslandStore.getState().setView("tabs");
-                useIslandStore.getState().setActiveTab("home");
-              }}
-            >
-              {t("tiles.customize")}
-            </button>
-            <button
-              type="button"
-              className="ig-glass-control ig-glass-control--sm"
-              onClick={() => void patchSettings({ quickTiles: DEFAULT_QUICK_TILES.map((tile) => ({ ...tile })) })}
-            >
-              {t("tiles.reset")}
-            </button>
-          </div>
-        </div>
-      </section>
-      </div>
-
-      <section className="ig-glass-card ig-settings-card ig-settings-card--wide" aria-labelledby="ig-set-fullscreen">
-        <h4 id="ig-set-fullscreen" className="ig-section-label ig-settings-label">
-          {t("fullscreenApps")}</h4>
+      </section>}
+      {(!section || section === "island") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-fullscreen">
+        <h4 id="ig-set-fullscreen" className="ig-section-label ig-settings-label">{t("fullscreenApps")}</h4>
         <SwitchRow
           title={t("hideInFullscreenApps")}
           checked={settings.hideInFullscreen}
@@ -642,17 +481,13 @@ export function SettingsView() {
         )}
         <p className="ig-settings-foot">
           {t("exclusiveFullscreenIsnTSupportedUseBorderlessWindowedMode")}</p>
-      </section>
-
-      <section className="ig-glass-card ig-settings-card ig-settings-card--wide" aria-labelledby="ig-set-autohide">
-        <h4 id="ig-set-autohide" className="ig-section-label ig-settings-label">
-          {t("hideTheIslandOverApps")}
-        </h4>
+      </section>}
+      {(!section || section === "island") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-autohide">
+        <h4 id="ig-set-autohide" className="ig-section-label ig-settings-label">{t("hideTheIslandOverApps")}</h4>
         <div className="ig-setting-row ig-setting-row--stacked">
           <div className="ig-hotkey-controls">
             <input
               type="text"
-              data-island-keyboard="true"
               className="ig-glass-input ig-autohide-input"
               aria-label={t("addAppExePlaceholder")}
               placeholder={t("addAppExePlaceholder")}
@@ -718,7 +553,210 @@ export function SettingsView() {
           })
         )}
         <p className="ig-settings-foot">{t("hideTheIslandOverAppsHint")}</p>
-      </section>
+      </section>}
+      {(!section || section === "hotkeys") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-hotkeys">
+        <h4 id="ig-set-hotkeys" className="ig-section-label ig-settings-label">{t("settings.section.hotkeys")}</h4>
+        <div className="ig-setting-row ig-setting-row--stacked">
+          <span className="ig-setting-row__label">
+            <span className="ig-setting-row__title">{t("summonTheIsland")}</span>
+            <span className="ig-setting-row__desc">
+              {recording ? t("pressAShortcut") : settings.summonHotkey ? t("showOrCollapseTheIsland") : t("shortcutIsOff")}
+            </span>
+          </span>
+          <div className="ig-hotkey-controls">
+            <input
+              ref={hotkeyInputRef}
+              type="text"
+              readOnly
+              data-recording={recording}
+              className="ig-glass-input ig-hotkey-input"
+              aria-label={t("summonTheIsland")}
+              placeholder={t("off")}
+              value={recording ? t("pressAShortcut") : settings.summonHotkey}
+              onClick={(e) => {
+                e.currentTarget.focus();
+                setHotkeyError(null);
+                setRecording(true);
+              }}
+              onBlur={() => setRecording(false)}
+              onKeyDown={onHotkeyKeyDown}
+            />
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              onClick={() => void applySummonHotkey(DEFAULT_SUMMON_HOTKEY)}
+            >
+              {t("reset")}</button>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              onClick={() => void applySummonHotkey("")}
+            >
+              {t("turnOff")}</button>
+          </div>
+          {hotkeyStatus?.summon === "busy" && <span className="ig-setting-row__desc ig-hotkey-error" role="status">{t("hotkey.busyHint")}</span>}
+          {hotkeyError && (
+            <span className="ig-setting-row__desc ig-hotkey-error" role="alert">
+              {localizeMessage(hotkeyError)}
+            </span>
+          )}
+        </div>
+        <div className="ig-setting-row ig-setting-row--stacked">
+          <span className="ig-setting-row__label">
+            <span className="ig-setting-row__title">{t("commandHotkey")}</span>
+            <span className="ig-setting-row__desc">
+              {cmdRecording ? t("pressAShortcut") : settings.commandHotkey ? t("commandHotkeyDesc") : t("shortcutIsOff")}
+            </span>
+          </span>
+          <div className="ig-hotkey-controls">
+            <input
+              ref={cmdHotkeyInputRef}
+              type="text"
+              readOnly
+              data-recording={cmdRecording}
+              className="ig-glass-input ig-hotkey-input"
+              aria-label={t("commandHotkey")}
+              placeholder={t("off")}
+              value={cmdRecording ? t("pressAShortcut") : settings.commandHotkey}
+              onClick={(e) => {
+                e.currentTarget.focus();
+                setCmdHotkeyError(null);
+                setCmdRecording(true);
+              }}
+              onBlur={() => setCmdRecording(false)}
+              onKeyDown={onCmdHotkeyKeyDown}
+            />
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              aria-label={`${t("reset")} — ${t("commandHotkey")}`}
+              onClick={() => void applyCommandHotkey(DEFAULT_COMMAND_HOTKEY)}
+            >
+              {t("reset")}</button>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              aria-label={`${t("turnOff")} — ${t("commandHotkey")}`}
+              onClick={() => void applyCommandHotkey("")}
+            >
+              {t("turnOff")}</button>
+          </div>
+          {hotkeyStatus?.command === "busy" && <span className="ig-setting-row__desc ig-hotkey-error" role="status">{t("hotkey.busyHint")}</span>}
+          {cmdHotkeyError && (
+            <span className="ig-setting-row__desc ig-hotkey-error" role="alert">
+              {localizeMessage(cmdHotkeyError)}
+            </span>
+          )}
+        </div>
+      </section>}
+      {(!section || section === "features") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-features">
+        <h4 id="ig-set-features" className="ig-section-label ig-settings-label">{t("settings.features")}</h4>
+        <p className="ig-settings-foot">{t("settings.featuresHint")}</p>
+        {(["clipboard", "text", "notes", "shelf", "dock", "battery", "audioMeter", "weather", "lyrics"] as const satisfies readonly FeatureId[]).map(id => (
+          <SwitchRow key={id} title={t(`settings.feature.${id}`)} checked={!settings.disabledFeatures.includes(id)}
+            onChange={enabled => {
+              const disabledFeatures = enabled ? settings.disabledFeatures.filter(feature => feature !== id) : [...settings.disabledFeatures, id];
+              void patchSettings({ disabledFeatures }).then(setSaveError);
+            }} />
+        ))}
+        <SwitchRow title={t("control.feature")} checked={!settings.disabledFeatures.includes("control")}
+          onChange={enabled => void patchSettings({ disabledFeatures: enabled ? settings.disabledFeatures.filter(id => id !== "control") : [...settings.disabledFeatures, "control"] }).then(setSaveError)} />
+        <SwitchRow title={t("downloads.monitor")} checked={settings.downloadsMonitor}
+          onChange={downloadsMonitor => void patchSettings({ downloadsMonitor }).then(setSaveError)} />
+        <SwitchRow title={t("agents.feature")} checked={!settings.disabledFeatures.includes("agents")}
+          onChange={enabled => void patchSettings({ disabledFeatures: enabled ? settings.disabledFeatures.filter(id => id !== "agents") : [...settings.disabledFeatures, "agents"] }).then(setSaveError)} />
+      </section>}
+      {(!section || section === "agents") && <AgentsSettings />}
+      {(!section || section === "home") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-home">
+        <h4 id="ig-set-home" className="ig-section-label ig-settings-label">{t("home")}</h4>
+        <div className="ig-setting-row">
+          <span className="ig-setting-row__label">
+            <span className="ig-setting-row__title">{t("tiles.title")}</span>
+            <span className="ig-setting-row__desc">{t("tiles.desc")}</span>
+          </span>
+          <div style={{ display: "flex", gap: "var(--ig-space-1-5)", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span className="ig-setting-row__desc">{t("settings.tilesHint")}</span>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              onClick={() => void patchSettings({ quickTiles: DEFAULT_QUICK_TILES.map((tile) => ({ ...tile })) })}
+            >
+              {t("tiles.reset")}
+            </button>
+          </div>
+        </div>
+      </section>}
+      {(!section || section === "weather") && <WeatherSettings />}
+      {(!section || section === "lyrics") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-lyrics">
+        <h4 id="ig-set-lyrics" className="ig-section-label ig-settings-label">{t("lyrics.settings.title")}</h4>
+        <SwitchRow title={t("lyrics.settings.search")} description={t("lyrics.settings.searchHint")} checked={settings.lyrics.enabled}
+          onChange={enabled => void patchSettings({ lyrics: { ...settings.lyrics, enabled } }).then(setSaveError)} />
+        <SwitchRow title={t("lyrics.settings.inPill")} description={t("lyrics.settings.inPillHint")} checked={settings.lyrics.inPill}
+          onChange={inPill => void patchSettings({ lyrics: { ...settings.lyrics, inPill } }).then(setSaveError)} />
+        <SwitchRow title={t("lyrics.settings.announce")} description={t("lyrics.settings.announceHint")} checked={settings.lyrics.announce}
+          onChange={announce => void patchSettings({ lyrics: { ...settings.lyrics, announce } }).then(setSaveError)} />
+        <SliderRow title={t("lyrics.settings.offset")} value={settings.lyrics.offsetMs} min={-5000} max={5000} step={50}
+          onCommit={offsetMs => void patchSettings({ lyrics: { ...settings.lyrics, offsetMs } }).then(setSaveError)} />
+        <div className="ig-setting-row">
+          <span className="ig-setting-row__desc">{t("lyrics.settings.offsetHint")}</span>
+          <button type="button" className="ig-glass-control ig-glass-control--sm" disabled={settings.lyrics.offsetMs === 0}
+            onClick={() => void patchSettings({ lyrics: { ...settings.lyrics, offsetMs: 0 } }).then(setSaveError)}>{t("lyrics.settings.offsetReset")}</button>
+        </div>
+      </section>}
+      {(!section || section === "shelf") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-shelf">
+        <h4 id="ig-set-shelf" className="ig-section-label ig-settings-label">{t("shelf.title")}</h4>
+        <SwitchRow title={t("shelf.keepAfterDrag")} checked={settings.shelfKeepAfterDrag}
+          onChange={(shelfKeepAfterDrag) => void patchSettings({ shelfKeepAfterDrag })} />
+        <div className="ig-setting-row ig-setting-row--stacked">
+          <label className="ig-setting-row__title" htmlFor="ig-shelf-retention">{t("shelf.retention")}</label>
+          <span className="ig-select">
+            <select id="ig-shelf-retention" value={settings.shelfRetentionHours}
+              onChange={event => void patchSettings({ shelfRetentionHours: Number(event.target.value) })}>
+              {SHELF_RETENTION_HOURS.map(hours => <option key={hours} value={hours}>{t(hours === 0 ? "shelf.forever" : hours === 1 ? "shelf.hour" : hours === 24 ? "shelf.day" : hours === 72 ? "shelf.threeDays" : "shelf.week")}</option>)}
+            </select>
+            <IconChevronDown size={14} />
+          </span>
+        </div>
+      </section>}
+      {(!section || section === "capture") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-capture">
+        <h4 id="ig-set-capture" className="ig-section-label ig-settings-label">{t("settings.section.capture")}</h4>
+        <div className="ig-setting-row ig-setting-row--stacked">
+          <label className="ig-setting-row__title" htmlFor="ig-ocr-language">{t("ocrLanguage.label")}</label>
+          <OcrLanguagePicker
+            value={settings.ocrLanguage}
+            languages={ocrLanguages}
+            onChange={(ocrLanguage) => void patchSettings({ ocrLanguage })}
+          />
+          <p id="ig-ocr-hint" className="ig-setting-row__desc">{t("ocrLanguage.hint")}</p>
+          {ocrLanguagesFailed && <p className="ig-setting-row__desc" role="status">{t("ocrLanguage.loadError")}</p>}
+        </div>
+      </section>}
+      {(!section || section === "command") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-command">
+        <h4 id="ig-set-command" className="ig-section-label ig-settings-label">{t("commandHotkey")}</h4>
+        <div className="ig-setting-row ig-setting-row--stacked">
+          <label className="ig-setting-row__title" htmlFor="ig-default-currency">{t("settings.defaultCurrency")}</label>
+          <CurrencyPicker value={settings.defaultCurrency}
+            onChange={defaultCurrency => void patchSettings({ defaultCurrency }).then(setSaveError)} />
+        </div>
+      </section>}
+      {(!section || section === "about") && <section className="ig-glass-card ig-settings-card" aria-labelledby="ig-set-about">
+        <h4 id="ig-set-about" className="ig-section-label ig-settings-label">{t("settings.section.about")}</h4>
+        <div className="ig-setting-row">
+          <span className="ig-setting-row__title">{t("version", { p0: appVersion })}</span>
+            <button
+              type="button"
+              className="ig-glass-control ig-glass-control--sm"
+              disabled={!getWhatsNewForVersion(appVersion)}
+              ref={whatsNewButton}
+              onClick={() => showWhatsNew ? closeWhatsNew() : setShowWhatsNew(true)}
+            >
+              {t("whatsNew.openFromSettings")}
+            </button>
+        </div>
+      {showWhatsNew && <div ref={whatsNewPanel} tabIndex={-1}>
+        <WhatsNewView version={appVersion} onClose={closeWhatsNew} />
+      </div>}
+      </section>}
     </div>
   );
 }

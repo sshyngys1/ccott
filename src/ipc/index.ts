@@ -53,7 +53,24 @@ export function invokeRecentMaximizedApps(): Promise<FullscreenApp[]> {
 export async function listen<E extends EventName>(event: E, cb: (payload: Events[E]) => void): Promise<Unlisten> {
   if (isTauri()) {
     const { listen: tauriListen } = await import("@tauri-apps/api/event");
-    return tauriListen<Events[E]>(event, (e) => cb(e.payload));
+    const stop = await tauriListen<Events[E]>(event, (e) => cb(e.payload));
+    if (event !== "control://changed" && event !== "reminders://due") return stop;
+    // Private lifecycle signal: no public Commands/Events contract extension is required.
+    const { emit } = await import("@tauri-apps/api/event");
+    const token = crypto.randomUUID();
+    const lifecycle = event === "reminders://due" ? "reminders://subscription" : "control://subscription";
+    try { await emit(lifecycle, { token, active: true }); }
+    catch (error) { stop(); throw error; }
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      stop();
+      window.removeEventListener("pagehide", close);
+      void emit(lifecycle, { token, active: false }).catch(() => {});
+    };
+    window.addEventListener("pagehide", close);
+    return close;
   }
   return (await loadMock()).mockListen(event, cb);
 }

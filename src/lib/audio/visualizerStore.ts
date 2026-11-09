@@ -3,6 +3,7 @@ import { useEffect, type RefObject } from "react";
 import type { AudioSpectrum } from "../../shared/types";
 import { invoke, listen, type Unlisten } from "../../ipc";
 import { retainAudio, useAudioStore } from "./store";
+import { useFeatureEnabled } from "../features";
 import { useDocumentVisible } from "../useDocumentVisible";
 import { SpectrumPainter } from "./spectrumPainter";
 
@@ -149,15 +150,19 @@ if (import.meta.hot) import.meta.hot.dispose(data => {
 });
 
 export function useSpectrumBars(target: RefObject<HTMLElement | null>, playing: boolean): void {
+  const meterEnabled = useFeatureEnabled("audioMeter");
   const audible = useAudioStore(state => state.ready && !state.audio.muted && state.audio.volume > 0);
   const visible = useDocumentVisible();
-  useEffect(() => retainAudio(), []);
+  useEffect(() => {
+    if (!meterEnabled) return;
+    return retainAudio();
+  }, [meterEnabled]);
   useEffect(() => {
     const bars = target.current?.querySelectorAll<HTMLElement>(":scope > i");
     if (!bars) return;
     const painter = new SpectrumPainter(bars);
     painter.reset();
-    if (!playing || !audible || !visible) return;
+    if (!meterEnabled || !playing || !audible || !visible) return;
     const unsubscribe = visualizerManager.subscribe(reset => {
       if (reset) painter.reset();
       else painter.update(visualizerManager.getSnapshot());
@@ -170,5 +175,5 @@ export function useSpectrumBars(target: RefObject<HTMLElement | null>, playing: 
       release();
       painter.reset();
     };
-  }, [target, playing, audible, visible]);
+  }, [target, meterEnabled, playing, audible, visible]);
 }

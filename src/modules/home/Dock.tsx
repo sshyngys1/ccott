@@ -4,20 +4,22 @@ import { useIslandStore } from "../../store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t, useT } from "../../i18n";
 import { IconClose, IconFile, IconFolder, IconPlus, IconTrash } from "../../design/icons";
+import { useFeatureEnabled } from "../../lib/features";
 import { DockMenu } from "./DockMenu";
 import {
   chooseDockItems,
   dragDockItem,
-  initDock,
   movedIds,
   openDockItem,
   removeDockItem,
   reorderDock,
+  retainDock,
   useDockStore,
 } from "../../lib/dock/store";
 
 export function Dock() {
   useT();
+  const dockEnabled = useFeatureEnabled("dock");
   const reduce = useReducedMotion();
   const liteMode = useIslandStore(s => s.settings.liteMode);
   const mode = useIslandStore(s => s.mode);
@@ -39,9 +41,14 @@ export function Dock() {
   } | null>(null);
   const suppressClick = useRef(false);
   useEffect(() => {
-    void initDock();
-    return () => useDockStore.setState({ interacting: false });
-  }, []);
+    if (!dockEnabled) return;
+    const release = retainDock();
+    return () => {
+      release();
+      useDockStore.setState({ interacting: false, dragging: false });
+    };
+  }, [dockEnabled]);
+  if (!dockEnabled) return null;
   const finish = (cancel = false) => {
     const drag = gesture.current;
     if (!drag)

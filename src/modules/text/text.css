@@ -19,6 +19,10 @@
   flex-direction: column;
   gap: var(--ig-space-1);
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ig-stroke-strong) transparent;
 }
 .tx-group {
   display: flex;

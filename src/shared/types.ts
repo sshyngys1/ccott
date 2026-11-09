@@ -146,7 +146,46 @@ export interface Settings {
   shelfKeepAfterDrag: boolean;
   /** v0.3 (§22): shelf items older than this many hours are removed; 0 = keep forever. One of SHELF_RETENTION_HOURS. Default 24. */
   shelfRetentionHours: number;
+  /** v0.4 (§23): order of the island tabs. Ids missing here are appended in DEFAULT_TAB_ORDER order; unknown ids
+   *  (newer build) are kept by Rust and skipped by the UI. Default DEFAULT_TAB_ORDER. */
+  tabOrder: ModuleId[];
+  /** v0.4 (§23): switched-off features — their UI is hidden and they hold no memory or background work.
+   *  A tab feature also hides its tab. Default []. Downloads keep their own `downloadsMonitor` switch. */
+  disabledFeatures: FeatureId[];
+  /** v0.4 (§24): currency the command bar converts into when the query names no target, ISO 4217 upper-case
+   *  (e.g. "RUB"); "" = as before (no default target). Default "". */
+  defaultCurrency: string;
+  /** v0.4 (§26): place for the weather; null = not chosen yet (Weather tab asks). Default null. */
+  weatherLocation: WeatherLocation | null;
+  /** v0.4 (§26): "c" = °C, km/h; "f" = °F, mph. Default "c" (Rust); the UI may switch to "f" once for en-US locale. */
+  weatherUnits: "c" | "f";
+  /** v0.4 (§30): synced lyrics. */
+  lyrics: LyricsSettings;
 }
+
+/** v0.4 (§30). */
+export interface LyricsSettings {
+  /** Look lyrics up online (LRCLIB; sends title/artist/album/duration). Default true (user decision 2026-11-09). */
+  enabled: boolean;
+  /** Show the current line in the collapsed pill while a synced track plays. Default true. */
+  inPill: boolean;
+  /** Announce pill lines to screen readers (aria-live polite, throttled). Default false. */
+  announce: boolean;
+  /** Shift applied to line timestamps, −5000…5000 ms. Default 0. */
+  offsetMs: number;
+}
+
+/** v0.4 (§23): features the user can switch off. "home" is not one of them — the Home tab always exists. */
+export type FeatureId =
+  | "clipboard" | "text" | "notes" | "shelf" | "dock" | "battery" | "audioMeter"
+  /** v0.4 wave 3: weather tab + background refresh (§26); control-center tab (§27); AI agent monitor (§29).
+   *  Reminders (§28) belong to "notes". */
+  | "weather" | "control" | "agents"
+  /** v0.4 (§30): synced lyrics (button on the player, lyrics view, pill line, lookups). */
+  | "lyrics";
+
+/** v0.4 (§23): factory tab order (= v0.3). */
+export const DEFAULT_TAB_ORDER: readonly ModuleId[] = ["home", "clipboard", "text", "notes", "shelf", "weather", "control", "agents"];
 
 /** v0.3 (§22): retention choices offered in Settings (hours; 0 = forever). */
 export const SHELF_RETENTION_HOURS: readonly number[] = [1, 24, 72, 168, 0];
@@ -333,6 +372,139 @@ export interface ShelfItem {
   icon: string;
 }
 
+// ───────────────────────────── Weather (v0.4 §26, R2) ─────────────────────────────
+
+export interface WeatherLocation {
+  /** User-visible, e.g. "Алматы, Казахстан". */
+  name: string;
+  lat: number;
+  lon: number;
+}
+export type WeatherCode = "clear" | "partly" | "cloudy" | "fog" | "drizzle" | "rain" | "snow" | "sleet" | "thunder";
+export interface WeatherNow {
+  /** Always metric in IPC; the UI converts for weatherUnits = "f". */
+  tempC: number;
+  feelsLikeC: number;
+  code: WeatherCode;
+  isDay: boolean;
+  windKmh: number;
+  /** 0–100. */
+  humidity: number;
+}
+export interface WeatherHour {
+  /** Epoch ms, start of the hour. */
+  time: number;
+  tempC: number;
+  code: WeatherCode;
+  /** 0–100, null when the provider has none. */
+  precipProb: number | null;
+}
+export interface WeatherDay {
+  /** Local date "YYYY-MM-DD" at the location. */
+  date: string;
+  minC: number;
+  maxC: number;
+  code: WeatherCode;
+  precipProb: number | null;
+}
+export interface WeatherReport {
+  location: WeatherLocation;
+  /** Epoch ms of the provider data. */
+  updatedAt: number;
+  now: WeatherNow;
+  /** Next 24 hours. */
+  hours: WeatherHour[];
+  /** Today + 6 days. */
+  days: WeatherDay[];
+  /** Minutes until precipitation starts within the next 2 h (0 = already), null = none expected. */
+  precipInMin: number | null;
+  precipKind: "rain" | "snow" | null;
+  /** Served from disk cache because the network failed. */
+  stale: boolean;
+}
+
+// ───────────────────────────── Control center (v0.4 §27, R2) ─────────────────────────────
+
+export type RadioKind = "wifi" | "bluetooth";
+export interface RadioState {
+  kind: RadioKind;
+  /** unavailable = no adapter, or the driver does not allow software toggling. */
+  state: "on" | "off" | "unavailable";
+}
+export interface WifiInfo {
+  connected: boolean;
+  ssid: string | null;
+  /** 0–100. */
+  signal: number | null;
+}
+export interface BtDevice {
+  id: string;
+  name: string;
+  connected: boolean;
+  /** 0–100, null when the device does not report it. */
+  battery: number | null;
+}
+export type PowerMode = "efficiency" | "balanced" | "performance";
+export interface ControlState {
+  wifi: RadioState;
+  bluetooth: RadioState;
+  wifiInfo: WifiInfo;
+  /** Paired devices, connected first. */
+  btDevices: BtDevice[];
+  /** Windows app theme (AppsUseLightTheme = 0). */
+  darkMode: boolean;
+  /** null = the power-mode API is unavailable on this PC. */
+  powerMode: PowerMode | null;
+}
+
+// ───────────────────────────── Reminders (v0.4 §28, R2 storage) ─────────────────────────────
+
+export interface Reminder {
+  id: string;
+  text: string;
+  /** Epoch ms. */
+  dueAt: number;
+  createdAt: number;
+  /** true after it fired (or the user ticked it). */
+  done: boolean;
+}
+
+// ───────────────────────────── AI agent monitor (v0.4 §29, R2) ─────────────────────────────
+
+export type AgentTool = "claude-code" | "codex";
+export type AgentState = "working" | "waiting" | "done" | "error";
+export interface AgentSession {
+  /** Tool's session id. */
+  id: string;
+  tool: AgentTool;
+  /** Folder name of the session's cwd (no full path in the UI). */
+  project: string;
+  state: AgentState;
+  /** Short text from the hook (e.g. the permission prompt), null if none. Never the transcript. */
+  message: string | null;
+  /** Epoch ms. */
+  updatedAt: number;
+}
+export interface AgentHooksStatus {
+  /** Tool found on this PC (its config folder exists). */
+  claudeCode: { installed: boolean; hooksInstalled: boolean };
+  codex: { installed: boolean; hooksInstalled: boolean };
+}
+
+// ───────────────────────────── Lyrics (v0.4 §30, R2) ─────────────────────────────
+
+/** text "" = instrumental break. */
+export interface LyricsLine {
+  timeMs: number;
+  text: string;
+}
+export type LyricsResult =
+  | { status: "synced"; lines: LyricsLine[]; source: "lrclib" | "cache" }
+  | { status: "plain"; text: string; source: "lrclib" | "cache" }
+  | { status: "instrumental" }
+  | { status: "notFound" }
+  | { status: "error"; message: string };
+
 // ───────────────────────────── Command & event registry ─────────────────────────────
 
 /**
@@ -351,6 +523,8 @@ export interface Commands {
   // settings (R1, wave 2)
   settings_get: [Record<string, never>, Settings];
   settings_set: [{ patch: Partial<Settings> }, Settings];
+  /** v0.4, R1 (§25): open the separate Settings window, or focus it if it is already open. */
+  settings_window_open: [Record<string, never>, null];
   /** Recently seen fullscreen apps, newest first (≤ 20, persisted by R1). */
   window_recent_fullscreen_apps: [Record<string, never>, FullscreenApp[]];
   /** v0.2: recently seen maximized foreground apps, newest first (for the auto-hide list, §14). */
@@ -430,6 +604,39 @@ export interface Commands {
   downloads_list: [Record<string, never>, DownloadItem[]];
   /** open = open the finished file; reveal = show it (or the partial file) in Explorer. Rejects if it is gone. */
   downloads_open: [{ id: string; mode: "open" | "reveal" }, void];
+  // weather (v0.4 §26, R2)
+  /** Cached report for Settings.weatherLocation (refreshes if older than 30 min or force); null if no location set.
+   *  Rejects only when there is neither network nor cache. */
+  weather_get: [{ force?: boolean }, WeatherReport | null];
+  /** Geocoding search by city name (≥ 2 chars), up to 8 results, in the UI language. */
+  weather_search_location: [{ query: string; lang: "ru" | "en" }, WeatherLocation[]];
+  /** Windows location (asks the OS permission). Rejects with a user-readable reason when denied/unavailable. */
+  weather_locate: [Record<string, never>, WeatherLocation];
+  // control center (v0.4 §27, R2)
+  control_get: [Record<string, never>, ControlState];
+  /** Rejects when the radio is unavailable or Windows refused (message for the UI). */
+  control_set_radio: [{ kind: RadioKind; on: boolean }, ControlState];
+  control_set_dark_mode: [{ dark: boolean }, ControlState];
+  control_set_power_mode: [{ mode: PowerMode }, ControlState];
+  /** Open the matching Windows Settings page. */
+  control_open_settings: [{ page: "wifi" | "bluetooth" | "power" | "colors" }, void];
+  // reminders (v0.4 §28, R2)
+  reminders_list: [Record<string, never>, Reminder[]];
+  reminders_add: [{ text: string; dueAt: number }, Reminder];
+  reminders_update: [{ id: string; patch: Partial<Pick<Reminder, "text" | "dueAt" | "done">> }, Reminder];
+  reminders_delete: [{ id: string }, void];
+  // AI agent monitor (v0.4 §29, R2)
+  agents_list: [Record<string, never>, AgentSession[]];
+  /** Remove a session from the list. */
+  agents_dismiss: [{ id: string }, void];
+  agents_hooks_status: [Record<string, never>, AgentHooksStatus];
+  /** Add/remove CCOTT's hook entries in the tool's own config (merge, keep a backup, never touch other entries). */
+  agents_set_hooks: [{ tool: AgentTool; installed: boolean }, AgentHooksStatus];
+  // lyrics (v0.4 §30, R2)
+  /** LRCLIB lookup with a SQLite cache (hits, notFound and instrumental are cached). Never rejects: failures come back
+   *  as { status: "error" }. Returns notFound without a network call when Settings.lyrics.enabled is false. */
+  /** force = "Retry": forget the cached answer and the 10-minute limit for this track before looking it up. */
+  lyrics_get: [{ title: string; artist: string; album: string; durationMs: number; force?: boolean }, LyricsResult];
 }
 
 /** v0.3: a file being downloaded into the user's Downloads folder (browser partial files: .crdownload, .part, .download). */
@@ -507,6 +714,16 @@ export interface Events {
   "hotkeys://status": HotkeyStatus;
   /** v0.3, R2: the downloads list changed (same shape as `downloads_list`); at most ~2 Hz while bytes are flowing. */
   "downloads://changed": DownloadItem[];
+  /** v0.4 §26, R2: a new weather report (after refresh or location change). */
+  "weather://changed": WeatherReport;
+  /** v0.4 §27, R2: radio/theme/power/BT state changed (also when changed outside CCOTT). */
+  "control://changed": ControlState;
+  /** v0.4 §28, R2: list changed. */
+  "reminders://changed": Reminder[];
+  /** v0.4 §28, R2: a reminder is due now (also on start for ones missed while the app was closed). */
+  "reminders://due": Reminder;
+  /** v0.4 §29, R2: sessions changed. */
+  "agents://changed": AgentSession[];
 }
 
 export type EventName = keyof Events;

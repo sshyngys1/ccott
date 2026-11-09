@@ -1,16 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as ipc from "../../ipc";
 import { resetMock } from "../../ipc/mock";
+import { resetIslandStore, useIslandStore } from "../../store";
 import { AUTOSAVE_DEBOUNCE_MS, SAVE_RETRY_MS, hasPendingEdit, resetNotesStore, useNotesStore } from "./store";
 
 const S = () => useNotesStore.getState();
 
 beforeEach(async () => {
   resetMock();
+  resetIslandStore();
   resetNotesStore();
   await S().load();
 });
 afterEach(() => {
+  resetIslandStore();
   resetNotesStore();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -238,6 +241,90 @@ describe("notes store: retry and lifecycle", () => {
     resetNotesStore();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("save error → disable notes → 0 new notes_save over 30s fake time and pagehide ignored → re-enable resumes save without text loss", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const id = S().selected as number;
+    const real = ipc.invoke;
+    let fail = true;
+    const spy = vi.spyOn(ipc, "invoke").mockImplementation(((cmd: string, args: never) => {
+      if (cmd === "notes_save" && fail) return Promise.reject(new Error("disk"));
+      return real(cmd as never, args);
+    }) as never);
+    const countSaves = () => spy.mock.calls.filter((c) => c[0] === "notes_save").length;
+
+    S().edit("<p>сохранить после включения</p>");
+    await S().flush();
+    expect(countSaves()).toBe(1);
+    expect(S().save.state).toBe("error");
+    expect(hasPendingEdit()).toBe(true);
+    expect(vi.getTimerCount()).toBe(1);
+
+    const removeWinSpy = vi.spyOn(window, "removeEventListener");
+    const removeDocSpy = vi.spyOn(document, "removeEventListener");
+
+    // Disable notes feature
+    useIslandStore.getState().applySettings({
+      ...useIslandStore.getState().settings,
+      disabledFeatures: ["notes"],
+    });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(removeWinSpy).toHaveBeenCalledWith("pagehide", expect.any(Function));
+    expect(removeWinSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function));
+    expect(removeDocSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+
+    // Over 30s of fake time (and pagehide/beforeunload/visibilitychange), zero new notes_save calls happen
+    await vi.advanceTimersByTimeAsync(30_000);
+    window.dispatchEvent(new Event("pagehide"));
+    window.dispatchEvent(new Event("beforeunload"));
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(countSaves()).toBe(1);
+    expect(S().bodyOf(id)).toBe("<p>сохранить после включения</p>");
+
+    // Re-enable notes -> queued edit saves immediately without losing text and listeners re-attach
+    fail = false;
+    useIslandStore.getState().applySettings({
+      ...useIslandStore.getState().settings,
+      disabledFeatures: [],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(countSaves()).toBe(2);
+    expect(S().save.state).toBe("saved");
+    expect(hasPendingEdit()).toBe(false);
+    expect(S().notes.find((n) => n.id === id)?.body).toBe("<p>сохранить после включения</p>");
+
+    // Lifecycle listener works again after re-enabling
+    S().edit("<p>финальный flush</p>");
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(countSaves()).toBe(3);
+    expect(S().notes.find((n) => n.id === id)?.body).toBe("<p>финальный flush</p>");
+  });
+
+  it("disabling notes during debounce flushes unsaved typing once and leaves zero timers", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const id = S().selected as number;
+    const spy = vi.spyOn(ipc, "invoke");
+    const countSaves = () => spy.mock.calls.filter((c) => c[0] === "notes_save").length;
+
+    S().edit("<p>набрано перед выключением</p>");
+    expect(countSaves()).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
+
+    useIslandStore.getState().applySettings({
+      ...useIslandStore.getState().settings,
+      disabledFeatures: ["notes"],
+    });
+    await S().flush();
+    expect(countSaves()).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(S().notes.find((n) => n.id === id)?.body).toBe("<p>набрано перед выключением</p>");
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(countSaves()).toBe(1);
   });
 });
 

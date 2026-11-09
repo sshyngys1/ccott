@@ -3,35 +3,38 @@ import { afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { invoke } from "../ipc";
 import { mockCopy, mockEmit, mockListenerCount, resetMock } from "../ipc/mock";
 import { resetIslandStore, useIslandStore } from "../store";
+import { SettingsWindow } from "../shell/settings/SettingsWindow";
 import { Island } from "../shell/Island";
 import { resetNotesStore } from "../lib/notes/store";
 import { resetTextStore, useTextStore } from "../lib/text/store";
 import { t } from ".";
+import { SETTINGS_SECTION_KEY } from "../shell/settings/sections";
 import { backgroundScreens } from "../shell/preloadScreens";
 
 beforeAll(async () => {
   await Promise.all(backgroundScreens.map(screen => screen.preload()));
 });
 
-beforeEach(() => { resetMock(); resetIslandStore(); resetNotesStore(); resetTextStore(); });
+beforeEach(() => { localStorage.removeItem(SETTINGS_SECTION_KEY); resetMock(); resetIslandStore(); resetNotesStore(); resetTextStore(); });
 afterEach(() => { cleanup(); resetIslandStore(); resetNotesStore(); resetTextStore(); });
 
 it("switches mounted settings and all tabs immediately, persists the choice, and follows settings://changed", async () => {
   render(<Island />);
   await waitFor(() => expect(mockListenerCount("settings://changed")).toBeGreaterThan(0));
   act(() => useIslandStore.getState().setMode("expanded"));
-  fireEvent.click(await screen.findByRole("button", { name: "Настройки" }));
+  const settingsWindow = render(<SettingsWindow />);
   fireEvent.click(await screen.findByRole("radio", { name: "English" }));
   expect(await screen.findByRole("switch", { name: "Start with Windows" })).toBeInTheDocument();
-  expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeInTheDocument();
   expect(screen.getByRole("radiogroup", { name: "Language" })).toBeInTheDocument();
   expect(screen.getByRole("radio", { name: "System" })).toBeInTheDocument();
   expect(screen.getByRole("radio", { name: "English" })).toHaveAttribute("aria-checked", "true");
   expect(document.documentElement.lang).toBe("en");
   await waitFor(async () => expect((await invoke("settings_get")).language).toBe("en"));
-  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  fireEvent.click(screen.getByRole("button", { name: t("appearance") }));
+  expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeInTheDocument();
+  settingsWindow.unmount();
   await screen.findByRole("tab", { name: "Text" });
-  expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Clipboard", "Text", "Notes", "Shelf"]);
+  expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Clipboard", "Text", "Notes", "Shelf", "Weather", "Control", "Agents"]);
   fireEvent.click(screen.getByRole("tab", { name: "Text" }));
   expect(await screen.findByRole("textbox", { name: "Text to transform" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Format JSON" })).toBeInTheDocument();

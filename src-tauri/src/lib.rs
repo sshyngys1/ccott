@@ -8,17 +8,22 @@ mod tray;
 mod updater;
 mod window;
 // ── modules: R2 (Rust-System) ──
+mod agents;
 mod audio;
 mod capture;
 mod clipboard;
 mod cmd;
+mod control;
 mod db;
 mod dock;
 mod downloads;
+mod lyrics;
 mod media;
 mod notes;
+mod reminders;
 mod shelf;
 mod system;
+mod weather;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -47,10 +52,14 @@ pub fn run() {
             tauri::plugin::Builder::<tauri::Wry, ()>::new("system-shutdown")
                 .on_event(|app, event| {
                     if matches!(event, tauri::RunEvent::Exit) {
+                        weather::shutdown(app);
                         audio::shutdown(app);
                         system::shutdown(app);
+                        clipboard::shutdown(app);
                         downloads::shutdown(app);
+                        agents::shutdown(app);
                         shelf::shutdown(app);
+                        reminders::shutdown(app);
                         cmd::shutdown(app);
                     }
                 })
@@ -64,17 +73,23 @@ pub fn run() {
             tray::setup(app)?;
             updater::setup(app)?;
             // ── setup: R2 ──
+            app.handle().plugin(control::plugin())?;
             if let Some(anchor) = worker_app.upgrade() {
                 let _ = anchor.set(app.handle().clone());
             }
             db::setup(app)?;
+            reminders::setup(app, worker_app.clone())?;
             shelf::setup(app, worker_app.clone())?;
             audio::setup(app, worker_app.clone())?;
-            clipboard::setup(app)?;
+            clipboard::setup(app, worker_app.clone())?;
             media::setup(app)?;
             system::setup(app, worker_app.clone())?;
             downloads::setup(app, worker_app.clone())?;
             cmd::setup(app)?;
+            control::setup(app, worker_app.clone())?;
+            weather::setup(app, worker_app.clone())?;
+            agents::setup(app, worker_app.clone())?;
+            lyrics::setup(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -88,10 +103,20 @@ pub fn run() {
             window::window_recent_maximized_apps,
             settings::settings_get,
             settings::settings_set,
+            settings::window::settings_window_open,
             hotkeys::hotkeys_status,
             updater::updater_check,
             updater::updater_install,
             // ── commands: R2 ──
+            agents::agents_list,
+            agents::agents_dismiss,
+            agents::agents_hooks_status,
+            agents::agents_set_hooks,
+            control::control_get,
+            control::control_set_radio,
+            control::control_set_dark_mode,
+            control::control_set_power_mode,
+            control::control_open_settings,
             shelf::shelf_list,
             shelf::shelf_add,
             shelf::shelf_remove,
@@ -128,9 +153,17 @@ pub fn run() {
             notes::notes_list,
             notes::notes_save,
             notes::notes_delete,
+            reminders::reminders_list,
+            reminders::reminders_add,
+            reminders::reminders_update,
+            reminders::reminders_delete,
             system::system_get_battery,
             downloads::downloads_list,
             downloads::downloads_open,
+            weather::weather_get,
+            weather::weather_search_location,
+            weather::weather_locate,
+            lyrics::lyrics_get,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

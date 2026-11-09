@@ -1,5 +1,6 @@
 import { t } from "../i18n";
 import { consumeCaptureEcho, useCaptureStore } from "../lib/capture/store";
+import { isFeatureEnabled, useFeatureEnabled } from "../lib/features";
 // Owner: F1. Startup/side-effect hooks of the shell: theme, vibrancy, settings, mode → Rust.
 import { useEffect, useRef } from "react";
 import { durations } from "../design/motion";
@@ -7,6 +8,7 @@ import { invoke, listen } from "../ipc";
 import type { IslandMode, Settings } from "../shared/types";
 import { useIslandStore, type ResolvedTheme } from "../store";
 import { announceUpdate, clipboardToastPreview, showToast } from "./toast";
+import { useReminderDue } from "./reminders";
 
 const noop = () => {};
 
@@ -97,32 +99,22 @@ export function useModeSync(mode: IslandMode): void {
 
 /** Toasts (`clipboard://added` → «Скопировано», `updater://available` → «Доступно обновление», shell bus `toast`) stay in the pill for `durations.toastHold` seconds. */
 export function useToastSync(): void {
+  useReminderDue();
+  const clipboardEnabled = useFeatureEnabled("clipboard");
+
   useEffect(() => {
     let disposed = false;
-    let unlistenClipboard: () => void = noop;
     let unlistenUpdater: () => void = noop;
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Whatever shows a toast (clipboard event, updater, shell bus), a new one restarts the hold timer.
     const unsubscribe = useIslandStore.subscribe((s, prev) => {
       if (!s.toast || s.toast === prev.toast) return;
       clearTimeout(timer);
-      timer = setTimeout(() => useIslandStore.getState().setToast(null), durations.toastHold * 1000);
+      timer = setTimeout(() => useIslandStore.getState().setToast(null), s.toast.holdMs ?? durations.toastHold * 1000);
     });
     const offCapture = useCaptureStore.subscribe((s, previous) => {
       if (s.feedback && s.feedback !== previous.feedback) showToast({ label:s.feedback.message, onClick:s.feedback.onClick, color:s.feedback.color, preview:s.feedback.preview, actionLabel:s.feedback.actionLabel });
     });
-    listen("clipboard://added", (item) => {
-      if (consumeCaptureEcho(item)) return;
-      const preview = item.kind === "image" ? t("image") : item.kind === "files" ? t("files") : clipboardToastPreview(item.text, item.preview);
-      const previewKey = item.kind === "image" ? "image" : item.kind === "files" ? "files" : undefined;
-      showToast({ label: t("copied"), preview, previewKey });
-    }).then(
-      (u) => {
-        if (disposed) u();
-        else unlistenClipboard = u;
-      },
-      noop,
-    );
     listen("updater://available", (info) => {
       if (!disposed) announceUpdate(info);
     }).then(
@@ -134,11 +126,33 @@ export function useToastSync(): void {
     );
     return () => {
       disposed = true;
-      unlistenClipboard();
       unlistenUpdater();
       unsubscribe();
       offCapture();
       clearTimeout(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!clipboardEnabled) return;
+    let disposed = false;
+    let unlistenClipboard: () => void = noop;
+    listen("clipboard://added", (item) => {
+      if (disposed || !isFeatureEnabled("clipboard")) return;
+      if (consumeCaptureEcho(item)) return;
+      const preview = item.kind === "image" ? t("image") : item.kind === "files" ? t("files") : clipboardToastPreview(item.text, item.preview);
+      const previewKey = item.kind === "image" ? "image" : item.kind === "files" ? "files" : undefined;
+      showToast({ label: t("copied"), preview, previewKey });
+    }).then(
+      (u) => {
+        if (disposed) u();
+        else unlistenClipboard = u;
+      },
+      noop,
+    );
+    return () => {
+      disposed = true;
+      unlistenClipboard();
+    };
+  }, [clipboardEnabled]);
 }

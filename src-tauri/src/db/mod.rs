@@ -59,6 +59,23 @@ const MIGRATIONS: &[&str] = &[
         position INTEGER NOT NULL
     );
     CREATE INDEX idx_shelf_added ON shelf(added_at);",
+    // v5: reminders share the existing database; dates preserve the IPC finite number.
+    "CREATE TABLE reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT NOT NULL,
+        due_at REAL NOT NULL,
+        created_at INTEGER NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_reminders_due ON reminders(done, due_at);",
+    // v6: synced-lyrics cache (§30). status: synced | plain | instrumental | notFound.
+    "CREATE TABLE lyrics_cache (
+        key TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        payload TEXT NOT NULL DEFAULT '',
+        fetched_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_lyrics_cache_fetched ON lyrics_cache(fetched_at);",
 ];
 
 /// Current schema version (= number of migrations).
@@ -186,7 +203,14 @@ mod tests {
             .unwrap();
         assert_eq!(v, schema_version());
         migrate(&mut conn).unwrap();
-        for table in ["clips", "notes", "dock", "shelf"] {
+        for table in [
+            "clips",
+            "notes",
+            "dock",
+            "shelf",
+            "reminders",
+            "lyrics_cache",
+        ] {
             let n: i64 = conn
                 .query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -196,6 +220,38 @@ mod tests {
                 .unwrap();
             assert_eq!(n, 1, "table {table}");
         }
+    }
+
+    #[test]
+    fn reminders_upgrade_v4_preserves_notes_and_shelf() {
+        let mut c = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..4] {
+            c.execute_batch(sql).unwrap();
+        }
+        c.pragma_update(None, "user_version", 4).unwrap();
+        c.execute(
+            "INSERT INTO notes(folder,title,body,updated_at) VALUES ('f','title','body',123)",
+            [],
+        )
+        .unwrap();
+        c.execute("INSERT INTO shelf(path,path_key,name,kind,added_at,position) VALUES ('p','p','file','file',123,0)", []).unwrap();
+        migrate(&mut c).unwrap();
+        migrate(&mut c).unwrap();
+        assert_eq!(
+            c.query_row("SELECT body FROM notes", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "body"
+        );
+        assert_eq!(
+            c.query_row("SELECT name FROM shelf", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "file"
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM reminders", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -257,7 +313,7 @@ mod tests {
                 .unwrap(),
             "<p>Текст</p>"
         );
-        assert_eq!(schema_version(), 4);
+        assert_eq!(schema_version(), 6);
     }
 
     #[test]

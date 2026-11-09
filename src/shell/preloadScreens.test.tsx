@@ -4,7 +4,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mockEmit, mockListenerCount, resetMock } from "../ipc/mock";
 import { deferredScreen } from "../lib/deferredScreen";
 import { resetIslandStore, useIslandStore } from "../store";
-import { backgroundScreens, scheduleScreenPreload } from "./preloadScreens";
+import {
+  backgroundScreens,
+  getEnabledBackgroundScreens,
+  scheduleScreenPreload,
+  useScreenPreload,
+} from "./preloadScreens";
 
 let nextId: number;
 let frames: Map<number, FrameRequestCallback>;
@@ -120,4 +125,53 @@ it("cancels pending paint/idle work on unmount and supports the timeout fallback
   await vi.advanceTimersByTimeAsync(1501);
   expect(importer).toHaveBeenCalledOnce();
   expect(tab.isLoaded()).toBe(true);
+});
+
+it("getEnabledBackgroundScreens and useScreenPreload skip disabled tab chunks and preload when later enabled", async () => {
+  expect(getEnabledBackgroundScreens(["clipboard", "notes", "shelf", "weather", "agents"])).toHaveLength(1); // text only
+  function Host() {
+    useScreenPreload();
+    return null;
+  }
+  useIslandStore.getState().applySettings({
+    ...useIslandStore.getState().settings,
+    disabledFeatures: ["clipboard", "text", "notes", "shelf", "weather", "agents"],
+  });
+  const loaded = new Set<number>();
+  const spies = backgroundScreens.map((s, idx) => {
+    vi.spyOn(s, "isLoaded").mockImplementation(() => loaded.has(idx));
+    return vi.spyOn(s, "preload").mockImplementation(async () => {
+      loaded.add(idx);
+      return { default: () => null };
+    });
+  });
+  render(<Host />);
+  frame();
+  frame();
+  await vi.advanceTimersByTimeAsync(1500);
+  await act(async () => {
+    idleTurn();
+  });
+  // Every deferred tab is disabled, including Agents.
+  spies.forEach(spy => expect(spy).not.toHaveBeenCalled());
+
+  // Re-enable notes, shelf, weather and agents while keeping clipboard and text disabled.
+  act(() => {
+    useIslandStore.getState().applySettings({
+      ...useIslandStore.getState().settings,
+      disabledFeatures: ["clipboard", "text"],
+    });
+  });
+  frame();
+  frame();
+  await vi.advanceTimersByTimeAsync(1500);
+  for (let i = 2; i < backgroundScreens.length; i++) {
+    await act(async () => { idleTurn(); });
+  }
+  expect(spies[0]).not.toHaveBeenCalled();
+  expect(spies[1]).not.toHaveBeenCalled();
+  expect(spies[2]).toHaveBeenCalledOnce();
+  expect(spies[3]).toHaveBeenCalledOnce();
+  expect(spies[4]).toHaveBeenCalledOnce();
+  expect(spies[5]).toHaveBeenCalledOnce();
 });

@@ -75,6 +75,44 @@ export const WHATS_NEW_CATALOG: Record<string, WhatsNewItem[]> = {
       titleKey: "whatsNew.v030.motion.title", descKey: "whatsNew.v030.motion.desc",
     },
   ],
+  "0.4.0": [
+    {
+      id: "lyrics", icon: "player",
+      titleKey: "whatsNew.v040.lyrics.title", descKey: "whatsNew.v040.lyrics.desc",
+      stepKeys: ["whatsNew.v040.lyrics.step1"],
+    },
+    {
+      id: "control", icon: "tiles",
+      titleKey: "whatsNew.v040.control.title", descKey: "whatsNew.v040.control.desc",
+    },
+    {
+      id: "weather", icon: "changelog",
+      titleKey: "whatsNew.v040.weather.title", descKey: "whatsNew.v040.weather.desc",
+    },
+    {
+      id: "reminders", icon: "changelog",
+      titleKey: "whatsNew.v040.reminders.title", descKey: "whatsNew.v040.reminders.desc",
+      stepKeys: ["whatsNew.v040.reminders.step1"],
+    },
+    {
+      id: "agents", icon: "command",
+      titleKey: "whatsNew.v040.agents.title", descKey: "whatsNew.v040.agents.desc",
+      stepKeys: ["whatsNew.v040.agents.step1"],
+    },
+    {
+      id: "settings", icon: "tiles",
+      titleKey: "whatsNew.v040.settings.title", descKey: "whatsNew.v040.settings.desc",
+      stepKeys: ["whatsNew.v040.settings.step1"],
+    },
+    {
+      id: "files", icon: "shelf",
+      titleKey: "whatsNew.v040.files.title", descKey: "whatsNew.v040.files.desc",
+    },
+    {
+      id: "currency", icon: "command",
+      titleKey: "whatsNew.v040.currency.title", descKey: "whatsNew.v040.currency.desc",
+    },
+  ],
 };
 
 export const WHATS_NEW_STORAGE_KEY = "ccott:whats-new:last-acknowledged";

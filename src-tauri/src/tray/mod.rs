@@ -7,14 +7,12 @@ use serde_json::json;
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, Wry};
+use tauri::{AppHandle, Manager, Wry};
 use windows::Win32::Globalization::GetUserDefaultUILanguage;
 
 const MENU_EXIT: &str = "exit";
 const MENU_SETTINGS: &str = "settings";
 const MENU_AUTOSTART: &str = "autostart";
-/// Event the UI listens to in order to open its settings (contract section 3).
-const OPEN_SETTINGS_EVENT: &str = "island://open-settings";
 
 /// Retained handles let settings changes update both labels and the autostart check mark.
 struct TrayItems {
@@ -31,7 +29,7 @@ fn is_russian(mode: LanguageMode, windows_language: u16) -> bool {
     }
 }
 
-fn labels(mode: LanguageMode) -> (&'static str, &'static str, &'static str) {
+pub(crate) fn labels(mode: LanguageMode) -> (&'static str, &'static str, &'static str) {
     // SAFETY: queries the current user's display language; it takes no pointers or handles.
     let system = unsafe { GetUserDefaultUILanguage() };
     if is_russian(mode, system) {
@@ -85,7 +83,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_EXIT => app.exit(0),
             MENU_SETTINGS => {
-                let _ = app.emit(OPEN_SETTINGS_EVENT, ());
+                crate::settings::window::open(app);
             }
             MENU_AUTOSTART => toggle_autostart(app),
             _ => {}

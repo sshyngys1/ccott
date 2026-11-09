@@ -30,7 +30,7 @@ it.each(["ru", "en"] as const)("places accessible transport controls above the t
   expect(controls.previousElementSibling).toHaveClass("hm-player-top");
   expect(controls.nextElementSibling).toHaveClass("hm-seek");
   expect([...controls.querySelectorAll("button")].map(button => button.getAttribute("aria-label")))
-    .toEqual([t("previousTrack"), t("pause"), t("nextTrack")]);
+    .toEqual([t("previousTrack"), t("pause"), t("nextTrack"), t("lyrics.title")]);
   expect(screen.getByText(title.trim())).toHaveClass("ig-truncate");
   expect(screen.getByText(title.trim())).toHaveAttribute("title", title);
   // A stop that outlasted the track-switch bridge (TRACK_GAP_MS).

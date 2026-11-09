@@ -5,7 +5,7 @@ import * as ipc from "../../ipc";
 import { mockDownloadOpens, mockEmit, mockListenerCount, mockStartDownload, resetMock } from "../../ipc/mock";
 import { onShellRequest, type ShellRequest } from "../../shared/shellBus";
 import type { DownloadItem } from "../../shared/types";
-import { DownloadsPill } from "./DownloadsPill";
+import { DownloadsPill, downloadProgressShift } from "./DownloadsPill";
 import { downloadsSummary, downloadsTitle, formatBytes } from "./format";
 import { initDownloads, openDownload, resetDownloadsStore, useDownloadsStore } from "./store";
 
@@ -29,6 +29,43 @@ describe("downloads", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
     act(() => useDownloadsStore.setState({ items: [{ ...active, state: "done" }] }));
     expect(container.querySelector(".ig-downloads-pill")).toBeNull();
+  });
+
+  it("progress bar: translateX for 0, 37 and 100%, without scale, and no bar for unknown size", () => {
+    expect(downloadProgressShift(0)).toBe("translateX(-100%)");
+    expect(downloadProgressShift(37)).toBe("translateX(-63%)");
+    expect(downloadProgressShift(100)).toBe("translateX(0%)");
+
+    // Unknown size: shimmer mounted, no known progress bar
+    useDownloadsStore.setState({ items: [active] });
+    const { container, rerender } = render(<DownloadsPill />);
+    expect(container.querySelector(".ig-downloads-progress-fill--unknown")).toBeInTheDocument();
+    expect(container.querySelector(".ig-downloads-progress-fill:not(.ig-downloads-progress-fill--unknown)")).toBeNull();
+
+    // 0%
+    act(() => useDownloadsStore.setState({ items: [{ ...active, receivedBytes: 0, totalBytes: 100 }] }));
+    rerender(<DownloadsPill />);
+    let fill = container.querySelector<HTMLElement>(".ig-downloads-progress-fill:not(.ig-downloads-progress-fill--unknown)");
+    expect(fill).not.toBeNull();
+    expect(fill?.style.transform).toBe("translateX(-100%)");
+    expect(fill?.style.transform).not.toContain("scale");
+    expect(window.getComputedStyle(fill!).transform).not.toContain("scale");
+
+    // 37%
+    act(() => useDownloadsStore.setState({ items: [{ ...active, receivedBytes: 37, totalBytes: 100 }] }));
+    rerender(<DownloadsPill />);
+    fill = container.querySelector<HTMLElement>(".ig-downloads-progress-fill:not(.ig-downloads-progress-fill--unknown)");
+    expect(fill?.style.transform).toBe("translateX(-63%)");
+    expect(fill?.style.transform).not.toContain("scale");
+    expect(window.getComputedStyle(fill!).transform).not.toContain("scale");
+
+    // 100%
+    act(() => useDownloadsStore.setState({ items: [{ ...active, receivedBytes: 100, totalBytes: 100 }] }));
+    rerender(<DownloadsPill />);
+    fill = container.querySelector<HTMLElement>(".ig-downloads-progress-fill:not(.ig-downloads-progress-fill--unknown)");
+    expect(fill?.style.transform).toBe("translateX(0%)");
+    expect(fill?.style.transform).not.toContain("scale");
+    expect(window.getComputedStyle(fill!).transform).not.toContain("scale");
   });
 
   it("shares one load/subscription and updates from mockEmit", async () => {

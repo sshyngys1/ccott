@@ -16,7 +16,6 @@ import { resetIslandStore, useIslandStore } from "../../store";
 import { useLiteSync, useSettingsSync } from "../useShellSync";
 import { DEFAULT_AUTO_HIDE_APPS } from "./hotkey";
 import { DEFAULT_QUICK_TILES } from "../../shared/types";
-import { useTilesEditStore } from "../../lib/tiles/store";
 import { SettingsView } from "./SettingsView";
 import { MonitorPicker } from "./MonitorPicker";
 
@@ -41,29 +40,13 @@ afterEach(() => {
 const backend = () => invoke("settings_get");
 
 describe("SettingsView", () => {
-  it("stacks the two columns independently and preserves section labels and DOM/Tab order", () => {
+  it("preserves accessible section labels and every settings group in the complete inventory", () => {
     const { container } = render(<SettingsView />);
-    const columns = container.querySelector(".ig-settings-columns")!;
-    const labels = (elements: Iterable<Element>) => [...elements].map(el => el.getAttribute("aria-labelledby"));
-    expect(labels(columns.querySelectorAll(":scope > .ig-settings-column--left")))
-      .toEqual(["ig-set-look", "ig-set-tiles"]);
-    const right = columns.querySelectorAll(":scope > .ig-settings-column--right");
-    expect(right).toHaveLength(1);
-    expect(labels(right[0].children)).toEqual(["ig-set-behaviour", "ig-set-shelf"]);
-    const sections = container.querySelectorAll("section");
-    const order = ["ig-set-look", "ig-set-behaviour", "ig-set-shelf", "ig-set-tiles", "ig-set-fullscreen", "ig-set-autohide"];
-    expect(labels(sections)).toEqual(order);
-    for (const section of sections) {
+    expect([...container.querySelectorAll("section")].map(section => section.getAttribute("aria-labelledby")))
+      .toEqual(["ig-set-general", "ig-set-appearance", "ig-set-island", "ig-set-fullscreen", "ig-set-autohide", "ig-set-hotkeys", "ig-set-features", "ig-set-agents", "ig-set-home", "ig-set-weather", "ig-set-lyrics", "ig-set-shelf", "ig-set-capture", "ig-set-command", "ig-set-about"]);
+    for (const section of container.querySelectorAll("section")) {
       expect(section).toHaveAccessibleName(section.querySelector("h4")!.textContent!);
     }
-    // Tab still follows the original sections; no positive tabindex or new stops on wrappers.
-    const stops = [...container.querySelectorAll<HTMLElement>('button, input, select, [tabindex]')]
-      .filter(el => el.tabIndex >= 0 && !el.matches(":disabled"));
-    expect([...new Set(stops.map(el => el.closest("section")?.getAttribute("aria-labelledby")))])
-      .toEqual(order);
-    expect(stops.every(el => el.tabIndex === 0)).toBe(true);
-    expect(labels(container.querySelectorAll(".ig-settings > .ig-settings-card--wide")))
-      .toEqual(["ig-set-fullscreen", "ig-set-autohide"]);
   });
 
   it.each(["ru", "en"] as const)("%s keeps shelf retention native, labelled, styled and persistent", async (language) => {
@@ -89,7 +72,7 @@ describe("SettingsView", () => {
     const hint = language === "ru" ? "Занято другим приложением — выберите другое" : "Used by another app — choose another shortcut";
     const view = render(<Harness />);
     await waitFor(() => expect(screen.getAllByText(hint)).toHaveLength(2));
-    const input = screen.getByLabelText(language === "ru" ? "Командная строка" : "Command bar");
+    const input = screen.getByRole("textbox", { name: language === "ru" ? "Командная строка" : "Command bar" });
     fireEvent.click(input);
     fireEvent.keyDown(input, { key: "z", code: "KeyZ", ctrlKey: true, altKey: true });
     expect(await screen.findByRole("alert")).toHaveTextContent(language === "ru" ? /занято/ : /register/);
@@ -102,7 +85,7 @@ describe("SettingsView", () => {
     expect(input).toHaveValue("Ctrl+Alt+K");
     expect(screen.queryByRole("alert")).toBeNull();
     view.unmount(); render(<Harness />);
-    expect(screen.getByLabelText(language === "ru" ? "Командная строка" : "Command bar")).toHaveValue("Ctrl+Alt+K");
+    expect(screen.getByRole("textbox", { name: language === "ru" ? "Командная строка" : "Command bar" })).toHaveValue("Ctrl+Alt+K");
   });
   it.each([["ru", "Следить за загрузками"], ["en", "Monitor downloads"]] as const)("%s saves downloads monitoring and restores the switch on reopen", async (language, label) => {
     await invoke("settings_set", { patch: { language } });
@@ -377,7 +360,7 @@ describe("SettingsView", () => {
 
   it("records a new command bar hotkey, resets and disables it", async () => {
     render(<SettingsView />);
-    const input = screen.getByLabelText("Командная строка");
+    const input = screen.getByRole("textbox", { name: "Командная строка" });
     expect(input).toHaveValue("Ctrl+Alt+Space");
 
     // Record Alt+Space
@@ -484,21 +467,11 @@ describe("SettingsView", () => {
   it("renders tiles section and handles customize and reset buttons", async () => {
     useIslandStore.getState().applySettings({ ...useIslandStore.getState().settings, quickTiles: [] });
     render(<SettingsView />);
-    const section = screen.getByRole("region", { name: "Плитки" });
+    const section = screen.getByRole("region", { name: "Главная" });
     expect(section).toBeInTheDocument();
 
-    const customizeBtn = within(section).getByRole("button", { name: "Настроить" });
-    const resetBtn = within(section).getByRole("button", { name: "Сбросить плитки" });
-
-    expect(customizeBtn).toBeInTheDocument();
+    const resetBtn = within(section).getByRole("button");
     expect(resetBtn).toBeInTheDocument();
-
-    // Click customize: sets editing = true, view = "tabs", activeTab = "home"
-    useTilesEditStore.setState({ editing: false });
-    fireEvent.click(customizeBtn);
-    expect(useTilesEditStore.getState().editing).toBe(true);
-    expect(useIslandStore.getState().view).toBe("tabs");
-    expect(useIslandStore.getState().activeTab).toBe("home");
 
     // Click reset: sets quickTiles to DEFAULT_QUICK_TILES
     await invoke("settings_set", { patch: { quickTiles: [] } });
@@ -507,5 +480,16 @@ describe("SettingsView", () => {
       const current = await invoke("settings_get");
       expect(current.quickTiles).toEqual(DEFAULT_QUICK_TILES);
     });
+  });
+
+  it.each(["ru", "en"] as const)("%s renders visible defaultCurrency label in command section", async (language) => {
+    await invoke("settings_set", { patch: { language } });
+    useIslandStore.getState().applySettings(await backend());
+    render(<SettingsView section="command" />);
+    const label = screen.getByText(language === "ru" ? "Валюта по умолчанию" : "Default currency");
+    expect(label.tagName).toBe("LABEL");
+    expect(label).toHaveAttribute("for", "ig-default-currency");
+    expect(label).toHaveClass("ig-setting-row__title");
+    expect(label.closest(".ig-setting-row")).toHaveClass("ig-setting-row--stacked");
   });
 });

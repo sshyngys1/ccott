@@ -8,15 +8,18 @@
 //! clipboard message loop does decoding or database work.
 
 mod image;
+mod lifecycle;
 mod store;
 mod win;
 
-use std::sync::mpsc;
+use std::sync::{Mutex, mpsc};
+use std::thread::JoinHandle;
 
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::{Db, now_ms};
+use crate::system::worker::{WorkerApp, with_app};
 use store::{ClipItem, ClipKind, MAX_TEXT_BYTES, NewClip};
 use win::{Captured, Content, Raw};
 
@@ -116,7 +119,7 @@ fn is_echo(last: Option<(i64, i64)>, id: i64, now: i64) -> bool {
     last.is_some_and(|(last_id, at)| last_id == id && now - at < ECHO_WINDOW_MS)
 }
 
-fn process(db: &Db, app: &AppHandle, cap: Captured, last_announced: &mut Option<(i64, i64)>) {
+fn process(db: &Db, app: &WorkerApp, cap: Captured, last_announced: &mut Option<(i64, i64)>) {
     let Some(clip) = build_clip(cap.raw, cap.source_app) else {
         return;
     };
@@ -125,33 +128,123 @@ fn process(db: &Db, app: &AppHandle, cap: Captured, last_announced: &mut Option<
     match result {
         Ok((item, _is_new)) => {
             if !is_echo(*last_announced, item.id, now) {
-                let _ = app.emit("clipboard://added", &item);
+                with_app(app, |app| app.emit("clipboard://added", &item));
             }
             *last_announced = Some((item.id, now));
-            let _ = app.emit("clipboard://changed", ());
+            with_app(app, |app| app.emit("clipboard://changed", ()));
         }
         Err(e) => log::warn!("clipboard: cannot store entry: {e}"),
     }
 }
 
-/// Starts the listener and worker threads. Requires `db::setup` to have run.
-pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let db = app.state::<Db>().inner().clone();
-    let handle = app.handle().clone();
-    let (tx, rx) = mpsc::channel::<Captured>();
+struct ClipboardWorker {
+    hwnd: isize,
+    listener: Option<JoinHandle<()>>,
+    worker: Option<JoinHandle<()>>,
+}
 
-    std::thread::Builder::new()
+impl Drop for ClipboardWorker {
+    fn drop(&mut self) {
+        win::stop_listener(self.hwnd);
+        if let Some(thread) = self.listener.take() {
+            let _ = thread.join();
+        }
+        if let Some(thread) = self.worker.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+struct ClipboardState {
+    watcher: Mutex<lifecycle::Watcher<ClipboardWorker>>,
+    app: WorkerApp,
+}
+
+impl ClipboardState {
+    fn shutdown(&self) {
+        self.watcher
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .shutdown();
+    }
+}
+
+fn start_worker(
+    mut process: impl FnMut(Captured) + Send + 'static,
+) -> Result<ClipboardWorker, Box<dyn std::error::Error>> {
+    // The listener must never block behind image decoding/SQLite or discard a captured update.
+    // Closing its sole sender lets the worker drain all accepted captures before join.
+    let (tx, rx) = mpsc::channel::<Captured>();
+    let worker = std::thread::Builder::new()
         .name("clipboard-worker".into())
         .spawn(move || {
-            let mut last_announced = None;
             for cap in rx {
-                process(&db, &handle, cap, &mut last_announced);
+                process(cap);
             }
         })?;
-    std::thread::Builder::new()
+    let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+    let listener = match std::thread::Builder::new()
         .name("clipboard-listener".into())
-        .spawn(move || win::run_listener(tx))?;
+        .spawn(move || win::run_listener(tx, ready_tx))
+    {
+        Ok(listener) => listener,
+        Err(error) => {
+            let _ = worker.join();
+            return Err(error.into());
+        }
+    };
+    let hwnd = ready_rx.recv().unwrap_or(0);
+    let running = ClipboardWorker {
+        hwnd,
+        listener: Some(listener),
+        worker: Some(worker),
+    };
+    if hwnd == 0 {
+        return Err("clipboard listener failed to start".into());
+    }
+    Ok(running)
+}
+
+fn start(
+    app: &AppHandle,
+    handle: WorkerApp,
+) -> Result<ClipboardWorker, Box<dyn std::error::Error>> {
+    let db = app.state::<Db>().inner().clone();
+    let mut last_announced = None;
+    start_worker(move |cap| process(&db, &handle, cap, &mut last_announced))
+}
+
+/// Requires settings and database setup. Saved disabled state creates no clipboard threads.
+pub fn setup(app: &mut tauri::App, handle: WorkerApp) -> Result<(), Box<dyn std::error::Error>> {
+    let mut watcher = lifecycle::Watcher::default();
+    let enabled = !crate::settings::current(app.handle())
+        .disabled_features
+        .iter()
+        .any(|id| id == "clipboard");
+    watcher.set_enabled(enabled, || start(app.handle(), handle.clone()))?;
+    app.manage(ClipboardState {
+        watcher: Mutex::new(watcher),
+        app: handle,
+    });
     Ok(())
+}
+
+pub fn set_enabled(app: &AppHandle, enabled: bool) {
+    if let Some(state) = app.try_state::<ClipboardState>()
+        && let Err(error) = state
+            .watcher
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .set_enabled(enabled, || start(app, state.app.clone()))
+    {
+        log::error!("clipboard: cannot start watcher: {error}");
+    }
+}
+
+pub fn shutdown(app: &AppHandle) {
+    if let Some(state) = app.try_state::<ClipboardState>() {
+        state.shutdown();
+    }
 }
 
 fn emit_changed(app: &AppHandle) {
@@ -224,6 +317,93 @@ pub async fn clipboard_clear(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn blocked_worker_delivers_all_captures_in_order_and_shutdown_joins_real_threads() {
+        let mut session = win::test_support::Session::new();
+        let (delivered, received) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let lifetime = std::sync::Arc::new(());
+        let worker_lifetime = std::sync::Arc::downgrade(&lifetime);
+        let running = start_worker(move |cap| {
+            let _keep_alive = &lifetime;
+            if let Raw::Text(text) = cap.raw {
+                delivered.send(text.clone()).unwrap();
+                if text == "blocked first" {
+                    blocked.recv_timeout(Duration::from_secs(10)).unwrap();
+                }
+            }
+        })
+        .unwrap();
+        let hwnd = running.hwnd;
+        let mut watcher = lifecycle::Watcher::default();
+        watcher
+            .set_enabled(true, || Ok::<_, String>(running))
+            .unwrap();
+        let state = ClipboardState {
+            watcher: Mutex::new(watcher),
+            app: WorkerApp::new(),
+        };
+
+        copy_ocr("blocked first".into()).unwrap();
+        session.flush_listener(hwnd);
+        assert_eq!(
+            received.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "blocked first"
+        );
+        // The processing callback remains blocked while the real message loop captures these.
+        for text in ["second", "third", "fourth", "last"] {
+            copy_ocr(text.into()).unwrap();
+            session.flush_listener(hwnd);
+        }
+        release.send(()).unwrap();
+        state.shutdown();
+        state.shutdown(); // explicit Exit cleanup is idempotent
+        assert_eq!(
+            received.iter().collect::<Vec<_>>(),
+            ["second", "third", "fourth", "last"]
+        );
+        assert!(
+            worker_lifetime.upgrade().is_none(),
+            "worker closure and resources released"
+        );
+        assert!(
+            !session.window_exists(hwnd),
+            "real listener window destroyed before return"
+        );
+        session.restore().expect("restore desktop clipboard");
+    }
+
+    #[test]
+    fn writes_work_with_history_disabled_at_start_and_after_toggle() {
+        let mut session = win::test_support::Session::new();
+        let mut watcher = lifecycle::Watcher::<ClipboardWorker>::default();
+        watcher
+            .set_enabled(false, || panic!("saved off must not start threads"))
+            .unwrap_or_else(|_: String| unreachable!());
+        let png = image::encode_png(1, 1, vec![1, 2, 3, 255]).unwrap();
+        for after_toggle in [false, true] {
+            if after_toggle {
+                watcher.set_enabled(true, || start_worker(|_| {})).unwrap();
+                watcher.shutdown();
+            }
+            // OCR, QR and color picker share the text writer; screenshots share the PNG writer.
+            for text in ["OCR text", "https://qr.example", "#123456"] {
+                copy_ocr(text.into()).unwrap();
+                assert!(matches!(session.read(), Some(Raw::Text(value)) if value == text));
+            }
+            copy_capture(png.clone()).unwrap();
+            assert!(matches!(session.read(), Some(Raw::Png(value)) if value == png));
+            win::set_clipboard(&Content::Text("manual copy".into())).unwrap();
+            assert!(matches!(session.read(), Some(Raw::Text(value)) if value == "manual copy"));
+            win::set_clipboard(&Content::Files(vec!["C:\\example.txt".into()])).unwrap();
+            assert!(
+                matches!(session.read(), Some(Raw::Files(value)) if value == ["C:\\example.txt"])
+            );
+        }
+        session.restore().expect("restore desktop clipboard");
+    }
 
     #[test]
     fn build_clip_classifies_and_filters() {

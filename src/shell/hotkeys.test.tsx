@@ -39,8 +39,8 @@ it("reads a startup fallback, shows its Settings action once across duplicate ev
   const toast = useIslandStore.getState().toast!;
   expect(toast.actions?.[0].label).toBe("Настройки");
   act(() => toast.actions![0].onClick());
-  expect(useIslandStore.getState().view).toBe("settings");
-  expect(useIslandStore.getState().mode).toBe("expanded");
+  expect(useIslandStore.getState().view).toBe("tabs");
+  expect(useIslandStore.getState().mode).toBe("collapsed");
   await act(async () => mockEmit("hotkeys://status", await invoke("hotkeys_status")));
   expect(useIslandStore.getState().toast?.id).toBe(toast.id);
   view.unmount();
@@ -90,8 +90,8 @@ it.each(["ru", "en"] as const)("renders %s with a nonshrinking shortcut and Sett
   expect(button).toHaveTextContent(name);
   expect(getComputedStyle(button).flexShrink).toBe("0");
   fireEvent.click(button);
-  expect(useIslandStore.getState().view).toBe("settings");
-  expect(useIslandStore.getState().mode).toBe("expanded");
+  expect(useIslandStore.getState().view).toBe("tabs");
+  expect(useIslandStore.getState().mode).toBe("collapsed");
 });
 
 it("does not mark a queued toast seen before PillToast renders, and retries after remount", async () => {

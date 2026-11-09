@@ -18,8 +18,8 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 pub struct SystemHandle {
     cached_battery: Arc<RwLock<BatteryState>>,
-    stop: Arc<Control>,
-    thread: Mutex<Option<JoinHandle<()>>>,
+    worker_app: WorkerApp,
+    thread: Mutex<Option<(Arc<Control>, JoinHandle<()>)>>,
 }
 
 impl Drop for SystemHandle {
@@ -32,34 +32,52 @@ pub fn setup(
     app: &mut tauri::App,
     worker_app: WorkerApp,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let initial_battery = battery::query_system_power_status();
-    let cached_battery = Arc::new(RwLock::new(initial_battery.clone()));
-    let stop = Arc::new(Control::default());
-
-    let cached_for_worker = cached_battery.clone();
-    let stop_for_worker = stop.clone();
-    let thread = std::thread::Builder::new()
-        .name("system-battery-poll".into())
-        .spawn(move || {
-            run_battery_poll(worker_app, cached_for_worker, stop_for_worker);
-        })?;
-    app.manage(SystemHandle {
-        cached_battery,
-        stop,
-        thread: Mutex::new(Some(thread)),
-    });
+    let enabled = !crate::settings::current(app.handle())
+        .disabled_features
+        .iter()
+        .any(|id| id == "battery");
+    let initial_battery = if enabled {
+        battery::query_system_power_status()
+    } else {
+        BatteryState::default()
+    };
+    let handle = SystemHandle {
+        cached_battery: Arc::new(RwLock::new(initial_battery)),
+        worker_app,
+        thread: Mutex::new(None),
+    };
+    handle.set_enabled(enabled)?;
+    app.manage(handle);
 
     Ok(())
 }
 
 impl SystemHandle {
-    pub fn shutdown(&self) {
-        self.stop.stop();
-        if let Some(thread) = self.thread.lock().unwrap().take() {
-            let _ = thread.join();
+    fn set_enabled(&self, enabled: bool) -> std::io::Result<()> {
+        let mut thread = self.thread.lock().unwrap();
+        if !enabled {
+            if let Some((stop, worker)) = thread.take() {
+                stop.stop();
+                let _ = worker.join();
+            }
+        } else if thread.is_none() {
+            let stop = Arc::new(Control::default());
+            let stop_for_worker = stop.clone();
+            let cached = self.cached_battery.clone();
+            let app = self.worker_app.clone();
+            let worker = std::thread::Builder::new()
+                .name("system-battery-poll".into())
+                .spawn(move || run_battery_poll(app, cached, stop_for_worker))?;
+            *thread = Some((stop, worker));
         }
+        Ok(())
+    }
+
+    pub fn shutdown(&self) {
+        let _ = self.set_enabled(false);
     }
 }
+
 pub fn shutdown(app: &AppHandle) {
     if let Some(handle) = app.try_state::<SystemHandle>() {
         handle.shutdown();
@@ -67,10 +85,6 @@ pub fn shutdown(app: &AppHandle) {
 }
 fn run_battery_poll(app: WorkerApp, cached: Arc<RwLock<BatteryState>>, stop: Arc<Control>) {
     while !stop.stopped() && app.strong_count() > 0 {
-        stop.wait(POLL_INTERVAL);
-        if stop.stopped() {
-            break;
-        }
         let fresh = battery::query_system_power_status();
         let changed = {
             let mut previous = cached.write().unwrap();
@@ -86,6 +100,15 @@ fn run_battery_poll(app: WorkerApp, cached: Arc<RwLock<BatteryState>>, stop: Arc
                 let _ = app.emit("system://battery", &fresh);
             });
         }
+        stop.wait(POLL_INTERVAL);
+    }
+}
+
+pub fn set_enabled(app: &AppHandle, enabled: bool) {
+    if let Some(handle) = app.try_state::<SystemHandle>()
+        && let Err(error) = handle.set_enabled(enabled)
+    {
+        log::error!("battery: cannot start polling: {error}");
     }
 }
 

@@ -4,6 +4,8 @@ import { listen } from "../ipc";
 import { HoverMachine } from "./hover";
 import { useIslandStore } from "./index";
 import { useDockStore } from "../lib/dock/store";
+import { useTilesEditStore } from "../lib/tiles/store";
+import { useTabsEditStore } from "../shell/tabs/store";
 const noop = () => {
 };
 export interface HoverControls {
@@ -21,12 +23,23 @@ export function useHoverSync(): HoverControls {
       collapseDelayMs: initial.hoverCollapseDelayMs,
       initialMode: initial.mode,
       onChange: (mode) => useIslandStore.getState().setMode(mode),
+      onSuppressChange: (suppressed) => useIslandStore.getState().setHoverSuppressed(suppressed),
     });
     const syncHold = () => {
       const dock = useDockStore.getState();
       const island = useIslandStore.getState();
-      // The command bar opens by hotkey with the cursor elsewhere: hold it until Esc/hotkey/explicit collapse.
-      machine.setHold(island.keyboardFocus || island.view === "cmd" || dock.dragging || dock.interacting);
+      const tabsEdit = useTabsEditStore.getState();
+      const tilesEdit = useTilesEditStore.getState();
+      // The command bar and active edit modes stay open with the cursor elsewhere until Esc/explicit exit.
+      machine.setHold(
+        island.keyboardFocus ||
+          island.view === "cmd" ||
+          dock.dragging ||
+          dock.interacting ||
+          tabsEdit.editing ||
+          tabsEdit.menuOpen ||
+          tilesEdit.editing,
+      );
     };
     syncHold();
     machineRef.current = machine;
@@ -39,6 +52,8 @@ export function useHoverSync(): HoverControls {
         syncHold();
     });
     const offDock = useDockStore.subscribe(syncHold);
+    const offTabsEdit = useTabsEditStore.subscribe(syncHold);
+    const offTilesEdit = useTilesEditStore.subscribe(syncHold);
     let disposed = false;
     let unlisten: (() => void) | null = null;
     listen("island://hover", ({ inside }) => {
@@ -55,6 +70,8 @@ export function useHoverSync(): HoverControls {
       unlisten?.();
       unsubscribeStore();
       offDock();
+      offTabsEdit();
+      offTilesEdit();
       machine.dispose();
       machineRef.current = null;
     };

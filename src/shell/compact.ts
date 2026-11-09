@@ -1,5 +1,7 @@
 // Owner: F1. Picks which module's live activity (`compact`) is shown inside the collapsed pill.
+import { isModuleEnabled } from "../lib/features";
 import type { IslandModule } from "../shared/types";
+import { useIslandStore } from "../store";
 
 /** Pure: among modules whose compact activity is active, the highest `priority` wins (ties → lower `order`). */
 export function pickCompact(modules: readonly IslandModule[], active: readonly boolean[]): IslandModule | null {
@@ -20,10 +22,12 @@ export function pickCompact(modules: readonly IslandModule[], active: readonly b
  * the number and order of hook calls never changes between renders.
  */
 export function useActiveCompact(modules: readonly IslandModule[]): IslandModule | null {
+  const disabledFeatures = useIslandStore((s) => s.settings.disabledFeatures);
   const active: boolean[] = [];
   for (const m of modules) {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- static list, stable call order
-    active.push(m.compact ? m.compact.useIsActive() : false);
+    const moduleActive = m.compact ? m.compact.useIsActive() : false;
+    active.push(moduleActive && isModuleEnabled(m.id, disabledFeatures));
   }
   return pickCompact(modules, active);
 }

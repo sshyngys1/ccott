@@ -17,9 +17,23 @@ export const useDockStore = create<{
 
 const sync = createEventSync({ event: "dock://changed", load: dockList, apply: items => useDockStore.setState({ items }) });
 
+let consumers = 0;
+
 export const initDock = () => sync.init();
 
+export function retainDock(): () => void {
+  consumers++;
+  void sync.init();
+  return () => {
+    if (--consumers <= 0) {
+      consumers = 0;
+      sync.reset();
+    }
+  };
+}
+
 export function resetDockStore() {
+  consumers = 0;
   sync.reset();
   useDockStore.setState({ items: [], dragging: false, interacting: false, outgoing: false, lastAdded: null });
 }
@@ -83,8 +97,8 @@ export async function dragDockItem(id: string) {
 }
 
 /** Move one entry into another entry's slot, preserving every other id. */
-export function movedIds(items: DockItem[], from: string, to: string): string[] {
-  const ids = items.map(item => item.id);
+export function movedIds<T extends { id: string }>(items: readonly T[], from: string, to: string): T["id"][] {
+  const ids = items.map(item => item.id as T["id"]);
   const fromIndex = ids.indexOf(from);
   const toIndex = ids.indexOf(to);
   if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex)
