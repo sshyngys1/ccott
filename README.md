@@ -10,18 +10,21 @@
 </p>
 
 <p align="center">
-  <b>A Dynamic Island–style control center that lives at the top of your Windows desktop.</b><br/>
-  A command bar, media, volume, clipboard history, a file shelf, a downloads monitor, screenshots and OCR, a color picker,<br/>
-  QR codes, synced lyrics, weather, quick controls, reminders and coding agent status — one hover or one hotkey away. In English and Russian.
+  <b>A Dynamic Island–style control center for the top of your Windows 11 screen.</b><br/>
+  Music with synced lyrics, clipboard history, a command bar, a file shelf, weather, reminders —<br/>
+  and a pill that tells you when Claude Code or Codex is waiting for your answer.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/pill-media.png" alt="Collapsed CCOTT pill showing the playing track" width="420" />
-  <img src="docs/screenshots/pill-downloads.png" alt="Collapsed CCOTT pill showing a download in progress" width="420" />
+  <a href="https://github.com/sshyngys1/ccott/releases/latest"><img alt="Download CCOTT for Windows" src="https://img.shields.io/github/v/release/sshyngys1/ccott?style=for-the-badge&label=Download%20for%20Windows&color=7c5cff&logo=windows11&logoColor=white" /></a>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/command-bar.jpg" alt="Command bar converting 100 USD to EUR" width="720" />
+  <sub>Free for non-commercial use · source-available · no account · local-first · English and Russian</sub>
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="CCOTT in action: the island opens on hover, clipboard history, media and quick tools" width="640" />
 </p>
 
 ---
