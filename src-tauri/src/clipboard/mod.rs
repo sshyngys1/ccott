@@ -321,6 +321,11 @@ mod tests {
 
     #[test]
     fn blocked_worker_delivers_all_captures_in_order_and_shutdown_joins_real_threads() {
+        // These tests drive the real Windows clipboard; CI runners have no interactive desktop for it.
+        if std::env::var_os("CI").is_some() {
+            eprintln!("SKIPPED on CI: needs the interactive Windows clipboard");
+            return;
+        }
         let mut session = win::test_support::Session::new();
         let (delivered, received) = mpsc::channel();
         let (release, blocked) = mpsc::channel();
@@ -377,6 +382,11 @@ mod tests {
 
     #[test]
     fn writes_work_with_history_disabled_at_start_and_after_toggle() {
+        // These tests drive the real Windows clipboard; CI runners have no interactive desktop for it.
+        if std::env::var_os("CI").is_some() {
+            eprintln!("SKIPPED on CI: needs the interactive Windows clipboard");
+            return;
+        }
         let mut session = win::test_support::Session::new();
         let mut watcher = lifecycle::Watcher::<ClipboardWorker>::default();
         watcher

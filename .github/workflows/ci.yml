@@ -44,4 +44,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test
+        shell: bash
+        run: |
+          # Failing test names and panic lines become annotations, which are readable without signing in.
+          set -o pipefail
+          cargo test 2>&1 | tee cargo-test.log || {
+            grep -E "^test .* FAILED|panicked at|^    [A-Za-z0-9_:]+$" cargo-test.log | head -20 | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          }

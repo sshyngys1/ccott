@@ -1038,6 +1038,11 @@ pub(super) mod test_support {
 
     #[test]
     fn restoration_retries_busy_clipboard_and_preserves_all_saved_formats() {
+        // These tests drive the real Windows clipboard; CI runners have no interactive desktop for it.
+        if std::env::var_os("CI").is_some() {
+            eprintln!("SKIPPED on CI: needs the interactive Windows clipboard");
+            return;
+        }
         let mut session = Session::new();
         let custom = format_id(w!("IslandWinRestoreTest"));
         let payloads = [
@@ -1094,6 +1099,11 @@ mod tests {
 
     #[test]
     fn failed_image_preparation_and_partial_publication_preserve_previous_clipboard() {
+        // These tests drive the real Windows clipboard; CI runners have no interactive desktop for it.
+        if std::env::var_os("CI").is_some() {
+            eprintln!("SKIPPED on CI: needs the interactive Windows clipboard");
+            return;
+        }
         let mut session = test_support::Session::new();
         set_clipboard(&Content::Text("keep original".into())).unwrap();
         assert!(write_capture(&Content::Image(vec![0, 1, 2])).is_err());
