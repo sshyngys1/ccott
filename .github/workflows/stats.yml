@@ -1,0 +1,53 @@
+name: Stats
+
+# Daily snapshot of download counters, update checks and (optionally) traffic into the `stats` branch.
+# Runs only in the original repository, never in forks.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stats
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    if: github.repository == 'sshyngys1/ccott'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Check out the stats branch (created on first run)
+        run: |
+          if git ls-remote --exit-code --heads origin stats >/dev/null; then
+            git fetch --depth=1 origin stats
+            git worktree add stats-data FETCH_HEAD
+          else
+            git worktree add --detach stats-data
+            git -C stats-data checkout --orphan stats
+            git -C stats-data rm -rfq .
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test
+        run: node --test .github/scripts/collect-stats.test.mjs
+      - name: Collect
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: node .github/scripts/collect-stats.mjs stats-data
+      - name: Commit
+        working-directory: stats-data
+        run: |
+          git add -A
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "stats: $(date -u +%F)"
+          git push origin HEAD:stats
