@@ -1,0 +1,214 @@
+/* Owner: Designer. Preview chrome for the lyrics stand (pv-ly-*). Literal colours = fake desktop "content", not UI. */
+
+.pv-ly-page {
+  max-width: 1720px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+}
+.pv-ly-page > header h1 {
+  margin: 0 0 6px;
+  font: var(--ig-weight-bold) 26px / 1.2 var(--ig-font-display);
+}
+.pv-ly-page > header p {
+  margin: 0 0 16px;
+  max-width: 980px;
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-secondary);
+}
+.pv-ly-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.pv-ly-toolbar a {
+  color: var(--ig-accent-text);
+  font-size: var(--ig-text-sm);
+}
+.pv-ly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(800px, 1fr));
+  gap: 28px 32px;
+  justify-items: center;
+}
+.pv-ly-grid figure {
+  margin: 0;
+}
+.pv-ly-grid figcaption {
+  margin-top: 8px;
+  max-width: 800px;
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-secondary);
+}
+.pv-ly-grid figcaption b {
+  color: var(--ig-text);
+}
+.pv-ly-section {
+  margin: 40px 0 16px;
+  font: var(--ig-weight-semibold) var(--ig-text-lg) / 1.2 var(--ig-font-display);
+}
+
+/* Solo (screenshots): exactly one 800×520 frame at 0,0. */
+.pv-ly-solo {
+  margin: 0;
+  overflow: hidden;
+}
+.pv-ly-solo .pv-ly-window {
+  position: fixed;
+  left: 0;
+  top: 0;
+  margin: 0;
+  outline: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* ───────── 800×520 frame = the top-centre of a desktop, screenshot-like ───────── */
+.pv-ly-window {
+  position: relative;
+  width: 800px;
+  height: 520px;
+  overflow: hidden;
+  border-radius: 6px;
+  outline: 1px solid rgb(255 255 255 / 0.12);
+  background:
+    radial-gradient(420px 300px at 12% 0%, #3b6cff 0, transparent 70%),
+    radial-gradient(520px 360px at 100% 30%, #ff6aa8 0, transparent 70%),
+    radial-gradient(600px 320px at 40% 110%, #19c7b4 0, transparent 70%),
+    linear-gradient(160deg, #1b1e4b, #3b1d5e 55%, #172a4a);
+}
+:root[data-theme="light"] .pv-ly-window {
+  background:
+    radial-gradient(420px 300px at 12% 0%, #9ec0ff 0, transparent 70%),
+    radial-gradient(520px 360px at 100% 30%, #ffc3dc 0, transparent 70%),
+    radial-gradient(600px 320px at 40% 110%, #9df0e3 0, transparent 70%),
+    linear-gradient(160deg, #e6ebff, #f3e6f7 55%, #e4f1f7);
+}
+/* A fake app window under the island (browser-like): the realistic busy backdrop. */
+.pv-ly-app {
+  position: absolute;
+  left: 64px;
+  right: 64px;
+  top: 150px;
+  bottom: -20px;
+  border-radius: 10px;
+  background: #f7f8fb;
+  box-shadow: 0 20px 50px -20px rgb(0 0 0 / 0.6);
+  overflow: hidden;
+}
+:root[data-theme="dark"] .pv-ly-app {
+  background: #202128;
+}
+.pv-ly-app::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 38px;
+  background: #e3e6ee;
+}
+:root[data-theme="dark"] .pv-ly-app::before {
+  background: #2b2c35;
+}
+.pv-ly-app i {
+  position: absolute;
+  left: 40px;
+  height: 10px;
+  border-radius: 5px;
+  background: #c9ced8;
+}
+:root[data-theme="dark"] .pv-ly-app i {
+  background: #3a3c48;
+}
+.pv-ly-app i:nth-child(1) { top: 70px; width: 340px; height: 16px; }
+.pv-ly-app i:nth-child(2) { top: 104px; width: 560px; }
+.pv-ly-app i:nth-child(3) { top: 124px; width: 520px; }
+.pv-ly-app i:nth-child(4) { top: 144px; width: 590px; }
+.pv-ly-app i:nth-child(5) { top: 182px; width: 240px; height: 120px; border-radius: 8px; }
+.pv-ly-app i:nth-child(6) { top: 182px; left: 300px; width: 330px; }
+.pv-ly-app i:nth-child(7) { top: 202px; left: 300px; width: 300px; }
+.pv-ly-app i:nth-child(8) { top: 222px; left: 300px; width: 320px; }
+.pv-ly-app-only-collapsed {
+  top: 70px;
+}
+.pv-ly-label {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 11px/1.4 var(--ig-font-mono);
+  color: #fff;
+  background: rgb(0 0 0 / 0.5);
+}
+.pv-ly-solo .pv-ly-label {
+  display: none;
+}
+
+/* Island position inside the frame (same anchoring as the real window: top-centre, no translateX). */
+.pv-ly-island {
+  position: absolute;
+  top: var(--ig-pill-top);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  overflow: hidden;
+  z-index: 2;
+}
+.pv-ly-layer {
+  position: absolute;
+  inset: 0;
+}
+.pv-ly-layer--panel {
+  inset: 0 auto auto 50%;
+  width: var(--ig-panel-width);
+  height: var(--ig-panel-height);
+  margin-left: calc(var(--ig-panel-width) / -2);
+}
+
+/* Panel header in the lyrics view */
+.pv-ly-head-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pv-ly-head-title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.pv-ly-head-title b {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+
+.pv-ly-seek {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pv-ly-seek .pv-time {
+  width: 28px;
+}
+
+/* static equalizer heights for the mock */
+.pv-ly-eq > i:nth-child(1) { transform: scaleY(0.55); }
+.pv-ly-eq > i:nth-child(2) { transform: scaleY(0.95); }
+.pv-ly-eq > i:nth-child(3) { transform: scaleY(0.4); }
+.pv-ly-eq > i:nth-child(4) { transform: scaleY(0.75); }
+
+.pv-ly-readout {
+  font: 11px/1.4 var(--ig-font-mono);
+  color: var(--ig-text-tertiary);
+}
+.pv-ly-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin: 0 2px -2px 6px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
+}

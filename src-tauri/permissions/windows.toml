@@ -1,0 +1,10 @@
+# Keep the island's existing command access; the ordinary settings window only edits preferences.
+[[permission]]
+identifier = "island-commands"
+description = "Existing application commands for the island"
+commands.allow = ["island_set_shape", "island_set_mode", "window_set_vibrancy", "window_list_monitors", "island_set_keyboard_focus", "window_recent_fullscreen_apps", "window_recent_maximized_apps", "settings_get", "settings_set", "settings_window_open", "hotkeys_status", "updater_check", "updater_install", "shelf_list", "shelf_add", "shelf_remove", "shelf_clear", "shelf_open", "shelf_start_drag", "cmd_search", "cmd_launch", "cmd_currency_rates", "dock_list", "dock_add", "dock_remove", "dock_reorder", "dock_open", "dock_start_drag", "capture_start", "capture_pick_color", "capture_open_folder", "capture_ocr_languages", "audio_get_state", "audio_set_volume", "audio_set_muted", "audio_list_devices", "audio_set_device", "audio_visualizer_set_enabled", "clipboard_list", "clipboard_paste", "clipboard_pin", "clipboard_delete", "clipboard_clear", "media_get_state", "media_action", "media_seek", "notes_list", "notes_save", "notes_delete", "reminders_list", "reminders_add", "reminders_update", "reminders_delete", "system_get_battery", "downloads_list", "downloads_open", "control_get", "control_set_radio", "control_set_dark_mode", "control_set_power_mode", "control_open_settings", "weather_get", "weather_search_location", "weather_locate", "lyrics_get", "agents_list", "agents_dismiss", "agents_hooks_status", "agents_set_hooks"]
+
+[[permission]]
+identifier = "settings-commands"
+description = "Read and edit preferences, list choices and check/install updates"
+commands.allow = ["settings_get", "settings_set", "window_list_monitors", "window_recent_fullscreen_apps", "window_recent_maximized_apps", "hotkeys_status", "updater_check", "updater_install", "capture_ocr_languages", "weather_search_location", "weather_locate", "agents_hooks_status", "agents_set_hooks"]

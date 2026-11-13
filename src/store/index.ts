@@ -1,0 +1,190 @@
+// Owner: F1. Global UI state of the shell (Zustand).
+import { create } from "zustand";
+import type { ToastAction } from "../shared/shellBus";
+import { APP_VERSION, isTauri, mockUrlParams } from "../ipc";
+import { useTilesEditStore } from "../lib/tiles/store";
+import { getWhatsNewForVersion, shouldAutoShowWhatsNew } from "../lib/whatsNew/catalog";
+import { setLanguage } from "../i18n";
+import { DEFAULT_QUICK_TILES, DEFAULT_TAB_ORDER, type IslandMode, type ModuleId, type Settings, type ThemeMode, type UpdateInfo, type VibrancyMode } from "../shared/types";
+import { DEFAULT_AUTO_HIDE_APPS } from "../shell/settings/hotkey";
+import { resetTabsEditStore } from "../shell/tabs/store";
+import { DEFAULT_COLLAPSE_DELAY_MS, DEFAULT_EXPAND_DELAY_MS } from "./hover";
+
+export type ResolvedTheme = "light" | "dark";
+
+/** What the expanded panel shows: the module tabs or the settings view (spec §6.8). */
+export type PanelView = "tabs" | "whatsNew" | "cmd" | "lyrics";
+
+/** Values used until `settings_get` answers (equal to the Rust defaults). */
+export const DEFAULT_SETTINGS: Settings = {
+  ocrLanguage: "auto",
+  language: "auto",
+  theme: "auto",
+  vibrancy: "none",
+  monitor: "primary",
+  autostart: false,
+  doNotDisturb: false,
+  hoverExpandDelayMs: DEFAULT_EXPAND_DELAY_MS,
+  hoverCollapseDelayMs: DEFAULT_COLLAPSE_DELAY_MS,
+  hideInFullscreen: true,
+  summonHotkey: "Ctrl+Alt+I",
+  fullscreenAllowlist: [],
+  autoHideApps: [...DEFAULT_AUTO_HIDE_APPS],
+  quickTiles: DEFAULT_QUICK_TILES.map((tile) => ({ ...tile })),
+  liteMode: false,
+  commandHotkey: "Ctrl+Alt+Space",
+  downloadsMonitor: true,
+  shelfKeepAfterDrag: false,
+  shelfRetentionHours: 24,
+  tabOrder: [...DEFAULT_TAB_ORDER],
+  disabledFeatures: [],
+  defaultCurrency: "",
+  weatherLocation: null,
+  weatherUnits: "c",
+  lyrics: { enabled: true, inPill: true, announce: false, offsetMs: 0 },
+};
+
+export interface PillToast {
+  /** Unique per toast, so a new one restarts the hold timer. */
+  id: number;
+  /** Bold text, e.g. «Скопировано». */
+  label: string;
+  /** Secondary text after the label (copied text); empty for plain messages. */
+  preview: string;
+  /** UI-only preview; copied text remains verbatim when this is absent. */
+  previewKey?: "image" | "files";
+  onClick?: () => void;
+  actionLabel?: string;
+  color?: string;
+  actions?: (ToastAction & { text?: boolean })[];
+  /** Reminders stay visible under DND; their actions get a longer hold. */
+  reminderId?: string;
+  holdMs?: number;
+  /** Shell-only toast presentation and render acknowledgement; never sent over IPC. */
+  shortcut?: string;
+  title?: string;
+  detail?: string;
+  onShown?: () => void;
+}
+
+export interface IslandState {
+  mode: IslandMode;
+  activeTab: ModuleId;
+  /** Expanded panel content; reset to tabs whenever the island collapses. */
+  view: PanelView;
+  /** The island window holds keyboard focus (a text field is being edited): hover must not collapse it. */
+  keyboardFocus: boolean;
+  /** Last known settings (defaults until loaded). Theme mode, hover delays and DND below are derived from it. */
+  settings: Settings;
+  /** Cursor is inside the island (from `island://hover`). */
+  hoverInside: boolean;
+  /** True after explicit collapse while cursor was inside; suppresses pill hover growth until cursor leaves or expands. */
+  hoverSuppressed: boolean;
+  /** What native blur is actually applied (`VibrancyResult.applied`). */
+  vibrancy: VibrancyMode;
+  /** Resolved theme written to `<html data-theme>`. */
+  theme: ResolvedTheme;
+  /** Theme preference from settings (auto → follow prefers-color-scheme). */
+  themeMode: ThemeMode;
+  hoverExpandDelayMs: number;
+  hoverCollapseDelayMs: number;
+  /** Do-not-disturb: no «Скопировано» toasts in the pill. */
+  doNotDisturb: boolean;
+  /** «Скопировано» toast shown in the pill (from `clipboard://added`), or null. */
+  toast: PillToast | null;
+  /** Latest update discovered via `updater://available` or `updater_check`. */
+  availableUpdate: UpdateInfo | null;
+  /** Version for which the one-time «Доступно обновление» toast has already been shown. */
+  updateToastShownFor: string | null;
+
+  setToast: (toast: PillToast | null) => void;
+  setAvailableUpdate: (update: UpdateInfo | null) => void;
+  markUpdateToastShown: (version: string) => void;
+  setMode: (mode: IslandMode) => void;
+  setActiveTab: (tab: ModuleId) => void;
+  setView: (view: PanelView) => void;
+  setKeyboardFocus: (active: boolean) => void;
+  /** Stores a full Settings snapshot and derives theme mode, hover delays and DND from it. */
+  applySettings: (settings: Settings) => void;
+  setHoverInside: (inside: boolean) => void;
+  setHoverSuppressed: (suppressed: boolean) => void;
+  setVibrancy: (vibrancy: VibrancyMode) => void;
+  setTheme: (theme: ResolvedTheme) => void;
+}
+
+const initialState = () => {
+  const urlParams = mockUrlParams();
+  const isCmdInit = urlParams?.get("cmd") === "1" || Boolean(urlParams?.has("cmdQuery"));
+  return {
+    mode: (isCmdInit ? "expanded" : "collapsed") as IslandMode,
+    activeTab: "home" as ModuleId,
+    view: (isCmdInit ? "cmd" : "tabs") as PanelView,
+    keyboardFocus: isCmdInit,
+    settings: DEFAULT_SETTINGS,
+    hoverInside: false,
+    hoverSuppressed: false,
+    vibrancy: "none" as VibrancyMode,
+    theme: "dark" as ResolvedTheme,
+    themeMode: "auto" as ThemeMode,
+    hoverExpandDelayMs: DEFAULT_EXPAND_DELAY_MS,
+    hoverCollapseDelayMs: DEFAULT_COLLAPSE_DELAY_MS,
+    doNotDisturb: false,
+    toast: null as PillToast | null,
+    availableUpdate: null as UpdateInfo | null,
+    updateToastShownFor: null as string | null,
+  };
+};
+
+export const useIslandStore = create<IslandState>()((set) => ({
+  ...initialState(),
+
+  setToast: (toast) => set({ toast }),
+  setAvailableUpdate: (availableUpdate) => set({ availableUpdate }),
+  markUpdateToastShown: (version) => set({ updateToastShownFor: version }),
+  // One update removes the panel and prepares Home; AnimatePresence keeps the exiting panel's children.
+  setMode: (mode) =>
+    set((s) => {
+      if (mode === "collapsed") {
+        return { mode, view: "tabs", activeTab: "home" };
+      }
+      if (s.mode === "collapsed" && s.view === "tabs" && shouldAutoShowWhatsNew(APP_VERSION)) {
+        return { mode, view: "whatsNew", hoverSuppressed: false };
+      }
+      return { mode, hoverSuppressed: false };
+    }),
+  setActiveTab: (activeTab) => set({ activeTab }),
+  setView: (view) => {
+    if (view === "whatsNew" && !getWhatsNewForVersion(APP_VERSION)) return;
+    set({ view });
+  },
+  setKeyboardFocus: (keyboardFocus) => set({ keyboardFocus }),
+  applySettings: (settings) => {
+    setLanguage(settings.language ?? "auto");
+    set((s) => ({
+      settings,
+      themeMode: settings.theme,
+      hoverExpandDelayMs: settings.hoverExpandDelayMs,
+      hoverCollapseDelayMs: settings.hoverCollapseDelayMs,
+      doNotDisturb: settings.doNotDisturb,
+      // DND hides ordinary feedback; reminders retain their explicit action buttons.
+      toast: settings.doNotDisturb && !s.toast?.reminderId ? null : s.toast,
+    }));
+  },
+  setHoverInside: (hoverInside) =>
+    set((s) => ({ hoverInside, hoverSuppressed: hoverInside ? s.hoverSuppressed : false })),
+  setHoverSuppressed: (hoverSuppressed) => set({ hoverSuppressed }),
+  setVibrancy: (vibrancy) => set({ vibrancy }),
+  setTheme: (theme) => set({ theme }),
+}));
+
+if (typeof window !== "undefined" && !isTauri()) {
+  (window as unknown as { __ISLAND_STORE__?: typeof useIslandStore }).__ISLAND_STORE__ = useIslandStore;
+}
+
+/** Reset to initial values (tests). */
+export function resetIslandStore(): void {
+  setLanguage("auto");
+  resetTabsEditStore();
+  useTilesEditStore.setState({ editing: false });
+  useIslandStore.setState(initialState());
+}

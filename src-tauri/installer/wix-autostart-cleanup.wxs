@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!--
+    WiX fragment for cleaning up tauri-plugin-autostart registry values on MSI uninstall.
+    Note: Windows Installer's standard RemoveRegistryValue (RemoveRegistry table) only runs on install,
+    and RemoveRegistryKey deletes an entire key (unsafe for shared Run / StartupApproved\Run keys).
+    We therefore use an impersonated CustomAction scheduled only on full uninstall
+    (REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE). User data (%APPDATA%\dev.islandwin.app) is not touched.
+  -->
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="AutostartCleanup" Guid="7b9f8c42-4c1a-4f3b-9e6d-2a8c5e1f3b90">
+        <RegistryKey Root="HKCU" Key="Software\islandwin\CCOTT">
+          <RegistryValue Name="AutostartCleanupHook" Type="integer" Value="1" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+
+    <CustomAction
+      Id="CleanupAutostartOnUninstall"
+      Directory="INSTALLDIR"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+      ExeCommand="powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;foreach ($k in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Run','HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run')) { foreach ($n in @('CCOTT','island-win')) { Remove-ItemProperty -LiteralPath $k -Name $n -ErrorAction SilentlyContinue } }&quot;" />
+
+    <InstallExecuteSequence>
+      <Custom Action="CleanupAutostartOnUninstall" Before="InstallFinalize">
+        <![CDATA[REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE]]>
+      </Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

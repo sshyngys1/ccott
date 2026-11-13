@@ -1,0 +1,92 @@
+import { t, useT } from "../../i18n";
+import { motion } from "motion/react";
+import { useEffect, useRef } from "react";
+import { useNotesStore } from "../../lib/notes/store";
+import { IconCheck, IconPause, IconPlay, IconReset, IconTimer } from "../../design/icons";
+import { pressScale, springs } from "../../design/motion";
+import { TimerDigits } from "../../design/fx/TimerDigits";
+import { ProgressRing, type RingState } from "../../design/ProgressRing";
+import { MINUTE_MS, TIMER_PRESETS_MIN, remainingAt, ringValue } from "../../lib/timer/machine";
+import { useTimerStore } from "../../lib/timer/store";
+import { formatTimerFace } from "../../lib/time/format";
+
+const tap = { whileTap: { scale: pressScale }, transition: springs.press } as const;
+
+const STATUS_TEXT = { get idle() { return t("readyToStart"); }, get running() { return t("running"); }, get paused() { return t("timer.paused"); }, get done() { return t("done"); } } as const;
+
+export function TimerCard() {
+  useT();
+  const ref = useRef<HTMLElement>(null);
+  const focusRequested = useNotesStore((s) => s.timerFocusRequested);
+  useEffect(() => {
+    if (!focusRequested || !ref.current) return;
+    ref.current.scrollIntoView?.({ block: "nearest" });
+    ref.current.focus({ preventScroll: true });
+    useNotesStore.getState().clearTimerFocus();
+  }, [focusRequested]);
+  const timer = useTimerStore((s) => s.timer);
+  const now = useTimerStore((s) => s.now);
+  const { toggle, reset, selectPreset, addMinute } = useTimerStore.getState();
+
+  const done = timer.status === "done";
+  const running = timer.status === "running";
+  const remaining = remainingAt(timer, now);
+  const ringState: RingState = timer.status;
+  const totalMin = Math.round(timer.totalMs / MINUTE_MS);
+
+  return (
+    <section ref={ref} tabIndex={-1} className={done ? "ig-glass-card ig-glass-card--success nt-timer" : "ig-glass-card nt-timer"} aria-label={t("timer")}>
+      {done && <span key={timer.finishedAt} className="ig-timer-finish" aria-hidden="true" />}
+      <header className="nt-timer-head">
+        <span className="nt-timer-title">
+          <IconTimer size={16} />
+          {t("timer")}</span>
+        <span className="mod-caption" role="status">
+          {STATUS_TEXT[timer.status]}
+        </span>
+      </header>
+
+      <div className="nt-timer-face">
+        <ProgressRing value={ringValue(timer, now)} state={ringState} label={done ? t("timeSUp") : t("remaining", { p0: formatTimerFace(remaining) })} />
+        <div className="nt-timer-readout">
+          {done ? (
+            <>
+              <IconCheck size={22} className="nt-success-icon" />
+              <span className="nt-timer-done">{t("timeSUp")}</span>
+            </>
+          ) : (
+            <>
+              <span className="nt-timer-time ig-num"><TimerDigits text={formatTimerFace(remaining)} /></span>
+              <span className="mod-caption">{t("timer.total", { count: totalMin })}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="nt-presets" role="group" aria-label={t("duration")}>
+        {TIMER_PRESETS_MIN.map((m) => (
+          <button key={m} type="button" className="ig-chip nt-preset" aria-pressed={timer.totalMs === m * MINUTE_MS} aria-label={t("minAlt", { p0: m })} onClick={() => selectPreset(m)}>
+            {m}
+          </button>
+        ))}
+      </div>
+
+      <div className="nt-timer-controls">
+        <motion.button type="button" className="ig-glass-control ig-glass-control--icon ig-glass-control--ghost" {...tap} aria-label={t("reset")} title={t("reset")} onClick={reset}>
+          <IconReset size={18} />
+        </motion.button>
+        <motion.button
+          type="button"
+          className="ig-glass-control ig-glass-control--icon ig-glass-control--round ig-glass-control--lg ig-glass-control--accent"
+          {...tap}
+          aria-label={running ? t("pause") : done ? t("restart") : t("start")}
+          onClick={toggle}
+        >
+          {running ? <IconPause size={18} /> : <IconPlay size={18} />}
+        </motion.button>
+        <motion.button type="button" className="ig-glass-control ig-glass-control--sm" {...tap} onClick={addMinute}>
+          {t("1Min")}</motion.button>
+      </div>
+    </section>
+  );
+}

@@ -1,0 +1,33 @@
+.ig-control { height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--ig-space-2); color: var(--ig-text); }
+.ig-control-columns { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ig-space-3); }
+.ig-control-settings { display: flex; flex-direction: column; gap: var(--ig-space-2); min-width: 0; }
+.ig-control-radios { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ig-space-2); }
+.ig-control-radio { display: flex; align-items: center; gap: var(--ig-space-2); min-width: 0; height: var(--ig-quick-tile-row-height); padding: var(--ig-space-2); border: 1px solid var(--ig-stroke); border-radius: var(--ig-radius-md); background: var(--ig-surface-raised); color: var(--ig-text); font: inherit; text-align: start; }
+.ig-control-radio[aria-pressed="true"] { background: var(--ig-surface-selected); color: var(--ig-accent-text); }
+.ig-control-radio[data-unavailable="true"] { color: var(--ig-text-secondary); }
+.ig-control-radio:hover { background: var(--ig-surface-hover); }
+.ig-control-radio:focus-visible { outline: var(--ig-outline-width) solid var(--ig-focus); outline-offset: var(--ig-outline-offset); }
+.ig-control-radio-copy, .ig-control-device-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: var(--ig-space-0-5); font-size: var(--ig-text-sm); }
+.ig-control-radio-copy strong { font-weight: var(--ig-weight-medium); }
+.ig-control-radio-copy > span, .ig-control-device-copy > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ig-control-radio-copy > span, .ig-control-device-copy small, .ig-control-signal { color: var(--ig-text-secondary); font-size: var(--ig-text-xs); }
+.ig-control-signal { align-self: end; }
+.ig-control-dark { width: 100%; justify-content: space-between; flex-shrink: 0; }
+.ig-control-power { display: flex; flex-direction: column; gap: var(--ig-space-1); }
+.ig-control-segments { display: flex; gap: var(--ig-space-0-5); }
+.ig-control-segments > button { flex: 1; min-width: 0; padding-inline: var(--ig-space-1); font-size: var(--ig-text-xs); white-space: normal; line-height: var(--ig-leading-tight); overflow-wrap: anywhere; }
+.ig-control-segments > button[aria-pressed="true"] { background: var(--ig-surface-selected); color: var(--ig-accent-text); }
+.ig-control-devices { min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--ig-space-1); padding: var(--ig-space-2); border: 1px solid var(--ig-stroke); border-radius: var(--ig-radius-md); }
+.ig-control-devices h3 { margin: 0; flex: none; }
+.ig-control-device-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.ig-control-device-list ul { list-style: none; margin: 0; padding: 0; }
+.ig-control-device-list li { display: flex; align-items: center; gap: var(--ig-space-2); min-height: var(--ig-row-height); }
+.ig-control-empty { margin: var(--ig-space-2) 0; color: var(--ig-text-secondary); font-size: var(--ig-text-sm); }
+.ig-control-links { display: flex; align-items: center; gap: var(--ig-space-1); min-width: 0; }
+.ig-control-links > span { margin-right: auto; font-size: var(--ig-text-xs); color: var(--ig-text-secondary); }
+.ig-control-links > button { padding-inline: var(--ig-space-2); }
+.ig-control-status { height: 100%; display: flex; gap: var(--ig-space-2); align-items: center; justify-content: center; color: var(--ig-text-secondary); }
+/* Controls in this tab use colour feedback, including the shared glass controls. */
+.ig-control .ig-glass-control, .ig-control .ig-glass-control:active { transform: none; }
+[data-lite="true"] .ig-control-radio { background: var(--ig-lite-raised); }
+[data-lite="true"] .ig-control-radio[aria-pressed="true"] { background: var(--ig-lite-selected); }

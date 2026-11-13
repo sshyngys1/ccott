@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the island window",
+  "windows": ["island"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "island-commands",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "http://*" }, { "url": "https://*" }] }
+  ]
+}

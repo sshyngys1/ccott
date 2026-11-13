@@ -1,0 +1,431 @@
+/* Owner: F2. «Главная» layout (ported from the Designer's preview stand; visuals come from glass.css, values from tokens). */
+.hm-home {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr) var(--ig-dock-height);
+  gap: var(--ig-space-3);
+  height: 100%;
+}
+.hm-home:has(.hm-tools) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--ig-dock-height);
+}
+@supports not selector(:has(*)) {
+  .hm-home.hm-home--with-tools {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--ig-dock-height);
+  }
+}
+.hm-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Player */
+.hm-player {
+  --ig-art-size: calc(var(--ig-ring-size) + var(--ig-space-5));
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--ig-space-4);
+  padding: var(--ig-space-5);
+  min-width: 0;
+}
+.hm-home:has(.hm-tools) .hm-player {
+  --ig-art-size: calc(var(--ig-control-height-lg) + var(--ig-space-6));
+  gap: 0;
+  padding: var(--ig-space-3);
+}
+.hm-player-top {
+  display: flex;
+  align-items: stretch;
+  gap: var(--ig-space-5);
+  min-width: 0;
+}
+.hm-home:has(.hm-tools) .hm-player-top {
+  gap: var(--ig-space-3);
+}
+/* Ordinary 396px panel: the player gets 172px. Share the artwork's rows with metadata and transport,
+   leaving a full-width timeline below. The wide artwork is capped at 120px (compact: 72px). */
+.hm-home:not(.hm-home--with-tools) .hm-player {
+  --ig-art-size: var(--ig-ring-size);
+  display: grid;
+  grid-template-columns: var(--ig-art-size) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--ig-control-height-lg) calc(var(--ig-space-5) - var(--ig-space-1));
+  gap: var(--ig-space-2) var(--ig-space-5);
+  padding: var(--ig-space-3);
+  min-height: 0;
+}
+.hm-home:not(.hm-home--with-tools) .hm-player-top {
+  display: contents;
+}
+.hm-home:not(.hm-home--with-tools) .hm-player-top > :first-child {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}
+.hm-home:not(.hm-home--with-tools) .hm-meta {
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: center;
+  gap: var(--ig-space-0-5);
+  padding: 0;
+  line-height: var(--ig-leading);
+}
+.hm-home:not(.hm-home--with-tools) .hm-controls {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.hm-home:not(.hm-home--with-tools) .hm-seek {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+.ig-art.hm-art-shadow {
+  border-radius: var(--ig-radius-lg);
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    0 6px 16px -6px rgb(0 0 0 / 0.5);
+}
+.hm-home:has(.hm-tools) .ig-art.hm-art-shadow {
+  border-radius: var(--ig-radius-md);
+}
+.hm-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  min-width: 0;
+  flex: 1;
+  padding: var(--ig-space-1) 0;
+  box-sizing: border-box;
+}
+.hm-home:has(.hm-tools) .hm-meta {
+  gap: 0;
+  padding: 2px 0 0;
+}
+.hm-source {
+  max-width: 100%;
+}
+.hm-track {
+  margin-top: var(--ig-space-0-5);
+  font: var(--ig-weight-semibold) var(--ig-text-xl) / var(--ig-leading-tight) var(--ig-font-display);
+}
+.hm-home:has(.hm-tools) .hm-track {
+  margin-top: 4px;
+  font-size: var(--ig-text-lg);
+}
+.hm-artist {
+  font-size: var(--ig-text-md);
+  color: var(--ig-text-secondary);
+}
+.hm-home:has(.hm-tools) .hm-artist {
+  font-size: var(--ig-text-sm);
+}
+.hm-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ig-space-2);
+  flex: none;
+}
+.hm-home:has(.hm-tools) .hm-controls {
+  gap: var(--ig-space-1);
+}
+.hm-play {
+  background-color: var(--ig-surface-selected);
+}
+.hm-seek {
+  /* Isolate range/text repaints from the card and glass. Leave room for thumb shadow and focus ring. */
+  contain: layout paint;
+  padding-block: var(--ig-space-1);
+  margin-block: calc(var(--ig-space-1) * -1);
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-3);
+}
+.hm-home:has(.hm-tools) .hm-seek {
+  gap: var(--ig-space-2);
+}
+.hm-time {
+  width: 34px;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.hm-home:has(.hm-tools) .hm-time {
+  width: 30px;
+}
+.hm-time:last-child {
+  text-align: right;
+}
+.hm-seek .ig-glass-slider,
+.hm-volume .ig-glass-slider {
+  flex: 1;
+}
+
+/* Volume */
+.hm-volume {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) max-content minmax(140px, 196px);
+  align-items: center;
+  gap: var(--ig-space-3);
+  height: var(--ig-dock-height);
+  flex: none;
+  padding: 0 var(--ig-space-5);
+}
+.hm-home:has(.hm-tools) .hm-volume {
+  grid-template-columns: auto minmax(0, 1fr) max-content minmax(0, 1.5fr);
+  gap: var(--ig-space-2);
+  padding: 0 var(--ig-space-3) 0 var(--ig-space-4);
+}
+.hm-vol-value {
+  width: 34px;
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+.hm-vol-value[data-muted="true"] {
+  width: auto;
+  min-width: 34px;
+}
+.hm-device {
+  height: calc(var(--ig-control-height-sm) + var(--ig-space-0-5));
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--ig-space-2-5);
+  font-size: var(--ig-text-xs);
+}
+.hm-home:has(.hm-tools) .hm-device {
+  padding: 0 var(--ig-space-2);
+}
+.hm-device > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.hm-device .ig-icon:last-child {
+  flex: none;
+  color: var(--ig-text-tertiary);
+  margin-left: -2px;
+}
+/* `.ig-glass` sets `position: relative`; the doubled class keeps the popover out of the volume card's grid
+   whatever order the stylesheets load in. */
+.ig-glass.hm-menu {
+  position: absolute;
+  right: var(--ig-space-5);
+  bottom: calc(100% + var(--ig-space-2));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-0-5);
+  width: max-content;
+  min-width: calc(var(--ig-control-height-lg) * 4);
+  max-width: calc(100% - var(--ig-space-5) * 2);
+  max-height: calc(var(--ig-control-height-sm) * 5 + var(--ig-space-2) * 2);
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--ig-space-1);
+  list-style: none;
+  border-radius: var(--ig-radius-md);
+}
+.hm-home:has(.hm-tools) .hm-menu {
+  /* The tools column has room for the popover; opening here leaves the seek bar clear. */
+  left: calc(100% + var(--ig-space-3));
+  right: auto;
+  bottom: 0;
+  max-width: 100%;
+}
+.hm-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.hm-menu li { min-width: 0; }
+.hm-menu .ig-truncate { min-width: 0; }
+
+/* Tools + dock */
+.hm-tools-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2);
+  min-height: 0;
+  height: 100%;
+}
+.hm-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, var(--ig-quick-tile-row-height));
+  align-content: center;
+  /* A 2×1 tile after an odd number of 1×1 tiles would leave a hole and spill into a 4th row; dense backfills it,
+     so any layout within QUICK_TILE_CELLS fits the explicit rows. */
+  grid-auto-flow: row dense;
+  gap: var(--ig-space-2);
+  min-height: 0;
+  flex: 1;
+}
+.hm-tools[data-rows="4"] {
+  grid-template-rows: repeat(4, var(--ig-quick-tile-row-height));
+}
+.hm-tools .ig-glass-control--tile {
+  min-height: 0;
+  height: 100%;
+  border-radius: var(--ig-radius-lg);
+}
+.hm-tile[data-size="2x1"],
+.hm-tile-entry[data-size="2x1"] {
+  grid-column: 1 / -1;
+}
+.hm-tile[data-size="1x1"],
+.hm-tile-entry[data-size="1x1"] {
+  grid-column: span 1;
+}
+.hm-tile-entry {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+}
+.hm-tile-entry .hm-tile {
+  width: 100%;
+  height: 100%;
+}
+/* Doubled classes keep edit controls above `.ig-glass-control`'s position and fixed height rules. */
+.hm-tile-entry[data-reordering="true"] {
+  opacity: 0.5;
+}
+.hm-tile-entry[data-drop-target="true"] .hm-tile {
+  outline: var(--ig-space-0-5) solid var(--ig-accent);
+}
+.ig-glass-control.hm-tile-remove {
+  position: absolute;
+  right: var(--ig-space-1-5);
+  top: var(--ig-space-1-5);
+  width: var(--ig-space-5);
+  height: var(--ig-space-5);
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--ig-radius-pill);
+  padding: 0;
+  background: var(--ig-surface);
+  z-index: 2;
+}
+.ig-glass-control.hm-tile-size {
+  position: absolute;
+  right: var(--ig-space-1-5);
+  bottom: var(--ig-space-1-5);
+  height: var(--ig-kbd-height);
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--ig-space-1);
+  gap: var(--ig-space-0-5);
+  border-radius: var(--ig-radius-pill);
+  font-size: var(--ig-text-xs);
+  line-height: 1;
+  background: var(--ig-surface);
+  z-index: 2;
+}
+.ig-glass-control.hm-tile-size:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ig-glass-control.hm-tile-add {
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+  justify-content: center;
+}
+.hm-tools-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ig-space-2);
+  flex: none;
+  height: var(--ig-control-height-sm);
+}
+.hm-dock {
+  position: relative;
+  min-width: 0;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2);
+  padding: 0 var(--ig-space-2-5);
+}
+.hm-dock-app {
+  border-radius: var(--ig-radius-md);
+}
+.hm-dock-sep {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--ig-stroke-strong);
+}
+.ig-glass-control.hm-dock-add {
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+}
+.hm-dock-hint {
+  flex: 1;
+  padding-right: var(--ig-space-1-5);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.hm-dock-entry { position:relative; flex:none; touch-action:none; }
+.hm-dock-app { touch-action:none; }
+.hm-dock-entry[data-reordering="true"] > .hm-dock-app { opacity:0.5; }
+.hm-dock-entry[data-drop-target="true"] > .hm-dock-app { outline:var(--ig-space-0-5) solid var(--ig-accent); }
+.hm-dock-app img { width:var(--ig-space-6); height:var(--ig-space-6); object-fit:contain; pointer-events:none; }
+.hm-dock-entry > .hm-dock-remove { position:absolute; right:0; top:0; width:var(--ig-space-4); height:var(--ig-space-4); min-width:0; min-height:0; border-radius:var(--ig-radius-pill); opacity:0; padding:0; background:var(--ig-surface); }
+.hm-dock-entry:hover .hm-dock-remove,.hm-dock-entry:focus-within .hm-dock-remove {opacity:1;}
+.ig-glass-card.hm-dock-menu {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  padding: var(--ig-space-1);
+  width: max-content;
+  max-width: 100%;
+  border-radius: var(--ig-radius-md);
+  background:
+    linear-gradient(var(--ig-surface-raised), var(--ig-surface-raised)),
+    var(--ig-surface);
+  backdrop-filter: blur(var(--ig-blur));
+  -webkit-backdrop-filter: blur(var(--ig-blur));
+  box-shadow:
+    inset 0 0 0 1px var(--ig-stroke),
+    var(--ig-shadow);
+}
+.hm-dock-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--ig-space-2);
+}
+.hm-dock-menu-item span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hm-dock[data-dragging="true"] { outline:var(--ig-space-0-5) solid var(--ig-accent); background:var(--ig-accent-soft); }
+.hm-dock-drop-label { position:absolute; inset:0; display:grid; place-items:center; background:var(--ig-surface); border-radius:inherit; color:var(--ig-accent-text); pointer-events:none; }
+
+.hm-track-text { display: flex; flex-direction: column; gap: var(--ig-space-1); min-width: 0; }
+.hm-home--with-tools .hm-track-text { gap: 0; }
+.hm-home[data-dock="false"],
+.hm-home[data-dock="false"]:has(.hm-tools),
+.hm-home.hm-home--with-tools[data-dock="false"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* The lyrics button sits at the right edge of the transport row without moving the centred prev/play/next. */
+.hm-controls > .ig-lyrics-toggle {
+  position: absolute;
+  right: 0;
+  margin: 0;
+}

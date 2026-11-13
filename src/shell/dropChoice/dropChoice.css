@@ -1,0 +1,123 @@
+/* Drop Choice view (v0.4, contracts §22): Dock vs Shelf drop zones */
+
+.ig-drop-choice {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--ig-space-4);
+  box-sizing: border-box;
+  gap: var(--ig-space-3);
+  user-select: none;
+}
+
+.ig-drop-choice-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ig-space-1) 0;
+  flex: none;
+}
+
+.ig-drop-choice-title {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-medium);
+  color: var(--ig-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.ig-drop-choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ig-space-4);
+  flex: 1;
+  min-height: 0;
+}
+
+.ig-drop-choice-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ig-space-3);
+  padding: var(--ig-space-6);
+  border-radius: var(--ig-radius-lg);
+  border: 1px solid var(--ig-border);
+  background: var(--ig-surface);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  cursor: default;
+  transition: background var(--ig-motion-fast) var(--ig-ease-out),
+              border-color var(--ig-motion-fast) var(--ig-ease-out),
+              outline var(--ig-motion-fast) var(--ig-ease-out),
+              opacity var(--ig-motion-fast) var(--ig-ease-out);
+}
+
+.ig-drop-choice-zone[data-active="true"] {
+  outline: var(--ig-space-0-5) solid var(--ig-accent);
+  background: var(--ig-accent-soft);
+  border-color: var(--ig-accent);
+}
+
+.ig-drop-choice-zone[data-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.ig-drop-choice-icon-wrap {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--ig-radius-md);
+  background: var(--ig-surface-card);
+  color: var(--ig-text);
+  border: 1px solid var(--ig-border);
+  flex: none;
+}
+
+.ig-drop-choice-zone[data-active="true"] .ig-drop-choice-icon-wrap {
+  color: var(--ig-accent-text);
+  border-color: var(--ig-accent);
+}
+
+.ig-drop-choice-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+}
+
+.ig-drop-choice-zone-title {
+  font-size: var(--ig-text-xl);
+  font-weight: var(--ig-weight-semibold);
+  color: var(--ig-text);
+  line-height: var(--ig-leading-tight);
+}
+
+.ig-drop-choice-zone-desc {
+  font-size: var(--ig-text-sm);
+  color: var(--ig-text-muted);
+  max-width: 220px;
+  line-height: var(--ig-leading);
+}
+
+.ig-drop-choice-badge {
+  position: absolute;
+  bottom: var(--ig-space-3);
+  padding: var(--ig-space-1) var(--ig-space-2-5);
+  font-size: var(--ig-text-xs);
+  font-weight: var(--ig-weight-medium);
+  border-radius: var(--ig-radius-pill);
+  background: var(--ig-surface-card);
+  color: var(--ig-danger-text, #ff6347);
+  border: 1px solid var(--ig-border);
+}
+
+/* Lite mode overrides (contracts §19) */
+[data-lite="true"] .ig-drop-choice-zone {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

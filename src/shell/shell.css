@@ -1,0 +1,700 @@
+/* Owner: F1. Shell layout only: colors, radii, spacing and type come from var(--ig-*) tokens and src/design classes. */
+
+/* The one morphing element. Size/radius are animated by Motion; `top` is set inline. It is centered with auto margins
+   (width is always explicit) instead of `translateX(-50%)`: a transform would make it a compositor layer. */
+.ig-island {
+  opacity: var(--ig-prewarm-alpha, 1);
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  overflow: hidden;
+  box-sizing: border-box;
+  cursor: default;
+  user-select: none;
+  color: var(--ig-text);
+  font-family: var(--ig-font);
+}
+.ig-island:focus-visible {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: var(--ig-outline-offset);
+}
+
+
+/* Content layers: pill content fills the island; panel content has the final panel size and is clipped by the island. */
+.ig-island-layer {
+  position: absolute;
+  inset: 0;
+}
+.ig-island-layer--panel {
+  inset: 0 auto auto 50%;
+  width: var(--ig-panel-width);
+  height: var(--ig-panel-height);
+  margin-left: calc(var(--ig-panel-width) / -2);
+  transform-origin: 50% 0;
+}
+.ig-island[data-tall="true"] > .ig-island-layer--panel {
+  height: var(--ig-panel-height-tall);
+}
+
+/* ── Pill content ── */
+.ig-pill-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-2-5);
+  height: 100%;
+  padding: 0 var(--ig-space-3-5) 0 var(--ig-space-1-5);
+  font-size: var(--ig-text-sm);
+  white-space: nowrap;
+}
+.ig-pill-row--idle {
+  justify-content: space-between;
+  padding: 0 var(--ig-space-4);
+}
+.ig-pill-time {
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font);
+  letter-spacing: 0.01em;
+}
+.ig-pill-label {
+  font-weight: var(--ig-weight-semibold);
+}
+.ig-pill-label--solo {
+  flex: 1;
+  min-width: 0;
+}
+.ig-pill-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.ig-pill-hotkey-message {
+  flex: 1;
+  min-width: 0;
+}
+.ig-pill-hotkey-line {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+}
+.ig-pill-shortcut,
+.ig-pill-feedback--shortcut .ig-glass-control {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ig-pill-hotkey-detail {
+  display: block;
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading-tight);
+  color: var(--ig-danger-text);
+}
+.ig-pill-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--ig-badge-size);
+  height: var(--ig-badge-size);
+  border-radius: 50%;
+  color: var(--ig-text-on-accent);
+  background: var(--ig-success);
+}
+.ig-pill-badge .ig-icon {
+  stroke-width: var(--ig-icon-stroke-bold);
+}
+
+/* ── Panel ── */
+.ig-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--ig-panel-padding);
+}
+.ig-panel[data-compact-head="true"] {
+  padding-top: var(--ig-space-2);
+  gap: var(--ig-space-1);
+}
+.ig-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ig-tabbar-height);
+  flex: none;
+}
+.ig-panel[data-compact-head="true"] > .ig-panel-head {
+  height: var(--ig-control-height-sm);
+  padding-right: var(--ig-space-0-5);
+}
+.ig-panel[data-compact-head="true"] .ig-glass-control--round {
+  border-radius: var(--ig-radius-pill);
+}
+.ig-panel-head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+}
+.ig-panel[data-compact-head="true"] .ig-panel-head-right {
+  gap: var(--ig-space-1);
+}
+.ig-head-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: var(--ig-space-1-5);
+  line-height: var(--ig-leading-tight);
+}
+.ig-panel[data-compact-head="true"] .ig-head-clock {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--ig-space-1-5);
+  margin-right: var(--ig-space-1);
+  line-height: 1;
+}
+.ig-head-time {
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+}
+.ig-head-date {
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+.ig-head-battery {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+  font-size: var(--ig-text-xs);
+  font-weight: var(--ig-weight-medium);
+  color: var(--ig-text-secondary);
+  margin-right: var(--ig-space-1);
+  user-select: none;
+}
+.ig-head-battery .ig-icon {
+  flex: none;
+  opacity: 0.85;
+}
+.ig-pill-battery {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+.ig-battery-symbol {
+  width: auto;
+  height: var(--ig-space-3);
+  aspect-ratio: 42 / 24;
+  color: var(--ig-battery-normal);
+  font: var(--ig-weight-bold, 700) var(--ig-text-xs) / 1 var(--ig-font);
+}
+
+.ig-battery-symbol[data-tone="critical"] { color: var(--ig-battery-critical); }
+.ig-battery-symbol[data-tone="low"] { color: var(--ig-battery-low); }
+.ig-battery-symbol[data-tone="unknown"] { color: var(--ig-battery-unknown); }
+.ig-battery-track { fill: var(--ig-battery-track); }
+.ig-battery-border { stroke: currentColor; stroke-opacity: 0.35; stroke-width: 1px; }
+.ig-battery-terminal { fill: currentColor; opacity: 0.6; }
+.ig-battery-ink {
+  font-weight: var(--ig-weight-bold, 700);
+}
+.ig-panel-body {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--ig-radius-lg);
+}
+.ig-panel-body:focus-visible {
+  outline: var(--ig-outline-width) solid var(--ig-focus);
+  outline-offset: calc(var(--ig-outline-offset) * -1);
+}
+
+/* ── Settings view (spec §6.8): back button + title in the head, two cards in the body ── */
+.ig-settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+}
+.ig-view-title {
+  margin: 0;
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1 var(--ig-font-display);
+}
+.ig-pill-feedback { height: 100%; }
+.ig-pill-color { flex: none; width: var(--ig-space-4); height: var(--ig-space-4); border-radius: var(--ig-radius-pill); box-shadow: inset 0 0 0 1px var(--ig-stroke-strong); }
+.ig-pill-action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ig-pill-action:focus-visible { outline: var(--ig-space-0-5) solid var(--ig-accent); outline-offset: calc(-1 * var(--ig-space-0-5)); }
+.ig-settings {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ig-stroke-strong) transparent;
+}
+.ig-settings-columns {
+  display: flow-root;
+}
+/* Keep DOM/Tab order: appearance, behaviour, shelf, tiles. The right stack is
+   one float so neither left card is pushed down by a preceding right card. */
+.ig-settings-column--left,
+.ig-settings-column--right {
+  width: calc((100% - var(--ig-space-3)) / 2);
+}
+.ig-settings-column--left {
+  float: left;
+  clear: left;
+}
+.ig-settings-column--right {
+  float: right;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+}
+.ig-settings-column--left ~ .ig-settings-column--left {
+  margin-top: var(--ig-space-3);
+}
+.ig-settings-card {
+  padding: var(--ig-space-1) 0;
+}
+.ig-settings-card--wide {
+  margin-top: var(--ig-space-3);
+}
+.ig-hotkey-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  width: 100%;
+}
+.ig-hotkey-input {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-family: var(--ig-font-mono, var(--ig-font));
+}
+.ig-hotkey-input[data-recording="true"] {
+  border-color: var(--ig-accent);
+  color: var(--ig-accent);
+}
+.ig-hotkey-error {
+  color: var(--ig-danger-text);
+}
+.ig-fullscreen-empty {
+  margin: 0;
+  padding: var(--ig-space-2) var(--ig-space-3);
+}
+.ig-autohide-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ig-font-mono, var(--ig-font));
+}
+.ig-autohide-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1-5);
+  flex: none;
+}
+.ig-setting-row:has(.ig-monitor-picker) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ig-space-1);
+}
+.ig-monitor-picker {
+  flex: none;
+  max-height: calc(var(--ig-control-height) * 2 + var(--ig-space-1) * 2 + var(--ig-row-gap));
+  min-width: 0;
+}
+.ig-monitor-picker > .ig-list-row {
+  height: var(--ig-control-height);
+  font-size: var(--ig-text-sm);
+}
+.ig-settings-label {
+  margin: 0;
+  padding-top: var(--ig-space-1-5);
+  padding-left: var(--ig-space-3);
+}
+.ig-settings-foot {
+  margin: 0;
+  padding: var(--ig-space-2) var(--ig-space-3);
+  border-top: 1px solid var(--ig-stroke);
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-tertiary);
+}
+
+
+/* ── WhatsNew screen (spec §17) ── */
+.ig-whats-new-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--ig-space-1) var(--ig-space-3) var(--ig-space-2);
+  gap: var(--ig-space-2);
+  box-sizing: border-box;
+}
+.ig-whats-new-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+}
+.ig-whats-new-title {
+  margin: 0;
+  font: var(--ig-weight-semibold) var(--ig-text-md) / 1.2 var(--ig-font-display);
+  color: var(--ig-text);
+}
+.ig-whats-new-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-2);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: var(--ig-space-1);
+}
+.ig-whats-new-card {
+  flex: none;
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: var(--ig-space-3);
+  padding: var(--ig-space-2-5) var(--ig-space-3);
+  border-radius: var(--ig-radius-md);
+}
+.ig-whats-new-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ig-radius-md);
+  background: var(--ig-surface-raised);
+  color: var(--ig-accent);
+  flex: none;
+  margin-top: 2px;
+}
+.ig-whats-new-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.ig-whats-new-item-title {
+  margin: 0;
+  font-size: var(--ig-text-sm);
+  font-weight: var(--ig-weight-semibold);
+  color: var(--ig-text);
+}
+.ig-whats-new-item-desc {
+  margin: 0;
+  font-size: var(--ig-text-xs);
+  color: var(--ig-text-secondary);
+  line-height: var(--ig-leading-relaxed);
+}
+.ig-whats-new-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-1);
+  margin: var(--ig-space-1) 0 0;
+  padding-left: var(--ig-space-4);
+  list-style: disc;
+  font-size: var(--ig-text-xs);
+  line-height: var(--ig-leading);
+  color: var(--ig-text-secondary);
+}
+.ig-whats-new-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex: none;
+  padding-top: var(--ig-space-1);
+}
+.ig-whats-new-btn {
+  min-width: 100px;
+}
+.ig-eq-static {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 14px;
+  width: 14px;
+}
+.ig-eq-static > span {
+  display: block;
+  width: 2px;
+  background: currentColor;
+  border-radius: 1px;
+}
+/* Shelf uses the idle pill slot; media, downloads and timers keep their priority. */
+.ig-shelf-badge { display: inline-flex; align-items: center; gap: var(--ig-space-1); padding: 0; background: transparent; border: 0; cursor: pointer; color: var(--ig-accent-on-strong); font-size: var(--ig-text-xs); }
+.ig-shelf-drop { justify-content: center; gap: var(--ig-space-2); color: var(--ig-accent-on-strong); font-size: var(--ig-text-sm); }
+.ig-island[data-shelf-drop="true"] { box-shadow: inset 0 0 0 var(--ig-outline-width) var(--ig-accent-on-strong); }
+
+/* Headset connect pill: live activity shown when default audio device switches to headphones. */
+.ig-headset-pill { position: relative; min-width: 0; }
+.ig-headset-symbol { color: var(--ig-accent-on-strong); }
+.ig-headset-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: var(--ig-leading-tight); }
+.ig-headset-copy b { font-size: var(--ig-text-xs); font-weight: var(--ig-weight-medium); }
+.ig-headset-copy > span { font-size: var(--ig-text-xs); color: var(--ig-text-secondary); }
+
+/* Charge colour is a second plate: only its opacity changes. */
+.ig-battery-fill { transform-origin: 0 0; transition: transform var(--ig-dur-slow) var(--ig-ease-out); }
+.ig-battery-charge-fill { fill: var(--ig-battery-charging); opacity: 0; transition: opacity var(--ig-dur-slow) var(--ig-ease-out); }
+.ig-battery-symbol[data-charging="true"] .ig-battery-charge-fill { opacity: 1; }
+.ig-battery-bolt, .ig-battery-number { transform-origin: 18px 12px; transition: opacity var(--ig-dur-slow) var(--ig-ease-out); }
+.ig-battery-bolt { opacity: 0; }
+.ig-battery-number { font-size: var(--ig-text-lg); }
+.ig-battery-symbol[data-charging="true"] .ig-battery-bolt { opacity: 1; }
+.ig-battery-symbol[data-charging="true"] .ig-battery-number { opacity: 0; }
+.ig-battery-flash { fill: var(--ig-battery-normal); opacity: 0; pointer-events: none; }
+[data-charge-transition="plug"] .ig-battery-bolt { animation: ig-charge-strike var(--ig-dur-slow) var(--ig-ease-spring) both; }
+[data-charge-transition="plug"] .ig-battery-flash { animation: ig-charge-flash var(--ig-dur-slow) var(--ig-ease-out) var(--ig-dur-slow) both; }
+[data-charge-transition="plug"] .ig-battery-charge-fill { transition-delay: calc(var(--ig-dur-slow) * 2); }
+@keyframes ig-charge-strike { from { opacity: 0; transform: translateY(calc(-1 * var(--ig-space-3))); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ig-charge-flash { 0%, 100% { opacity: 0; } 35% { opacity: 0.8; } }
+@media (prefers-reduced-motion: reduce) {
+  .ig-battery-fill { transition: none; }
+  [data-charge-transition="plug"] .ig-battery-bolt { animation: ig-feedback-fade var(--ig-dur-slow) var(--ig-ease-out); }
+  [data-charge-transition="plug"] .ig-battery-flash { animation: none; }
+  [data-charge-transition="plug"] .ig-battery-charge-fill { transition-delay: 0s; }
+}
+@keyframes ig-feedback-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.ig-head-battery .ig-battery-symbol { width: var(--ig-space-6); height: var(--ig-space-4); }
+.ig-head-battery .ig-battery-number { display: none; }
+
+/* ── Tab customize mode (contracts §23, no scale / no shadow transitions) ── */
+.ig-tabs-head {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.ig-tabs-root {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.ig-tabs-root[data-icons-only="true"] .ig-tab-label { display: none; }
+.ig-tabs-root[data-icons-only="true"] .ig-tab { padding-inline: var(--ig-space-2); gap: 0; }
+.ig-tabs-root[data-icons-only="true"] .ig-tab-entry[data-removable="true"] > .ig-tab { padding-right: calc(var(--ig-space-4) + var(--ig-space-1)); }
+.ig-tabs-root .ig-tabbar { min-width: 0; flex-shrink: 1; }
+.ig-tabs-root .ig-tab { white-space: nowrap; flex-shrink: 0; }
+.ig-tabs-root .ig-tabbar[data-measuring="true"] .ig-tab { padding-inline: var(--ig-space-3); gap: var(--ig-space-1-5); }
+.ig-tabs-root .ig-tabbar[data-measuring="true"][data-editing="true"] .ig-tab { padding-inline: var(--ig-space-1-5); gap: var(--ig-space-1); }
+.ig-tabs-root .ig-tabbar[data-measuring="true"] .ig-tab-entry[data-removable="true"] > .ig-tab { padding-right: calc(var(--ig-space-4) + var(--ig-space-1)); }
+.ig-panel-head-right { flex-shrink: 0; }
+.ig-tabs-root--single {
+  flex: 1;
+}
+.ig-tabs-root[data-editing="true"] {
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--ig-space-1-5);
+}
+.ig-panel-head[data-editing-tabs="true"] {
+  gap: var(--ig-space-1-5);
+}
+.ig-panel-head[data-editing-tabs="true"] > .ig-panel-head-right {
+  flex: none;
+  gap: var(--ig-space-1);
+}
+.ig-panel-head[data-editing-tabs="true"] .ig-head-clock,
+.ig-panel-head[data-editing-tabs="true"] .ig-head-battery {
+  display: none;
+}
+.ig-tabbar-slot {
+  flex: 1;
+  height: 100%;
+  min-width: var(--ig-control-height-lg);
+}
+.ig-tabs-edit-left {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--ig-space-1);
+  min-width: 0;
+  height: 100%;
+}
+.ig-tabbar[data-editing="true"] {
+  gap: var(--ig-space-0-5);
+  min-width: 0;
+}
+.ig-tab-entry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  border-radius: var(--ig-radius-pill);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ig-tab-entry[data-reordering="true"] {
+  opacity: 0.5;
+}
+.ig-tab-entry[data-drop-target="true"] {
+  outline: var(--ig-space-0-5) solid var(--ig-accent);
+  outline-offset: 0;
+}
+.ig-tab-entry > .ig-tab {
+  min-width: 0;
+  padding: 0 var(--ig-space-1-5);
+  gap: var(--ig-space-1);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ig-tab-entry > .ig-tab > span:not(.ig-tab-thumb) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ig-tab-entry[data-removable="true"] > .ig-tab {
+  padding-right: calc(var(--ig-space-4) + var(--ig-space-1));
+}
+.ig-tab-entry[data-reordering="true"] > .ig-tab {
+  cursor: grabbing;
+}
+.ig-glass-control.ig-tab-remove {
+  position: absolute;
+  right: var(--ig-space-0-5);
+  inset-block: 0;
+  margin-block: auto;
+  width: var(--ig-space-4);
+  height: var(--ig-space-4);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: var(--ig-radius-pill);
+  z-index: 2;
+}
+.ig-glass-control.ig-tab-add {
+  flex: none;
+  outline: 1.5px dashed var(--ig-stroke-strong);
+  outline-offset: -1.5px;
+  border-radius: var(--ig-radius-pill);
+}
+.ig-tabs-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ig-space-1);
+  flex: none;
+}
+.ig-tabs-edit-actions > .ig-glass-control--sm {
+  padding: 0 var(--ig-space-2);
+  gap: var(--ig-space-1);
+}
+.ig-tabs-menu,
+.ig-tabs-menu:active {
+  transform: none;
+  transition: none;
+}
+.ig-tabs-root .ig-glass-control,
+.ig-tabs-root .ig-glass-control:active,
+.ig-tabs-root .ig-glass-control[data-pressed="true"],
+.ig-tabs-menu .ig-glass-control,
+.ig-tabs-menu .ig-glass-control:active,
+.ig-tabs-menu .ig-glass-control[data-pressed="true"] {
+  transform: none;
+  transition:
+    background-color var(--ig-dur-fast) var(--ig-ease-out),
+    color var(--ig-dur-fast) var(--ig-ease-out),
+    opacity var(--ig-dur-fast) var(--ig-ease-out);
+}
+
+/* ── Lyrics view (design-spec §6.11): header title block, loading caption, state action. No scale anywhere. ── */
+.ig-lyrics-head-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-0-5);
+  min-width: 0;
+}
+.ig-lyrics-head-title .ig-view-title {
+  line-height: var(--ig-leading-tight);
+}
+.ig-lyrics-loading {
+  margin: 0;
+  padding: var(--ig-space-4) 10px 0;
+}
+.ig-lyrics-state__action {
+  align-self: flex-start;
+  margin-top: var(--ig-space-2);
+}
+/* The narrow art column: the timeline gets the whole width (a big hit area), the times sit under it. */
+.ig-lyrics-side .hm-seek {
+  flex-wrap: wrap;
+  gap: 0 var(--ig-space-2);
+  margin-top: var(--ig-space-2);
+}
+.ig-lyrics-side .hm-seek > input {
+  order: -1;
+  flex: 1 0 100%;
+  height: 24px;
+  cursor: pointer;
+}
+.ig-lyrics-side .hm-seek > .hm-time {
+  flex: 1;
+  width: auto;
+}
+.ig-lyrics-side .hm-seek > .hm-time:last-child {
+  text-align: right;
+}
+
+/* ── Lyrics pill: adaptive width, long lines scroll (translateX only) ── */
+.ig-pill-row--lyrics {
+  position: relative;
+}
+/* Hidden twin of the line: its width decides the pill width. */
+.ig-pill-lyric__twin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  overflow: visible;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* While the pill is still growing the text is clipped, never shown with an ellipsis. */
+.ig-pill-row--lyrics .ig-pill-lyric__text {
+  text-overflow: clip;
+}
+.ig-pill-row--lyrics .ig-pill-lyric__text[data-truncate="true"] {
+  text-overflow: ellipsis;
+}
+/* Wider than the widest pill: hold, scroll slowly to the end, hold. Starts afresh with every line (new element). */
+.ig-pill-row--lyrics .ig-pill-lyric__text[data-marquee="true"] {
+  flex: none;
+  overflow: visible;
+  width: max-content;
+  animation: ig-lyric-marquee var(--ly-dur, 6s) linear forwards;
+}
+@keyframes ig-lyric-marquee {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  85%,
+  100% {
+    transform: translateX(var(--ly-shift, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ig-pill-row--lyrics .ig-pill-lyric__text[data-marquee="true"] {
+    animation: none;
+  }
+}
+:root[data-lite="true"] .ig-pill-row--lyrics .ig-pill-lyric__text[data-marquee="true"] {
+  animation: none;
+}

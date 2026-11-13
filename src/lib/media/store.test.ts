@@ -1,0 +1,208 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockEmit, mockListenerCount, resetMock } from "../../ipc/mock";
+import * as ipc from "../../ipc";
+import type { MediaState } from "../../shared/types";
+import { PAUSE_GRACE_MS } from "./progress";
+import { TRACK_GAP_MS, initMedia, resetMediaStore, useIsMediaActive, useMediaStore } from "./store";
+
+const track = (over: Partial<MediaState> = {}): MediaState => ({
+  hasSession: true,
+  sourceApp: "Spotify.exe",
+  title: "A",
+  artist: "B",
+  album: "C",
+  artwork: "data:image/png;base64,AAA",
+  status: "playing",
+  positionMs: 0,
+  durationMs: 100_000,
+  positionSampledAt: Date.now(),
+  canPlayPause: true,
+  canNext: true,
+  canPrevious: true,
+  canSeek: true,
+  ...over,
+});
+
+beforeEach(() => {
+  resetMock();
+  resetMediaStore();
+});
+afterEach(() => {
+  resetMediaStore();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("media store", () => {
+  it("rolls back a rejected seek from the backend snapshot", async () => {
+    useMediaStore.getState().applyState(track({ positionMs: 1234 }));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(ipc, "invoke").mockImplementation(((command: string) => {
+      if (command === "media_seek") return Promise.reject(new Error("seek rejected"));
+      return Promise.resolve(track({ positionMs: 1234 }));
+    }) as typeof ipc.invoke);
+    await useMediaStore.getState().seek(50000);
+    expect(useMediaStore.getState().media.positionMs).toBe(1234);
+  });
+
+  it("delivers rapid next/previous immediately without guessing that a skip succeeded", async () => {
+    useMediaStore.getState().applyState(track());
+    const complete: Array<() => void> = [];
+    const spy = vi.spyOn(ipc, "invoke").mockImplementation((() => new Promise<void>(resolve => complete.push(resolve))) as typeof ipc.invoke);
+    const { next, previous } = useMediaStore.getState();
+    const requests = [next(), next(), previous()];
+    expect(spy.mock.calls).toEqual([
+      ["media_action", { action: "next" }],
+      ["media_action", { action: "next" }],
+      ["media_action", { action: "previous" }],
+    ]);
+    expect(useMediaStore.getState().media.title).toBe("A");
+    for (const resolve of complete) resolve();
+    await Promise.all(requests);
+  });
+
+  it("resyncs a rejected command but never overwrites a newer media event", async () => {
+    useMediaStore.getState().applyState(track());
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let finishLoad!: (state: MediaState) => void;
+    vi.spyOn(ipc, "invoke").mockImplementation(((command: string) => {
+      if (command === "media_action") return Promise.reject(new Error("SMTC rejected"));
+      return new Promise<MediaState>(resolve => { finishLoad = resolve; });
+    }) as typeof ipc.invoke);
+    const first = useMediaStore.getState().next();
+    await waitFor(() => expect(finishLoad).toBeTypeOf("function"));
+    finishLoad(track({ status: "paused" }));
+    await first;
+    expect(useMediaStore.getState().media.status).toBe("paused");
+    const second = useMediaStore.getState().previous();
+    await Promise.resolve();
+    useMediaStore.getState().applyState(track({ title: "Newer event" }));
+    finishLoad(track());
+    await second;
+    expect(useMediaStore.getState().media.title).toBe("Newer event");
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("initMedia loads the state once and subscribes once", async () => {
+    await Promise.all([initMedia(), initMedia()]);
+    await initMedia();
+    expect(useMediaStore.getState().media.hasSession).toBe(true);
+    expect(useMediaStore.getState().media.title).toBe("Полночный маршрут");
+    await waitFor(() => expect(mockListenerCount("media://changed")).toBe(1));
+  });
+
+  it("follows media://changed", async () => {
+    await initMedia();
+    await waitFor(() => expect(mockListenerCount("media://changed")).toBe(1));
+    act(() => mockEmit("media://changed", track({ title: "Новая" })));
+    expect(useMediaStore.getState().media.title).toBe("Новая");
+  });
+
+  it("keeps the previous cover while the artwork of the same track has not arrived yet", () => {
+    const { applyState } = useMediaStore.getState();
+    applyState(track());
+    applyState(track({ artwork: null, positionMs: 5 }));
+    expect(useMediaStore.getState().media.artwork).toBe("data:image/png;base64,AAA");
+    applyState(track({ title: "Другой", artwork: null }));
+    expect(useMediaStore.getState().media.artwork).toBeNull();
+    applyState(track({ title: "Другой", artwork: "data:image/png;base64,BBB" }));
+    expect(useMediaStore.getState().media.artwork).toBe("data:image/png;base64,BBB");
+  });
+
+  it("bridges a short 'no track' gap during a track switch, then shows the next track", () => {
+    vi.useFakeTimers();
+    const { applyState } = useMediaStore.getState();
+    applyState(track());
+    applyState({ ...track(), hasSession: false, title: "", artist: "" });
+    applyState(track({ title: "", artist: "", artwork: null }));
+    expect(useMediaStore.getState().media.title).toBe("A");
+    vi.advanceTimersByTime(TRACK_GAP_MS - 1);
+    applyState(track({ title: "Next", artwork: null }));
+    expect(useMediaStore.getState().media.title).toBe("Next");
+    vi.advanceTimersByTime(TRACK_GAP_MS * 2);
+    expect(useMediaStore.getState().media.title).toBe("Next");
+  });
+
+  it("shows a real stop once the gap outlasts the bridge; the first snapshot is never held", () => {
+    vi.useFakeTimers();
+    const { applyState } = useMediaStore.getState();
+    applyState(track());
+    applyState({ ...track(), hasSession: false, title: "", artist: "" });
+    vi.advanceTimersByTime(TRACK_GAP_MS);
+    expect(useMediaStore.getState().media.hasSession).toBe(false);
+    resetMediaStore();
+    applyState(track());
+    applyState({ ...track(), hasSession: false }, true);
+    expect(useMediaStore.getState().media.hasSession).toBe(false);
+  });
+
+  it("remembers when the pause started; a paused snapshot at load does not count", () => {
+    const { applyState } = useMediaStore.getState();
+    applyState(track({ status: "paused" }), true);
+    expect(useMediaStore.getState().pausedSince).toBe(0);
+    applyState(track({ status: "playing" }));
+    expect(useMediaStore.getState().pausedSince).toBeNull();
+    const before = Date.now();
+    applyState(track({ status: "paused" }));
+    expect(useMediaStore.getState().pausedSince).toBeGreaterThanOrEqual(before);
+  });
+
+  it("playPause flips optimistically and calls the backend", async () => {
+    await initMedia();
+    await waitFor(() => expect(mockListenerCount("media://changed")).toBe(1));
+    await act(async () => {
+      await useMediaStore.getState().playPause();
+    });
+    expect(useMediaStore.getState().media.status).toBe("paused");
+  });
+
+  it("seek updates the position immediately and clamps to the duration", async () => {
+    await initMedia();
+    // Freeze track-end timers: seeking to duration schedules the mock's next track at delay 0.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    await act(async () => {
+      await useMediaStore.getState().seek(10_000_000);
+    });
+    expect(useMediaStore.getState().media.positionMs).toBe(useMediaStore.getState().media.durationMs);
+  });
+
+  it("controls do nothing without a session", async () => {
+    const spy = vi.spyOn(console, "warn");
+    await useMediaStore.getState().playPause();
+    await useMediaStore.getState().seek(1000);
+    expect(useMediaStore.getState().media.hasSession).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useIsMediaActive", () => {
+  it("true while playing, stays true for 30 s of pause, then false", async () => {
+    await initMedia(); // load the mock snapshot first so it cannot overwrite the states below
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    useMediaStore.getState().applyState(track());
+    const { result } = renderHook(() => useIsMediaActive());
+    expect(result.current).toBe(true);
+
+    act(() => useMediaStore.getState().applyState(track({ status: "paused" })));
+    expect(result.current).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(PAUSE_GRACE_MS - 1000);
+    });
+    expect(result.current).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+    expect(result.current).toBe(false);
+
+    act(() => useMediaStore.getState().applyState(track({ status: "playing" })));
+    expect(result.current).toBe(true);
+  });
+
+  it("false without a session", () => {
+    const { result } = renderHook(() => useIsMediaActive());
+    expect(result.current).toBe(false);
+  });
+});

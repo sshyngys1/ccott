@@ -1,0 +1,41 @@
+// Owner: F1. Pill clock: HH:MM, refreshed once per minute, aligned to the start of the minute.
+import { useEffect, useState } from "react";
+import { getLocale, useT } from "../i18n";
+import { useDocumentVisible } from "../lib/useDocumentVisible";
+
+export function formatClock(date: Date): string {
+  return new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+}
+
+/** «пн, 26 окт.» */
+export function formatDate(date: Date): string {
+  return date.toLocaleDateString(getLocale(), { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** Milliseconds until the next minute boundary (always in 1..60000). */
+export function msUntilNextMinute(date: Date): number {
+  return 60_000 - (date.getSeconds() * 1000 + date.getMilliseconds());
+}
+
+export function useClock(): string {
+  useT();
+  const locale = getLocale();
+  const [text, setText] = useState(() => formatClock(new Date()));
+  const visible = useDocumentVisible();
+
+  useEffect(() => {
+    if (!visible) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        setText(formatClock(new Date()));
+        schedule();
+      }, msUntilNextMinute(new Date()));
+    };
+    setText(formatClock(new Date()));
+    schedule();
+    return () => clearTimeout(timer);
+  }, [locale, visible]);
+
+  return text;
+}

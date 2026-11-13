@@ -1,0 +1,158 @@
+import { t } from "../i18n";
+import { consumeCaptureEcho, useCaptureStore } from "../lib/capture/store";
+import { isFeatureEnabled, useFeatureEnabled } from "../lib/features";
+// Owner: F1. Startup/side-effect hooks of the shell: theme, vibrancy, settings, mode → Rust.
+import { useEffect, useRef } from "react";
+import { durations } from "../design/motion";
+import { invoke, listen } from "../ipc";
+import type { IslandMode, Settings } from "../shared/types";
+import { useIslandStore, type ResolvedTheme } from "../store";
+import { announceUpdate, clipboardToastPreview, showToast } from "./toast";
+import { useReminderDue } from "./reminders";
+
+const noop = () => {};
+
+function systemTheme(): ResolvedTheme {
+  if (typeof window.matchMedia !== "function") return "dark";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+/** `<html data-theme>`: settings.theme, or prefers-color-scheme when "auto" (with a live subscription). */
+export function useThemeSync(): void {
+  const themeMode = useIslandStore((s) => s.themeMode);
+  const setTheme = useIslandStore((s) => s.setTheme);
+
+  useEffect(() => {
+    const apply = (theme: ResolvedTheme) => {
+      document.documentElement.dataset.theme = theme;
+      setTheme(theme);
+    };
+    if (themeMode !== "auto") {
+      apply(themeMode);
+      return;
+    }
+    apply(systemTheme());
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => apply(mq.matches ? "dark" : "light");
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [themeMode, setTheme]);
+}
+
+/** Mirrors the flat material preference to `<html data-lite>` as settings change. */
+export function useLiteSync(): void {
+  const liteMode = useIslandStore((s) => s.settings.liteMode);
+  useEffect(() => {
+    document.documentElement.dataset.lite = String(liteMode);
+  }, [liteMode]);
+}
+
+/** Follows settings.vibrancy (suppressed in lite mode), mirroring the native result to `<html data-vibrancy>`. */
+export function useVibrancySync(): void {
+  const setVibrancy = useIslandStore((s) => s.setVibrancy);
+  const requested = useIslandStore((s) => s.settings.vibrancy);
+  const liteMode = useIslandStore((s) => s.settings.liteMode);
+
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (applied: "acrylic" | "mica" | "none") => {
+      if (cancelled) return;
+      document.documentElement.dataset.vibrancy = applied;
+      setVibrancy(applied);
+    };
+    document.documentElement.dataset.vibrancy = "none";
+    invoke("window_set_vibrancy", { mode: liteMode ? "none" : requested }).then((r) => apply(r.applied), () => apply("none"));
+    return () => {
+      cancelled = true;
+    };
+  }, [requested, liteMode, setVibrancy]);
+}
+
+/** Loads settings (theme, hover delays, DND, …) into the store and follows `settings://changed`. Missing backend (wave 1) → defaults. */
+export function useSettingsSync(): void {
+  useEffect(() => {
+    const apply = (s: Settings) => useIslandStore.getState().applySettings(s);
+    let disposed = false;
+    let unlisten: () => void = noop;
+    invoke("settings_get").then((s) => !disposed && apply(s), noop);
+    listen("settings://changed", apply).then((u) => {
+      if (disposed) u();
+      else unlisten = u;
+    }, noop);
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+}
+
+/** Tells Rust about collapsed/expanded on every change (including the initial value). */
+export function useModeSync(mode: IslandMode): void {
+  const sent = useRef<IslandMode | null>(null); // survives StrictMode effect re-runs
+  useEffect(() => {
+    if (sent.current === mode) return;
+    sent.current = mode;
+    invoke("island_set_mode", { mode }).catch(noop);
+  }, [mode]);
+}
+
+/** Toasts (`clipboard://added` → «Скопировано», `updater://available` → «Доступно обновление», shell bus `toast`) stay in the pill for `durations.toastHold` seconds. */
+export function useToastSync(): void {
+  useReminderDue();
+  const clipboardEnabled = useFeatureEnabled("clipboard");
+
+  useEffect(() => {
+    let disposed = false;
+    let unlistenUpdater: () => void = noop;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Whatever shows a toast (clipboard event, updater, shell bus), a new one restarts the hold timer.
+    const unsubscribe = useIslandStore.subscribe((s, prev) => {
+      if (!s.toast || s.toast === prev.toast) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => useIslandStore.getState().setToast(null), s.toast.holdMs ?? durations.toastHold * 1000);
+    });
+    const offCapture = useCaptureStore.subscribe((s, previous) => {
+      if (s.feedback && s.feedback !== previous.feedback) showToast({ label:s.feedback.message, onClick:s.feedback.onClick, color:s.feedback.color, preview:s.feedback.preview, actionLabel:s.feedback.actionLabel });
+    });
+    listen("updater://available", (info) => {
+      if (!disposed) announceUpdate(info);
+    }).then(
+      (u) => {
+        if (disposed) u();
+        else unlistenUpdater = u;
+      },
+      noop,
+    );
+    return () => {
+      disposed = true;
+      unlistenUpdater();
+      unsubscribe();
+      offCapture();
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!clipboardEnabled) return;
+    let disposed = false;
+    let unlistenClipboard: () => void = noop;
+    listen("clipboard://added", (item) => {
+      if (disposed || !isFeatureEnabled("clipboard")) return;
+      if (consumeCaptureEcho(item)) return;
+      const preview = item.kind === "image" ? t("image") : item.kind === "files" ? t("files") : clipboardToastPreview(item.text, item.preview);
+      const previewKey = item.kind === "image" ? "image" : item.kind === "files" ? "files" : undefined;
+      showToast({ label: t("copied"), preview, previewKey });
+    }).then(
+      (u) => {
+        if (disposed) u();
+        else unlistenClipboard = u;
+      },
+      noop,
+    );
+    return () => {
+      disposed = true;
+      unlistenClipboard();
+    };
+  }, [clipboardEnabled]);
+}
