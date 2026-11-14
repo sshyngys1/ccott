@@ -56,5 +56,63 @@
   "forks": 0,
   "watchers": 2,
   "openIssues": 1
+ },
+ {
+  "date": "2026-11-14",
+  "totals": {
+   "installers": 85,
+   "signatures": 27,
+   "checks": 294,
+   "other": 0,
+   "manualEstimate": 58
+  },
+  "versions": {
+   "v0.4.0": {
+    "installers": 29,
+    "signatures": 5,
+    "checks": 110,
+    "other": 0
+   },
+   "v0.3.0": {
+    "installers": 9,
+    "signatures": 3,
+    "checks": 52,
+    "other": 0
+   },
+   "v0.2.3": {
+    "installers": 5,
+    "signatures": 3,
+    "checks": 34,
+    "other": 0
+   },
+   "v0.2.2": {
+    "installers": 9,
+    "signatures": 4,
+    "checks": 31,
+    "other": 0
+   },
+   "v0.2.1": {
+    "installers": 11,
+    "signatures": 4,
+    "checks": 17,
+    "other": 0
+   },
+   "v0.2.0": {
+    "installers": 12,
+    "signatures": 3,
+    "checks": 19,
+    "other": 0
+   },
+   "v0.1.0": {
+    "installers": 10,
+    "signatures": 5,
+    "checks": 31,
+    "other": 0
+   }
+  },
+  "stars": 2,
+  "forks": 0,
+  "watchers": 2,
+  "openIssues": 1
  }
 ]
